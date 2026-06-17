@@ -107,8 +107,13 @@ Use this file for dated accomplishments and important observations. Keep future 
   - RSSI: `-42`
 - Added Pi-side location mapping support with ignored `config/locations.json`.
 - Added local mapping from `esp32-9c9c1fda3670` to `Sunroom Test`.
+- Created public GitHub repository `luminerdy/IoT`.
+- Sanitized local git history to remove old reference files, local IPs, credentials, and legacy AWS-oriented material before public publishing.
+- Verified staged/local history scans did not find known WiFi password, MQTT password, local LAN IPs, old AWS endpoint, or key material patterns.
+- Local git push from this Pi is blocked by missing GitHub HTTPS/SSH credentials; remote currently has only the README created through the GitHub connector.
 
 ## Next Work
 
 - Run the dashboard against the real ESP32 reading.
 - Install collector/dashboard as systemd services.
+- Push sanitized local `main` to `luminerdy/IoT` from a GitHub-authenticated terminal.

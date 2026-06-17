@@ -1,6 +1,6 @@
 # Current Status
 
-Last updated: 2026-06-16
+Last updated: 2026-06-17
 
 This is the first file to read after a reboot, context switch, or long pause.
 
@@ -48,12 +48,14 @@ Status: Real ESP32 publishes through authenticated production Mosquitto; always-
 ## Active Blockers
 
 - Always-on collector/dashboard/broker services are not installed yet.
+- Full sanitized local repo has not been pushed to GitHub from this Pi because local GitHub push credentials are unavailable.
 
 ## Next Actions
 
 1. Install collector and dashboard as systemd services.
 2. Run the dashboard against the real ESP32 reading.
 3. Decide the next firmware feature: retained config handling or OTA foundation.
+4. Push the sanitized local `main` branch to `luminerdy/IoT` from a GitHub-authenticated terminal.
 
 ## Decisions To Revisit Soon
 
@@ -70,3 +72,11 @@ Status: Real ESP32 publishes through authenticated production Mosquitto; always-
 - Hardware findings and checks: `docs/hardware-notes.md`
 - MQTT topics and payloads: `docs/mqtt-schema.md`
 - Overall architecture: `Local-First-Architecture.md`
+
+## Stop Point
+
+- Local branch: `main`
+- Latest local commit: `dfda39c Add Pi-side location mapping`
+- Public GitHub repo: `luminerdy/IoT`
+- Remote status: repo exists and has a README created through the GitHub connector, but the full sanitized local tree still needs to be pushed from an authenticated terminal.
+- Local-only ignored files include runtime data, build output, `config/locations.json`, and `firmware/include/secrets.h`.

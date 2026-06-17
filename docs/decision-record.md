@@ -60,5 +60,24 @@ This file records project architecture decisions and the reasoning behind them.
 
 **Reasoning:** A local test device allows firmware smoke tests, serial logging, MQTT validation, and recovery flashing before OTA rollouts.
 
-**Status:** Accepted, blocked on USB visibility
+**Status:** Accepted, USB visibility resolved
 
+## DR-007: Authenticated LAN MQTT
+
+**Date:** 2026-06-17
+
+**Decision:** Configure system Mosquitto for LAN access on port `1883` with username/password authentication.
+
+**Reasoning:** ESP32 devices must reach the broker over WiFi, but anonymous LAN MQTT is unnecessary risk. Username/password authentication keeps the first local deployment simple while avoiding open anonymous publishing.
+
+**Status:** Accepted
+
+## DR-008: Public Repository Sanitization
+
+**Date:** 2026-06-17
+
+**Decision:** Publish only sanitized local-first project files to the public `luminerdy/IoT` repository.
+
+**Reasoning:** Old reference files contained local credentials, local network details, and obsolete AWS-oriented material. The public repo should contain source, documentation, samples, and runbooks, while local secrets and runtime files remain ignored.
+
+**Status:** Accepted

@@ -63,6 +63,12 @@ Acceptance criteria:
 - Dashboard displays the real ESP32 reading. Pending final dashboard check after service setup.
 - Device reconnects after broker restart or WiFi interruption. Partially verified by reconnecting to restarted test broker.
 
+Operational follow-up:
+
+- Push sanitized local repository to `luminerdy/IoT` from a GitHub-authenticated terminal.
+- Install collector and dashboard as systemd services.
+- Run dashboard against real ESP32 data and verify `Sunroom Test` display.
+
 ## Phase 3: Configuration
 
 Goal: Allow runtime config without reflashing.

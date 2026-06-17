@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+
+# PlatformIO / ESP32
+.pio/
+.vscode/
+firmware/.pio/
+firmware/.vscode/
+firmware/include/secrets.h
+
+# Build artifacts
+build/
+dist/
+*.bin
+*.elf
+*.map
+*.hex
+
+# Local runtime data
+data/
+*.db
+*.sqlite
+*.sqlite3
+logs/
+
+# OS/editor
+.DS_Store
+*~

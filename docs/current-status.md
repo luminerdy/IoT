@@ -76,7 +76,7 @@ Status: Real ESP32 publishes through authenticated production Mosquitto; always-
 ## Stop Point
 
 - Local branch: `main`
-- Latest local commit: `dfda39c Add Pi-side location mapping`
+- Latest local commit: run `git log --oneline -1` in `/home/scotty/IoT`
 - Public GitHub repo: `luminerdy/IoT`
 - Remote status: repo exists and has a README created through the GitHub connector, but the full sanitized local tree still needs to be pushed from an authenticated terminal.
 - Local-only ignored files include runtime data, build output, `config/locations.json`, and `firmware/include/secrets.h`.

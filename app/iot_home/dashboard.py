@@ -8,6 +8,7 @@ from pathlib import Path
 from datetime import UTC, datetime
 
 from iot_home.db import DEFAULT_DB_PATH, connect, init_db, latest_readings
+from iot_home.locations import DEFAULT_LOCATIONS_PATH, load_locations, mapped_location
 
 
 def parse_args() -> argparse.Namespace:
@@ -15,6 +16,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--host", default="localhost", help="HTTP bind host.")
     parser.add_argument("--port", type=int, default=8000, help="HTTP bind port.")
     parser.add_argument("--db", type=Path, default=DEFAULT_DB_PATH, help="SQLite database path.")
+    parser.add_argument(
+        "--locations",
+        type=Path,
+        default=DEFAULT_LOCATIONS_PATH,
+        help="JSON file mapping device IDs to display locations.",
+    )
     parser.add_argument(
         "--stale-seconds",
         type=int,
@@ -38,16 +45,18 @@ def parse_utc(value: str | None) -> datetime | None:
     return parsed.astimezone(UTC)
 
 
-def row_to_dict(row, stale_seconds: int) -> dict:
+def row_to_dict(row, stale_seconds: int, locations: dict[str, str]) -> dict:
     last_seen = parse_utc(row["last_seen"])
     age_seconds = None
     if last_seen:
         age_seconds = int((datetime.now(UTC) - last_seen).total_seconds())
     is_stale = bool(row["online"]) and age_seconds is not None and age_seconds > stale_seconds
 
+    device_id = row["device_id"]
+
     return {
-        "deviceId": row["device_id"],
-        "location": row["location"] or "UNMAPPED",
+        "deviceId": device_id,
+        "location": mapped_location(device_id, row["location"], locations),
         "firmwareVersion": row["firmware_version"],
         "lastSeen": row["last_seen"],
         "online": bool(row["online"]),
@@ -230,6 +239,7 @@ def page() -> bytes:
 class Handler(BaseHTTPRequestHandler):
     db_path: Path = DEFAULT_DB_PATH
     stale_seconds: int = 120
+    locations: dict[str, str] = {}
 
     def do_GET(self) -> None:
         if self.path == "/" or self.path == "/index.html":
@@ -242,7 +252,10 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/api/latest":
             with connect(self.db_path) as conn:
                 init_db(conn)
-                rows = [row_to_dict(row, self.stale_seconds) for row in latest_readings(conn)]
+                rows = [
+                    row_to_dict(row, self.stale_seconds, self.locations)
+                    for row in latest_readings(conn)
+                ]
             payload = json.dumps(rows).encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
@@ -265,6 +278,7 @@ def main() -> None:
 
     Handler.db_path = args.db
     Handler.stale_seconds = args.stale_seconds
+    Handler.locations = load_locations(args.locations)
     server = ThreadingHTTPServer((args.host, args.port), Handler)
     print(f"Dashboard listening on http://{args.host}:{args.port}")
     try:

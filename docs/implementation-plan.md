@@ -55,7 +55,7 @@ Tasks:
 - Publish telemetry and status messages. Done.
 - Include firmware version, RSSI, uptime, and error counters. Done.
 - Configure production Mosquitto LAN listener or systemd-managed test broker. Done.
-- Add Pi-side location mapping.
+- Add Pi-side location mapping. Done.
 
 Acceptance criteria:
 

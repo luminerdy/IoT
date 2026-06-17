@@ -9,6 +9,7 @@ from pathlib import Path
 import paho.mqtt.client as mqtt
 
 from iot_home.db import DEFAULT_DB_PATH, connect, init_db, record_status, record_telemetry
+from iot_home.locations import DEFAULT_LOCATIONS_PATH, load_locations, mapped_location
 from iot_home.mqtt_schema import STATUS_SUBSCRIPTION, TELEMETRY_SUBSCRIPTION
 
 
@@ -23,6 +24,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--client-id", default="iot-pi-collector", help="MQTT client ID.")
     parser.add_argument("--username", default=os.getenv("MQTT_USERNAME"), help="MQTT username.")
     parser.add_argument("--password", default=os.getenv("MQTT_PASSWORD"), help="MQTT password.")
+    parser.add_argument(
+        "--locations",
+        type=Path,
+        default=DEFAULT_LOCATIONS_PATH,
+        help="JSON file mapping device IDs to display locations.",
+    )
     return parser.parse_args()
 
 
@@ -53,6 +60,9 @@ def main() -> None:
 
     conn = connect(args.db)
     init_db(conn)
+    locations = load_locations(args.locations)
+    if locations:
+        LOG.info("Loaded %d location mapping(s) from %s", len(locations), args.locations)
 
     def on_connect(client: mqtt.Client, userdata, flags, reason_code, properties=None) -> None:
         if reason_code != 0:
@@ -67,10 +77,16 @@ def main() -> None:
             payload = json.loads(message.payload.decode("utf-8"))
             if message.topic.endswith("/telemetry"):
                 validate_telemetry(payload)
+                payload["location"] = mapped_location(
+                    str(payload["deviceId"]),
+                    payload.get("location"),
+                    locations,
+                )
                 record_telemetry(conn, payload)
                 LOG.info(
-                    "Telemetry %s temp=%.1f humidity=%.1f",
+                    "Telemetry %s location=%s temp=%.1f humidity=%.1f",
                     payload["deviceId"],
+                    payload["location"],
                     float(payload["temperature"]),
                     float(payload["humidity"]),
                 )

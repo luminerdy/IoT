@@ -42,6 +42,8 @@ Status: Real ESP32 publishes through authenticated production Mosquitto; always-
 - Configured system Mosquitto for authenticated LAN access on port `1883`.
 - Uploaded firmware configured for production MQTT credentials on port `1883`.
 - Verified real ESP32 telemetry reaches SQLite through the production broker.
+- Added Pi-side location mapping support with local ignored `config/locations.json`.
+- Mapped `esp32-9c9c1fda3670` to `Sunroom Test` locally.
 
 ## Active Blockers
 
@@ -49,10 +51,9 @@ Status: Real ESP32 publishes through authenticated production Mosquitto; always-
 
 ## Next Actions
 
-1. Add Pi-side location mapping for `esp32-9c9c1fda3670`.
-2. Install collector and dashboard as systemd services.
-3. Run the dashboard against the real ESP32 reading.
-4. Decide the next firmware feature: retained config handling or OTA foundation.
+1. Install collector and dashboard as systemd services.
+2. Run the dashboard against the real ESP32 reading.
+3. Decide the next firmware feature: retained config handling or OTA foundation.
 
 ## Decisions To Revisit Soon
 

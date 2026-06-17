@@ -22,6 +22,23 @@ firmware/
 
 `firmware/include/secrets.h` is ignored by git and contains local WiFi/MQTT values.
 
+## Location Mapping
+
+Room names live on the Pi, not in firmware. Create a local ignored mapping file:
+
+```bash
+cd /home/scotty/IoT
+cp config/locations.sample.json config/locations.json
+```
+
+Example:
+
+```json
+{
+  "esp32-9c9c1fda3670": "Sunroom Test"
+}
+```
+
 ## Build
 
 ```bash
@@ -96,6 +113,5 @@ status: OK
 
 ## Current Limitations
 
-- Firmware publishes `location: UNMAPPED`; Pi-side location mapping still needs to be implemented.
 - The project-local test broker on port `1884` is useful for smoke tests but is not an installed service.
 - OTA is not implemented yet.

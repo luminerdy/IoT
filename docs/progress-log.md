@@ -105,9 +105,10 @@ Use this file for dated accomplishments and important observations. Keep future 
   - Humidity: `46.6 %`
   - Timestamp: `2026-06-16T21:34:05Z`
   - RSSI: `-42`
+- Added Pi-side location mapping support with ignored `config/locations.json`.
+- Added local mapping from `esp32-9c9c1fda3670` to `Sunroom Test`.
 
 ## Next Work
 
-- Add Pi-side location mapping for `esp32-9c9c1fda3670`.
 - Run the dashboard against the real ESP32 reading.
 - Install collector/dashboard as systemd services.

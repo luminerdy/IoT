@@ -65,7 +65,7 @@ Acceptance criteria:
 
 Operational follow-up:
 
-- Push sanitized local repository to `luminerdy/IoT` from a GitHub-authenticated terminal.
+- Push remaining sanitized source files to `luminerdy/IoT` from a GitHub-authenticated terminal, or continue submitting through the GitHub connector.
 - Install collector and dashboard as systemd services.
 - Run dashboard against real ESP32 data and verify `Sunroom Test` display.
 

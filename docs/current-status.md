@@ -48,14 +48,14 @@ Status: Real ESP32 publishes through authenticated production Mosquitto; always-
 ## Active Blockers
 
 - Always-on collector/dashboard/broker services are not installed yet.
-- Full sanitized local repo has not been pushed to GitHub from this Pi because local GitHub push credentials are unavailable.
+- Normal `git push` from this Pi is unavailable because local GitHub HTTPS/SSH credentials are not configured.
 
 ## Next Actions
 
 1. Install collector and dashboard as systemd services.
 2. Run the dashboard against the real ESP32 reading.
 3. Decide the next firmware feature: retained config handling or OTA foundation.
-4. Push the sanitized local `main` branch to `luminerdy/IoT` from a GitHub-authenticated terminal.
+4. Push the remaining sanitized source files to `luminerdy/IoT` from a GitHub-authenticated terminal, or continue submitting through the GitHub connector.
 
 ## Decisions To Revisit Soon
 
@@ -78,5 +78,5 @@ Status: Real ESP32 publishes through authenticated production Mosquitto; always-
 - Local branch: `main`
 - Latest local commit: run `git log --oneline -1` in `/home/scotty/IoT`
 - Public GitHub repo: `luminerdy/IoT`
-- Remote status: repo exists and has a README created through the GitHub connector, but the full sanitized local tree still needs to be pushed from an authenticated terminal.
+- Remote status: project documentation is submitted to GitHub through the GitHub connector; normal local `git push` still needs credentials before the full source tree can be pushed from this Pi.
 - Local-only ignored files include runtime data, build output, `config/locations.json`, and `firmware/include/secrets.h`.

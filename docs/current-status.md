@@ -47,16 +47,16 @@ Status: Real ESP32 publishes through authenticated production Mosquitto; collect
 - Added systemd unit files and an install script for the collector and dashboard.
 - Installed and enabled `iot-home-collector.service` and `iot-home-dashboard.service`.
 - Verified the dashboard API shows the real ESP32 as `Sunroom Test` with a fresh online reading.
+- Published the sanitized source tree to `luminerdy/IoT` through the GitHub connector.
 
 ## Active Blockers
 
-- Normal `git push` from this Pi is unavailable because local GitHub HTTPS/SSH credentials are not configured.
+- Normal local `git push` from this Pi is still unavailable because local GitHub HTTPS/SSH credentials are not configured.
 
 ## Next Actions
 
 1. Decide the next firmware feature: retained config handling is the recommended next step before OTA.
-2. Push the remaining sanitized source files to `luminerdy/IoT` from a GitHub-authenticated terminal, or continue submitting through the GitHub connector.
-3. Clear old retained simulator MQTT messages if the dashboard should only show physical devices.
+2. Clear old retained simulator MQTT messages if the dashboard should only show physical devices.
 
 ## Decisions To Revisit Soon
 
@@ -79,7 +79,7 @@ Status: Real ESP32 publishes through authenticated production Mosquitto; collect
 - Local branch: `main`
 - Latest local commit: run `git log --oneline -1` in `/home/scotty/IoT`
 - Public GitHub repo: `luminerdy/IoT`
-- Remote status: project documentation is submitted to GitHub through the GitHub connector; normal local `git push` still needs credentials before the full source tree can be pushed from this Pi.
+- Remote status: sanitized source tree is published to GitHub through the GitHub connector; normal local `git push` still needs credentials on this Pi.
 - Local-only ignored files include runtime data, build output, `config/locations.json`, and `firmware/include/secrets.h`.
 - Services: `iot-home-collector.service`, `iot-home-dashboard.service`, and `mosquitto.service` are enabled and running.
 - Dashboard URL on the Pi: `http://127.0.0.1:8000`; LAN URL: `http://piserver.local:8000` or `http://<pi-ip-address>:8000`.

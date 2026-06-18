@@ -67,7 +67,6 @@ Acceptance criteria:
 
 Operational follow-up:
 
-- Push remaining sanitized source files to `luminerdy/IoT` from a GitHub-authenticated terminal, or continue submitting through the GitHub connector.
 - Clear old retained simulator MQTT messages if the dashboard should only show physical devices.
 
 ## Phase 3: Configuration

@@ -113,8 +113,25 @@ Use this file for dated accomplishments and important observations. Keep future 
 - Local git push from this Pi is blocked by missing GitHub HTTPS/SSH credentials.
 - Submitted project documentation to GitHub through the GitHub connector.
 
+## 2026-06-18
+
+### Always-On Services
+
+- Added tracked systemd unit files for:
+  - `iot-home-collector.service`
+  - `iot-home-dashboard.service`
+- Added `scripts/install_systemd_services.sh` to install the unit files, create `/etc/iot-home/iot-home.env`, enable the services, and start them.
+- Installed and started both services on the Pi.
+- Verified `mosquitto.service`, `iot-home-collector.service`, and `iot-home-dashboard.service` are running.
+- Verified the dashboard is listening on `0.0.0.0:8000`.
+- Verified the dashboard API shows `esp32-9c9c1fda3670` mapped to `Sunroom Test`.
+- Verified a fresh real ESP32 reading reached the collector:
+  - Temperature: `78.6 F`
+  - Humidity: `53.9 %`
+  - Timestamp: `2026-06-18T13:59:15Z`
+  - RSSI: `-61`
+
 ## Next Work
 
-- Run the dashboard against the real ESP32 reading.
-- Install collector/dashboard as systemd services.
+- Decide and start the next firmware feature. Retained runtime config is recommended before OTA.
 - Push remaining sanitized source files to `luminerdy/IoT` from a GitHub-authenticated terminal, or continue submitting through the GitHub connector.

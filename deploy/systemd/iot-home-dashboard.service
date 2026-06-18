@@ -1,0 +1,22 @@
+[Unit]
+Description=IoT Home local dashboard
+Documentation=file:/home/scotty/IoT/docs/phase-1-runbook.md
+After=network-online.target iot-home-collector.service
+Wants=network-online.target iot-home-collector.service
+
+[Service]
+Type=simple
+User=scotty
+Group=scotty
+WorkingDirectory=/home/scotty/IoT
+Environment=PYTHONPATH=/home/scotty/IoT/app
+ExecStart=/usr/bin/python3 -m iot_home.dashboard --host 0.0.0.0 --port 8000 --db /home/scotty/IoT/data/iot.db --locations /home/scotty/IoT/config/locations.json
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ReadWritePaths=/home/scotty/IoT/data
+
+[Install]
+WantedBy=multi-user.target

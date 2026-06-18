@@ -18,7 +18,7 @@ Current next step:
 
 ## Phase 1: Local Data Path MVP
 
-Status: Core MVP complete; service installation deferred.
+Status: Complete.
 
 Goal: Prove Pi-side broker, collector, database, and dashboard with simulated devices.
 
@@ -30,6 +30,7 @@ Tasks:
 - Create collector service to subscribe to MQTT and store readings. Done.
 - Create dashboard showing latest readings per room/device. Done.
 - Add stale/offline detection. Done.
+- Install collector and dashboard as systemd services. Done.
 
 Acceptance criteria:
 
@@ -37,10 +38,11 @@ Acceptance criteria:
 - Collector persists readings. Done.
 - Dashboard updates without full page reload. Done.
 - Dashboard shows stale/offline state. Done.
+- Collector and dashboard restart after reboot through systemd. Service enablement done; reboot verification pending.
 
 ## Phase 2: ESP32 Firmware MVP
 
-Status: First real ESP32 telemetry verified; operational hardening pending.
+Status: Complete for the first real ESP32; broader fleet hardening pending.
 
 Goal: Replace simulated telemetry with a real ESP32.
 
@@ -60,14 +62,13 @@ Tasks:
 Acceptance criteria:
 
 - ESP32 publishes valid telemetry to production Mosquitto. Done.
-- Dashboard displays the real ESP32 reading. Pending final dashboard check after service setup.
+- Dashboard displays the real ESP32 reading. Done.
 - Device reconnects after broker restart or WiFi interruption. Partially verified by reconnecting to restarted test broker.
 
 Operational follow-up:
 
 - Push remaining sanitized source files to `luminerdy/IoT` from a GitHub-authenticated terminal, or continue submitting through the GitHub connector.
-- Install collector and dashboard as systemd services.
-- Run dashboard against real ESP32 data and verify `Sunroom Test` display.
+- Clear old retained simulator MQTT messages if the dashboard should only show physical devices.
 
 ## Phase 3: Configuration
 

@@ -1,6 +1,6 @@
 # Current Status
 
-Last updated: 2026-06-17
+Last updated: 2026-06-18
 
 This is the first file to read after a reboot, context switch, or long pause.
 
@@ -12,7 +12,7 @@ The project is moving from an AWS-oriented ESP32 design to a local-first Raspber
 
 Phase 2: ESP32 firmware MVP
 
-Status: Real ESP32 publishes through authenticated production Mosquitto; always-on collector/dashboard service setup still pending.
+Status: Real ESP32 publishes through authenticated production Mosquitto; collector and dashboard are installed as always-on systemd services.
 
 ## Accomplished
 
@@ -44,18 +44,19 @@ Status: Real ESP32 publishes through authenticated production Mosquitto; always-
 - Verified real ESP32 telemetry reaches SQLite through the production broker.
 - Added Pi-side location mapping support with local ignored `config/locations.json`.
 - Mapped `esp32-9c9c1fda3670` to `Sunroom Test` locally.
+- Added systemd unit files and an install script for the collector and dashboard.
+- Installed and enabled `iot-home-collector.service` and `iot-home-dashboard.service`.
+- Verified the dashboard API shows the real ESP32 as `Sunroom Test` with a fresh online reading.
 
 ## Active Blockers
 
-- Always-on collector/dashboard/broker services are not installed yet.
 - Normal `git push` from this Pi is unavailable because local GitHub HTTPS/SSH credentials are not configured.
 
 ## Next Actions
 
-1. Install collector and dashboard as systemd services.
-2. Run the dashboard against the real ESP32 reading.
-3. Decide the next firmware feature: retained config handling or OTA foundation.
-4. Push the remaining sanitized source files to `luminerdy/IoT` from a GitHub-authenticated terminal, or continue submitting through the GitHub connector.
+1. Decide the next firmware feature: retained config handling is the recommended next step before OTA.
+2. Push the remaining sanitized source files to `luminerdy/IoT` from a GitHub-authenticated terminal, or continue submitting through the GitHub connector.
+3. Clear old retained simulator MQTT messages if the dashboard should only show physical devices.
 
 ## Decisions To Revisit Soon
 
@@ -80,3 +81,5 @@ Status: Real ESP32 publishes through authenticated production Mosquitto; always-
 - Public GitHub repo: `luminerdy/IoT`
 - Remote status: project documentation is submitted to GitHub through the GitHub connector; normal local `git push` still needs credentials before the full source tree can be pushed from this Pi.
 - Local-only ignored files include runtime data, build output, `config/locations.json`, and `firmware/include/secrets.h`.
+- Services: `iot-home-collector.service`, `iot-home-dashboard.service`, and `mosquitto.service` are enabled and running.
+- Dashboard URL on the Pi: `http://127.0.0.1:8000`; LAN URL: `http://piserver.local:8000` or `http://<pi-ip-address>:8000`.

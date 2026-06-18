@@ -1,0 +1,24 @@
+[Unit]
+Description=IoT Home MQTT collector
+Documentation=file:/home/scotty/IoT/docs/phase-1-runbook.md
+After=network-online.target mosquitto.service
+Wants=network-online.target
+Requires=mosquitto.service
+
+[Service]
+Type=simple
+User=scotty
+Group=scotty
+WorkingDirectory=/home/scotty/IoT
+Environment=PYTHONPATH=/home/scotty/IoT/app
+EnvironmentFile=-/etc/iot-home/iot-home.env
+ExecStart=/usr/bin/python3 -m iot_home.collector --broker localhost --port 1883 --db /home/scotty/IoT/data/iot.db --locations /home/scotty/IoT/config/locations.json
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ReadWritePaths=/home/scotty/IoT/data
+
+[Install]
+WantedBy=multi-user.target

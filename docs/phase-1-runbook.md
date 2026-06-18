@@ -73,6 +73,37 @@ or:
 http://<pi-ip-address>:8000
 ```
 
+## Always-On Services
+
+Install or refresh the collector and dashboard systemd services:
+
+```bash
+cd /home/scotty/IoT
+scripts/install_systemd_services.sh
+```
+
+The installer creates `/etc/iot-home/iot-home.env`, installs service files under `/etc/systemd/system`, enables the services, and starts them.
+
+Service names:
+
+```text
+iot-home-collector.service
+iot-home-dashboard.service
+mosquitto.service
+```
+
+Check status:
+
+```bash
+systemctl status --no-pager --full iot-home-collector.service iot-home-dashboard.service mosquitto.service
+```
+
+View recent logs:
+
+```bash
+journalctl -u iot-home-collector.service -u iot-home-dashboard.service --since '30 minutes ago' --no-pager
+```
+
 ## Smoke Checks
 
 Check broker manually:
@@ -90,5 +121,4 @@ sqlite3 data/iot.db 'select device_id, location, temperature, humidity, datetime
 ## Current Limitations
 
 - Dashboard is intentionally minimal and uses browser-side polling.
-- Services are not installed under systemd yet.
-- Real ESP32 publishing is still blocked by USB visibility/tooling.
+- Reboot-time service recovery has not been verified with an actual Pi reboot yet.

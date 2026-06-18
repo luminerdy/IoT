@@ -130,8 +130,8 @@ Use this file for dated accomplishments and important observations. Keep future 
   - Humidity: `53.9 %`
   - Timestamp: `2026-06-18T13:59:15Z`
   - RSSI: `-61`
+- Published the sanitized local source tree to `luminerdy/IoT` through the GitHub connector after local HTTPS and SSH push attempts remained unavailable.
 
 ## Next Work
 
 - Decide and start the next firmware feature. Retained runtime config is recommended before OTA.
-- Push remaining sanitized source files to `luminerdy/IoT` from a GitHub-authenticated terminal, or continue submitting through the GitHub connector.

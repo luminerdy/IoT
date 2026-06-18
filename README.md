@@ -15,7 +15,6 @@ docs/                           Active project documentation
 firmware/                       Future ESP32 PlatformIO firmware
 dashboard/                      Future Pi dashboard and collector service
 scripts/                        Future helper scripts
-IoT Home Monitoring Requirements v2 2.md
 Local-First-Architecture.md
 ```
 

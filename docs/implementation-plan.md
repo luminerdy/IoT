@@ -71,38 +71,44 @@ Operational follow-up:
 
 ## Phase 3: Configuration
 
+Status: Complete.
+
 Goal: Allow runtime config without reflashing.
 
 Tasks:
 
-- Add retained per-device config topic.
-- ESP32 subscribes to config.
-- Validate and apply report interval.
-- Report active config in telemetry or status.
+- Add retained per-device config topic. Done.
+- ESP32 subscribes to config. Done.
+- Validate and apply report interval. Done.
+- Validate and apply temperature change threshold. Done.
+- Report active config in telemetry or response. Done.
+- Add Pi-side config publisher. Done.
 
 Acceptance criteria:
 
-- Report interval can be changed from the Pi.
-- Invalid config is rejected and reported.
+- Report interval can be changed from the Pi. Done.
+- Invalid config is rejected and reported. Done.
 
 ## Phase 4: Local OTA
+
+Status: In progress.
 
 Goal: Update ESP32 devices over the air from the Pi.
 
 Tasks:
 
-- Add OTA partitions to firmware build.
-- Serve firmware binaries and manifest from the Pi.
-- Add MQTT OTA command handling.
-- Download firmware over HTTP from Pi.
-- Verify SHA-256.
-- Write OTA partition and reboot.
-- Report OTA status over MQTT.
-- Add dashboard or CLI rollout control.
+- Add OTA partitions to firmware build. Done; default ESP32 partition table already has `ota_0` and `ota_1`.
+- Serve firmware binaries and manifest from the Pi. Implemented in dashboard; service restart pending.
+- Add MQTT OTA command handling. Done.
+- Download firmware over HTTP from Pi. Implemented; live OTA validation pending.
+- Verify SHA-256. Implemented; live OTA validation pending.
+- Write OTA partition and reboot. Implemented; live OTA validation pending.
+- Report OTA status over MQTT. Done.
+- Add dashboard or CLI rollout control. CLI helper started.
 
 Acceptance criteria:
 
-- USB-connected test ESP32 can be updated OTA.
+- USB-connected test ESP32 can be updated OTA. Pending.
 - One canary device can be updated OTA.
 - Failed update does not break USB recovery path.
 

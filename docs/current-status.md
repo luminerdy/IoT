@@ -1,6 +1,6 @@
 # Current Status
 
-Last updated: 2026-06-18
+Last updated: 2026-06-19
 
 This is the first file to read after a reboot, context switch, or long pause.
 
@@ -10,9 +10,9 @@ The project is moving from an AWS-oriented ESP32 design to a local-first Raspber
 
 ## Current Phase
 
-Phase 2: ESP32 firmware MVP
+Phase 4: Local OTA
 
-Status: Real ESP32 publishes through authenticated production Mosquitto; collector and dashboard are installed as always-on systemd services.
+Status: OTA MVP code is implemented and the OTA-capable firmware is USB-flashed; first live OTA rollout is pending a dashboard service restart so `/firmware/...` is served on port `8000`.
 
 ## Accomplished
 
@@ -48,15 +48,25 @@ Status: Real ESP32 publishes through authenticated production Mosquitto; collect
 - Installed and enabled `iot-home-collector.service` and `iot-home-dashboard.service`.
 - Verified the dashboard API shows the real ESP32 as `Sunroom Test` with a fresh online reading.
 - Published the sanitized source tree to `luminerdy/IoT` through the GitHub connector.
+- Added retained per-device runtime config handling for report interval and temperature change threshold.
+- Added a Pi-side retained config publisher with explicit defaults and retained-delete modes.
+- Verified retained config apply, telemetry active config reporting, invalid config rejection, and default restore on the real ESP32.
+- Cleared retained simulator MQTT messages and removed historical simulator rows from SQLite; dashboard now shows only the physical ESP32.
+- Added OTA command handling to firmware and USB-flashed the OTA-capable build.
+- Added Pi-side OTA artifact staging and MQTT command publishing.
+- Added dashboard firmware file serving under `/firmware/...`; verified with a temporary dashboard on port `8001`.
 
 ## Active Blockers
 
 - Normal local `git push` from this Pi is still unavailable because local GitHub HTTPS/SSH credentials are not configured.
+- Restarting `iot-home-dashboard.service` requires an interactive sudo password, so the running service has not picked up `/firmware/...` file serving yet.
 
 ## Next Actions
 
-1. Decide the next firmware feature: retained config handling is the recommended next step before OTA.
-2. Clear old retained simulator MQTT messages if the dashboard should only show physical devices.
+1. Restart `iot-home-dashboard.service` locally so `/firmware/...` works on port `8000`.
+2. Verify `curl -I http://127.0.0.1:8000/firmware/0.1.0-ota-mvp/firmware.bin` returns `200`.
+3. Run one live OTA update on the USB-recoverable ESP32 using `docs/phase-4-runbook.md`.
+4. After live OTA works, add rollback/failure-path testing and consider firmware signing.
 
 ## Decisions To Revisit Soon
 
@@ -64,6 +74,7 @@ Status: Real ESP32 publishes through authenticated production Mosquitto; collect
 - Location mapping storage: SQLite table vs `locations.json`.
 - Dashboard stack: FastAPI/HTMX is recommended but not yet locked.
 - Pi dependency install approach: direct system packages vs isolated app environment.
+- OTA signing: current MVP uses SHA-256 validation only.
 
 ## Where Details Live
 
@@ -83,3 +94,4 @@ Status: Real ESP32 publishes through authenticated production Mosquitto; collect
 - Local-only ignored files include runtime data, build output, `config/locations.json`, and `firmware/include/secrets.h`.
 - Services: `iot-home-collector.service`, `iot-home-dashboard.service`, and `mosquitto.service` are enabled and running.
 - Dashboard URL on the Pi: `http://127.0.0.1:8000`; LAN URL: `http://piserver.local:8000` or `http://<pi-ip-address>:8000`.
+- Staged OTA artifact for first live test: `data/firmware/0.1.0-ota-mvp/firmware.bin`; ignored by git because runtime/build artifacts stay local.

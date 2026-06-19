@@ -32,6 +32,7 @@ Local-First-Architecture.md
 - [Local-First Architecture](Local-First-Architecture.md)
 - [Phase 1 Runbook](docs/phase-1-runbook.md)
 - [Phase 2 Runbook](docs/phase-2-runbook.md)
+- [Phase 4 Runbook](docs/phase-4-runbook.md)
 - [Progress Log](docs/progress-log.md)
 - [Decision Record](docs/decision-record.md)
 - [Implementation Plan](docs/implementation-plan.md)

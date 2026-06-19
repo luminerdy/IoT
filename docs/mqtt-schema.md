@@ -98,9 +98,39 @@ Example:
 ```json
 {
   "reportIntervalSeconds": 300,
-  "changeThresholdF": 0.5,
-  "humidityThreshold": 2.0,
-  "reportMode": "both"
+  "changeThresholdF": 0.5
 }
 ```
 
+Supported fields:
+
+- `reportIntervalSeconds`: number, 10 to 3600.
+- `changeThresholdF`: number, 0.1 to 10.0.
+
+Devices ignore unsupported fields and reject config payloads that do not contain any supported fields.
+
+Publishing an empty retained payload deletes the retained broker value. A connected device treats that message as a request to restore firmware defaults; an offline device will not receive it later. Publish explicit default values when the reset must be applied on the next reconnect.
+
+## Response
+
+Topic:
+
+```text
+home/sensors/{deviceId}/response
+```
+
+Config apply/reject example:
+
+```json
+{
+  "deviceId": "esp32-aabbccddeeff",
+  "type": "config",
+  "status": "applied",
+  "message": "config applied",
+  "datetime": "2026-06-16T17:00:00Z",
+  "activeConfig": {
+    "reportIntervalSeconds": 300,
+    "changeThresholdF": 0.5
+  }
+}
+```

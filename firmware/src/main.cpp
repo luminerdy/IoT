@@ -1,7 +1,11 @@
 #include <Arduino.h>
 #include <DHT.h>
+#include <HTTPClient.h>
 #include <PubSubClient.h>
+#include <Update.h>
 #include <WiFi.h>
+#include <mbedtls/sha256.h>
+#include <strings.h>
 #include <time.h>
 
 #include "secrets.h"
@@ -16,10 +20,15 @@ constexpr uint8_t DHT_PIN = 15;
 constexpr uint8_t DHT_TYPE = DHT22;
 constexpr unsigned long WIFI_RETRY_MS = 500;
 constexpr unsigned long MQTT_RETRY_MS = 5000;
-constexpr unsigned long REPORT_INTERVAL_MS = 300000;
-constexpr float CHANGE_THRESHOLD_F = 0.5;
+constexpr unsigned long DEFAULT_REPORT_INTERVAL_MS = 300000;
+constexpr float DEFAULT_CHANGE_THRESHOLD_F = 0.5;
+constexpr unsigned long MIN_REPORT_INTERVAL_MS = 10000;
+constexpr unsigned long MAX_REPORT_INTERVAL_MS = 3600000;
+constexpr float MIN_CHANGE_THRESHOLD_F = 0.1;
+constexpr float MAX_CHANGE_THRESHOLD_F = 10.0;
+constexpr unsigned long OTA_NO_PROGRESS_TIMEOUT_MS = 15000;
 constexpr size_t TOPIC_LEN = 96;
-constexpr size_t PAYLOAD_LEN = 512;
+constexpr size_t PAYLOAD_LEN = 768;
 
 DHT dht(DHT_PIN, DHT_TYPE);
 WiFiClient wifiClient;
@@ -30,12 +39,16 @@ char telemetryTopic[TOPIC_LEN];
 char statusTopic[TOPIC_LEN];
 char commandTopic[TOPIC_LEN];
 char configTopic[TOPIC_LEN];
+char responseTopic[TOPIC_LEN];
+char otaStatusTopic[TOPIC_LEN];
 
 unsigned long lastReportMs = 0;
 unsigned long lastMqttAttemptMs = 0;
+unsigned long reportIntervalMs = DEFAULT_REPORT_INTERVAL_MS;
 uint32_t seq = 0;
 uint32_t readErrors = 0;
 float lastTemperatureF = NAN;
+float changeThresholdF = DEFAULT_CHANGE_THRESHOLD_F;
 
 String isoTimestamp()
 {
@@ -132,6 +145,8 @@ void buildDeviceIdentity()
   snprintf(statusTopic, sizeof(statusTopic), "home/sensors/%s/status", deviceId);
   snprintf(commandTopic, sizeof(commandTopic), "home/sensors/%s/command", deviceId);
   snprintf(configTopic, sizeof(configTopic), "home/sensors/%s/config", deviceId);
+  snprintf(responseTopic, sizeof(responseTopic), "home/sensors/%s/response", deviceId);
+  snprintf(otaStatusTopic, sizeof(otaStatusTopic), "home/sensors/%s/ota/status", deviceId);
 }
 
 void connectWifi()
@@ -164,8 +179,322 @@ void publishStatus(const char *status, bool retained)
     FIRMWARE_VERSION,
     now.c_str()
   );
-  mqtt.publish(statusTopic, payload, true);
+  mqtt.publish(statusTopic, payload, retained);
   Serial.printf("Published status: %s\n", payload);
+}
+
+bool extractNumber(const char *payload, const char *key, float *value)
+{
+  char quotedKey[48];
+  snprintf(quotedKey, sizeof(quotedKey), "\"%s\"", key);
+
+  const char *keyPos = strstr(payload, quotedKey);
+  if (keyPos == nullptr) {
+    return false;
+  }
+
+  const char *colon = strchr(keyPos, ':');
+  if (colon == nullptr) {
+    return false;
+  }
+
+  char *end = nullptr;
+  float parsed = strtof(colon + 1, &end);
+  if (end == colon + 1) {
+    return false;
+  }
+  if (isnan(parsed) || isinf(parsed)) {
+    return false;
+  }
+
+  *value = parsed;
+  return true;
+}
+
+bool extractString(const char *payload, const char *key, char *value, size_t valueLen)
+{
+  char quotedKey[48];
+  snprintf(quotedKey, sizeof(quotedKey), "\"%s\"", key);
+
+  const char *keyPos = strstr(payload, quotedKey);
+  if (keyPos == nullptr) {
+    return false;
+  }
+
+  const char *colon = strchr(keyPos, ':');
+  if (colon == nullptr) {
+    return false;
+  }
+
+  const char *start = strchr(colon + 1, '"');
+  if (start == nullptr) {
+    return false;
+  }
+  start++;
+
+  const char *end = strchr(start, '"');
+  if (end == nullptr || end == start) {
+    return false;
+  }
+
+  size_t len = static_cast<size_t>(end - start);
+  if (len >= valueLen) {
+    return false;
+  }
+
+  memcpy(value, start, len);
+  value[len] = '\0';
+  return true;
+}
+
+void publishConfigResponse(const char *status, const char *message)
+{
+  char payload[PAYLOAD_LEN];
+  String now = isoTimestamp();
+  snprintf(
+    payload,
+    sizeof(payload),
+    "{\"deviceId\":\"%s\","
+    "\"type\":\"config\","
+    "\"status\":\"%s\","
+    "\"message\":\"%s\","
+    "\"datetime\":\"%s\","
+    "\"activeConfig\":{\"reportIntervalSeconds\":%lu,\"changeThresholdF\":%.1f}}",
+    deviceId,
+    status,
+    message,
+    now.c_str(),
+    static_cast<unsigned long>(reportIntervalMs / 1000),
+    changeThresholdF
+  );
+  mqtt.publish(responseTopic, payload, false);
+  Serial.printf("Published config response: %s\n", payload);
+}
+
+void applyConfigPayload(const char *payload)
+{
+  if (strlen(payload) == 0) {
+    reportIntervalMs = DEFAULT_REPORT_INTERVAL_MS;
+    changeThresholdF = DEFAULT_CHANGE_THRESHOLD_F;
+    lastTemperatureF = NAN;
+    publishConfigResponse("applied", "config cleared");
+    return;
+  }
+
+  float intervalSeconds = 0.0f;
+  float thresholdF = 0.0f;
+  bool hasInterval = extractNumber(payload, "reportIntervalSeconds", &intervalSeconds);
+  bool hasThreshold = extractNumber(payload, "changeThresholdF", &thresholdF);
+
+  if (!hasInterval && !hasThreshold) {
+    publishConfigResponse("rejected", "no supported config fields");
+    return;
+  }
+
+  unsigned long newReportIntervalMs = reportIntervalMs;
+  float newChangeThresholdF = changeThresholdF;
+
+  if (hasInterval) {
+    unsigned long parsedMs = static_cast<unsigned long>(intervalSeconds * 1000.0f);
+    if (parsedMs < MIN_REPORT_INTERVAL_MS || parsedMs > MAX_REPORT_INTERVAL_MS) {
+      publishConfigResponse("rejected", "reportIntervalSeconds out of range");
+      return;
+    }
+    newReportIntervalMs = parsedMs;
+  }
+
+  if (hasThreshold) {
+    if (thresholdF < MIN_CHANGE_THRESHOLD_F || thresholdF > MAX_CHANGE_THRESHOLD_F) {
+      publishConfigResponse("rejected", "changeThresholdF out of range");
+      return;
+    }
+    newChangeThresholdF = thresholdF;
+  }
+
+  reportIntervalMs = newReportIntervalMs;
+  changeThresholdF = newChangeThresholdF;
+  lastTemperatureF = NAN;
+  publishConfigResponse("applied", "config applied");
+}
+
+void publishOtaStatus(const char *status, const char *message, const char *version, const char *rolloutId)
+{
+  char payload[PAYLOAD_LEN];
+  String now = isoTimestamp();
+  snprintf(
+    payload,
+    sizeof(payload),
+    "{\"deviceId\":\"%s\","
+    "\"type\":\"ota\","
+    "\"status\":\"%s\","
+    "\"message\":\"%s\","
+    "\"version\":\"%s\","
+    "\"rolloutId\":\"%s\","
+    "\"firmwareVersion\":\"%s\","
+    "\"datetime\":\"%s\"}",
+    deviceId,
+    status,
+    message,
+    version,
+    rolloutId,
+    FIRMWARE_VERSION,
+    now.c_str()
+  );
+  mqtt.publish(otaStatusTopic, payload, false);
+  Serial.printf("Published OTA status: %s\n", payload);
+}
+
+bool sha256Matches(const char *expectedSha, const uint8_t digest[32])
+{
+  char actualSha[65];
+  for (size_t i = 0; i < 32; i++) {
+    snprintf(actualSha + (i * 2), 3, "%02x", digest[i]);
+  }
+  actualSha[64] = '\0';
+  return strcasecmp(actualSha, expectedSha) == 0;
+}
+
+bool performOtaUpdate(const char *url, const char *expectedSha, long expectedSize, const char *version, const char *rolloutId)
+{
+  if (WiFi.status() != WL_CONNECTED) {
+    publishOtaStatus("rejected", "wifi not connected", version, rolloutId);
+    return false;
+  }
+
+  WiFiClient httpClient;
+  HTTPClient http;
+  http.setTimeout(OTA_NO_PROGRESS_TIMEOUT_MS);
+  if (!http.begin(httpClient, url)) {
+    publishOtaStatus("rejected", "invalid ota url", version, rolloutId);
+    return false;
+  }
+
+  publishOtaStatus("downloading", "ota download started", version, rolloutId);
+  int httpCode = http.GET();
+  if (httpCode != HTTP_CODE_OK) {
+    http.end();
+    publishOtaStatus("failed", "firmware download failed", version, rolloutId);
+    return false;
+  }
+
+  int contentLength = http.getSize();
+  if (expectedSize > 0 && contentLength > 0 && contentLength != expectedSize) {
+    http.end();
+    publishOtaStatus("rejected", "firmware size mismatch", version, rolloutId);
+    return false;
+  }
+
+  size_t updateSize = expectedSize > 0 ? static_cast<size_t>(expectedSize) : UPDATE_SIZE_UNKNOWN;
+  if (!Update.begin(updateSize)) {
+    http.end();
+    publishOtaStatus("failed", "ota partition unavailable", version, rolloutId);
+    return false;
+  }
+
+  mbedtls_sha256_context shaCtx;
+  mbedtls_sha256_init(&shaCtx);
+  mbedtls_sha256_starts_ret(&shaCtx, 0);
+
+  WiFiClient *stream = http.getStreamPtr();
+  uint8_t buffer[1024];
+  size_t written = 0;
+  unsigned long lastProgressMs = millis();
+  bool ok = true;
+
+  while (http.connected() && (contentLength < 0 || written < static_cast<size_t>(contentLength))) {
+    size_t available = stream->available();
+    if (available == 0) {
+      if (millis() - lastProgressMs > OTA_NO_PROGRESS_TIMEOUT_MS) {
+        ok = false;
+        break;
+      }
+      delay(10);
+      continue;
+    }
+
+    size_t toRead = min(available, sizeof(buffer));
+    int bytesRead = stream->readBytes(buffer, toRead);
+    if (bytesRead <= 0) {
+      ok = false;
+      break;
+    }
+
+    size_t bytesWritten = Update.write(buffer, static_cast<size_t>(bytesRead));
+    if (bytesWritten != static_cast<size_t>(bytesRead)) {
+      ok = false;
+      break;
+    }
+
+    mbedtls_sha256_update_ret(&shaCtx, buffer, static_cast<size_t>(bytesRead));
+    written += static_cast<size_t>(bytesRead);
+    lastProgressMs = millis();
+  }
+
+  uint8_t digest[32];
+  mbedtls_sha256_finish_ret(&shaCtx, digest);
+  mbedtls_sha256_free(&shaCtx);
+  http.end();
+
+  if (!ok) {
+    Update.abort();
+    publishOtaStatus("failed", "firmware stream failed", version, rolloutId);
+    return false;
+  }
+  if (expectedSize > 0 && written != static_cast<size_t>(expectedSize)) {
+    Update.abort();
+    publishOtaStatus("failed", "firmware length mismatch", version, rolloutId);
+    return false;
+  }
+  if (!sha256Matches(expectedSha, digest)) {
+    Update.abort();
+    publishOtaStatus("rejected", "firmware sha256 mismatch", version, rolloutId);
+    return false;
+  }
+  if (!Update.end(true)) {
+    publishOtaStatus("failed", "firmware update finalize failed", version, rolloutId);
+    return false;
+  }
+
+  publishOtaStatus("rebooting", "firmware update applied", version, rolloutId);
+  delay(1000);
+  ESP.restart();
+  return true;
+}
+
+void applyCommandPayload(const char *payload)
+{
+  char command[32];
+  if (!extractString(payload, "command", command, sizeof(command))) {
+    publishOtaStatus("rejected", "missing command", "", "");
+    return;
+  }
+
+  if (strcmp(command, "ota_update") != 0) {
+    publishOtaStatus("rejected", "unsupported command", "", "");
+    return;
+  }
+
+  char url[192];
+  char sha256[65];
+  char version[32];
+  char rolloutId[64];
+  float sizeValue = 0.0f;
+
+  if (!extractString(payload, "url", url, sizeof(url)) ||
+      !extractString(payload, "sha256", sha256, sizeof(sha256)) ||
+      !extractString(payload, "version", version, sizeof(version)) ||
+      !extractString(payload, "rolloutId", rolloutId, sizeof(rolloutId)) ||
+      strlen(sha256) != 64) {
+    publishOtaStatus("rejected", "invalid ota command", "", "");
+    return;
+  }
+
+  long expectedSize = 0;
+  if (extractNumber(payload, "size", &sizeValue) && sizeValue > 0.0f) {
+    expectedSize = static_cast<long>(sizeValue);
+  }
+
+  performOtaUpdate(url, sha256, expectedSize, version, rolloutId);
 }
 
 void onMqttMessage(char *topic, uint8_t *payload, unsigned int length)
@@ -175,6 +504,31 @@ void onMqttMessage(char *topic, uint8_t *payload, unsigned int length)
     Serial.print(static_cast<char>(payload[i]));
   }
   Serial.println();
+
+  if (strcmp(topic, configTopic) == 0) {
+    if (length >= PAYLOAD_LEN) {
+      publishConfigResponse("rejected", "config payload too large");
+      return;
+    }
+
+    char buffer[PAYLOAD_LEN];
+    memcpy(buffer, payload, length);
+    buffer[length] = '\0';
+    applyConfigPayload(buffer);
+    return;
+  }
+
+  if (strcmp(topic, commandTopic) == 0) {
+    if (length >= PAYLOAD_LEN) {
+      publishOtaStatus("rejected", "command payload too large", "", "");
+      return;
+    }
+
+    char buffer[PAYLOAD_LEN];
+    memcpy(buffer, payload, length);
+    buffer[length] = '\0';
+    applyCommandPayload(buffer);
+  }
 }
 
 bool connectMqtt()
@@ -225,10 +579,10 @@ bool shouldPublish(float temperatureF)
   if (isnan(lastTemperatureF)) {
     return true;
   }
-  if (millis() - lastReportMs >= REPORT_INTERVAL_MS) {
+  if (millis() - lastReportMs >= reportIntervalMs) {
     return true;
   }
-  return fabs(temperatureF - lastTemperatureF) >= CHANGE_THRESHOLD_F;
+  return fabs(temperatureF - lastTemperatureF) >= changeThresholdF;
 }
 
 void publishTelemetry(float temperatureF, float humidity)
@@ -254,6 +608,7 @@ void publishTelemetry(float temperatureF, float humidity)
     "\"uptimeSeconds\":%lu,"
     "\"numReadErrors\":%lu,"
     "\"restartReason\":\"%s\","
+    "\"activeConfig\":{\"reportIntervalSeconds\":%lu,\"changeThresholdF\":%.1f},"
     "\"status\":\"OK\"}",
     static_cast<unsigned long>(seq),
     deviceId,
@@ -264,7 +619,9 @@ void publishTelemetry(float temperatureF, float humidity)
     WiFi.RSSI(),
     static_cast<unsigned long>(millis() / 1000),
     static_cast<unsigned long>(readErrors),
-    resetReason()
+    resetReason(),
+    static_cast<unsigned long>(reportIntervalMs / 1000),
+    changeThresholdF
   );
 
   bool ok = mqtt.publish(telemetryTopic, payload, true);

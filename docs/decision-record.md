@@ -81,3 +81,23 @@ This file records project architecture decisions and the reasoning behind them.
 **Reasoning:** Old reference files contained local credentials, local network details, and obsolete AWS-oriented material. The public repo should contain source, documentation, samples, and runbooks, while local secrets and runtime files remain ignored.
 
 **Status:** Accepted
+
+## DR-009: Retained MQTT Runtime Config
+
+**Date:** 2026-06-19
+
+**Decision:** Use retained per-device MQTT config messages on `home/sensors/{deviceId}/config` for runtime firmware settings.
+
+**Reasoning:** Retained MQTT config gives each ESP32 the latest desired settings after reconnect without requiring a database lookup or reflashing. Devices validate supported fields, reject invalid values, and report the active config in responses and telemetry. Empty retained payloads delete broker state, so the Pi helper also supports publishing explicit defaults for offline-safe reset behavior.
+
+**Status:** Accepted and validated on the real ESP32
+
+## DR-010: OTA MVP Safety Boundary
+
+**Date:** 2026-06-19
+
+**Decision:** The first local OTA implementation will use MQTT commands, HTTP firmware downloads from the Pi dashboard, SHA-256 validation, and USB as the recovery path. Firmware signing and fleet rollout controls are deferred until the basic OTA path is proven.
+
+**Reasoning:** The system is still local-only and has a USB-connected test ESP32 for recovery. SHA-256 validation catches corrupted or wrong binaries, while keeping the first OTA path small enough to test end to end. Signing should be added before exposing update controls beyond the trusted local network.
+
+**Status:** Accepted for OTA MVP

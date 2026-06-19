@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import mimetypes
 from html import escape
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from datetime import UTC, datetime
+from urllib.parse import unquote, urlparse
 
 from iot_home.db import DEFAULT_DB_PATH, connect, init_db, latest_readings
 from iot_home.locations import DEFAULT_LOCATIONS_PATH, load_locations, mapped_location
@@ -27,6 +29,12 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=120,
         help="Mark online devices stale when last_seen is older than this many seconds.",
+    )
+    parser.add_argument(
+        "--firmware-dir",
+        type=Path,
+        default=Path("data/firmware"),
+        help="Directory served under /firmware/ for local OTA downloads.",
     )
     return parser.parse_args()
 
@@ -238,6 +246,7 @@ def page() -> bytes:
 
 class Handler(BaseHTTPRequestHandler):
     db_path: Path = DEFAULT_DB_PATH
+    firmware_dir: Path = Path("data/firmware")
     stale_seconds: int = 120
     locations: dict[str, str] = {}
 
@@ -247,6 +256,11 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.end_headers()
             self.wfile.write(page())
+            return
+
+        parsed_path = urlparse(self.path).path
+        if parsed_path.startswith("/firmware/"):
+            self.serve_firmware(parsed_path)
             return
 
         if self.path == "/api/latest":
@@ -266,6 +280,27 @@ class Handler(BaseHTTPRequestHandler):
 
         self.send_error(404)
 
+    def serve_firmware(self, parsed_path: str) -> None:
+        relative = unquote(parsed_path.removeprefix("/firmware/"))
+        parts = Path(relative).parts
+        if not parts or any(part in {"", ".", ".."} for part in parts):
+            self.send_error(404)
+            return
+
+        firmware_root = self.firmware_dir.resolve()
+        firmware_path = firmware_root.joinpath(*parts).resolve()
+        if not firmware_path.is_relative_to(firmware_root) or not firmware_path.is_file():
+            self.send_error(404)
+            return
+
+        content_type = mimetypes.guess_type(firmware_path.name)[0] or "application/octet-stream"
+        content = firmware_path.read_bytes()
+        self.send_response(200)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(content)))
+        self.end_headers()
+        self.wfile.write(content)
+
     def log_message(self, format: str, *args) -> None:
         safe_path = escape(self.path)
         print(f"{self.address_string()} {self.command} {safe_path} {args}")
@@ -277,6 +312,7 @@ def main() -> None:
         init_db(conn)
 
     Handler.db_path = args.db
+    Handler.firmware_dir = args.firmware_dir
     Handler.stale_seconds = args.stale_seconds
     Handler.locations = load_locations(args.locations)
     server = ThreadingHTTPServer((args.host, args.port), Handler)

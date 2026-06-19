@@ -82,6 +82,40 @@ ss -lntp | grep 1883
 mosquitto_pub -h <pi-host-or-ip> -p 1883 -u iot -P '<password>' -t test/ping -m ok
 ```
 
+## Runtime Config
+
+Publish retained per-device config from the Pi:
+
+```bash
+cd /home/scotty/IoT
+MQTT_USERNAME=iot MQTT_PASSWORD='<password>' PYTHONPATH=app python3 -m iot_home.publish_config esp32-9c9c1fda3670 --report-interval 300 --change-threshold 0.5
+```
+
+Supported fields:
+
+- `--report-interval`: seconds between periodic telemetry publishes, 10 to 3600.
+- `--change-threshold`: Fahrenheit temperature delta that triggers early telemetry, 0.1 to 10.0.
+
+Publish the firmware defaults as retained config. This is the offline-safe reset path because devices that reconnect later will receive the retained defaults:
+
+```bash
+cd /home/scotty/IoT
+MQTT_USERNAME=iot MQTT_PASSWORD='<password>' PYTHONPATH=app python3 -m iot_home.publish_config esp32-9c9c1fda3670 --defaults
+```
+
+To delete the retained config from the broker, publish an empty retained message. A connected ESP32 will apply firmware defaults when it receives this empty message, but an offline ESP32 will not receive it later because the retained message has been removed:
+
+```bash
+cd /home/scotty/IoT
+MQTT_USERNAME=iot MQTT_PASSWORD='<password>' PYTHONPATH=app python3 -m iot_home.publish_config esp32-9c9c1fda3670 --clear
+```
+
+The ESP32 publishes config apply/reject messages to:
+
+```text
+home/sensors/esp32-9c9c1fda3670/response
+```
+
 ### Temporary Test Broker
 
 For WiFi testing without changing system config, run the project-local test broker on port `1884`:
@@ -114,4 +148,4 @@ status: OK
 ## Current Limitations
 
 - The project-local test broker on port `1884` is useful for smoke tests but is not an installed service.
-- OTA is not implemented yet.
+- OTA work has moved to Phase 4; see `docs/phase-4-runbook.md`.

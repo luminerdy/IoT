@@ -2,6 +2,10 @@ from __future__ import annotations
 
 TELEMETRY_TOPIC = "home/sensors/{device_id}/telemetry"
 STATUS_TOPIC = "home/sensors/{device_id}/status"
+CONFIG_TOPIC = "home/sensors/{device_id}/config"
+COMMAND_TOPIC = "home/sensors/{device_id}/command"
+RESPONSE_TOPIC = "home/sensors/{device_id}/response"
+OTA_STATUS_TOPIC = "home/sensors/{device_id}/ota/status"
 TELEMETRY_SUBSCRIPTION = "home/sensors/+/telemetry"
 STATUS_SUBSCRIPTION = "home/sensors/+/status"
 

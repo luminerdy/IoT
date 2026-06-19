@@ -132,6 +132,39 @@ Use this file for dated accomplishments and important observations. Keep future 
   - RSSI: `-61`
 - Published the sanitized local source tree to `luminerdy/IoT` through the GitHub connector after local HTTPS and SSH push attempts remained unavailable.
 
+## 2026-06-19
+
+### Phase 3 Started
+
+- Added retained per-device runtime config handling to ESP32 firmware.
+- Supported `reportIntervalSeconds` and `changeThresholdF` from `home/sensors/{deviceId}/config`.
+- Added config apply/reject responses on `home/sensors/{deviceId}/response`.
+- Added active config reporting in telemetry.
+- Added `iot_home.publish_config` for publishing retained config from the Pi, including explicit defaults and retained-delete modes.
+- Flashed retained-config firmware to the real ESP32.
+- Verified a retained config update changed active config to `reportIntervalSeconds=30` and `changeThresholdF=0.2`.
+- Verified telemetry reported the updated active config.
+- Verified a non-retained invalid config was rejected without changing the active config.
+- Restored retained config to firmware defaults: `reportIntervalSeconds=300` and `changeThresholdF=0.5`.
+- Cleared retained simulator telemetry/status messages from MQTT.
+- Backed up SQLite to `data/iot-before-sim-cleanup.db`.
+- Removed historical `esp32-sim-*` rows from SQLite so the dashboard shows only the physical ESP32.
+
+### Phase 4 Started
+
+- Confirmed the default ESP32 partition table includes `ota_0` and `ota_1`, each `0x140000` bytes.
+- Added firmware handling for `ota_update` commands on `home/sensors/{deviceId}/command`.
+- Added firmware OTA status publishing on `home/sensors/{deviceId}/ota/status`.
+- Added HTTP firmware download, SHA-256 verification, OTA partition write, and reboot handling.
+- Added dashboard file serving for staged OTA artifacts under `/firmware/...`.
+- Added `iot_home.publish_ota` to stage `firmware.bin`, write `manifest.json`, and publish a per-device OTA command.
+- Staged `0.1.0-ota-mvp` under `data/firmware/0.1.0-ota-mvp/`.
+- Verified staged firmware download and SHA-256 through a temporary dashboard server on port `8001`.
+- USB-flashed the OTA-capable firmware to `esp32-9c9c1fda3670`.
+- Verified the ESP32 came back online and published DHT22 telemetry after the OTA-capable USB flash.
+- Attempted to restart `iot-home-dashboard.service`, but sudo required an interactive password. The running dashboard still returns 404 for `/firmware/...` until restarted.
+
 ## Next Work
 
-- Decide and start the next firmware feature. Retained runtime config is recommended before OTA.
+- Restart `iot-home-dashboard.service` locally so OTA files are served on port `8000`.
+- Run the first live OTA update on the USB-recoverable ESP32.

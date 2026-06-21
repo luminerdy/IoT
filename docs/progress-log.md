@@ -164,7 +164,81 @@ Use this file for dated accomplishments and important observations. Keep future 
 - Verified the ESP32 came back online and published DHT22 telemetry after the OTA-capable USB flash.
 - Attempted to restart `iot-home-dashboard.service`, but sudo required an interactive password. The running dashboard still returns 404 for `/firmware/...` until restarted.
 
+## 2026-06-20
+
+### First Live OTA Rollout
+
+- Verified the normal dashboard service on port `8000` serves the staged OTA artifact with a `GET` request:
+  - URL: `http://127.0.0.1:8000/firmware/0.1.0-ota-mvp/firmware.bin`
+  - Result: HTTP `200`, `824272` bytes.
+- Confirmed `curl -I` is not a valid check for the current dashboard server because it does not implement `HEAD` and returns HTTP `501`.
+- Published OTA rollout `20260620T180807Z-0.1.0-ota-mvp` to `esp32-9c9c1fda3670`.
+- Observed OTA status progression:
+  - `downloading` at `2026-06-20T18:08:08Z`
+  - `rebooting` at `2026-06-20T18:08:22Z`
+- Verified post-OTA telemetry after reboot:
+  - Timestamp: `2026-06-20T18:08:33Z`
+  - Temperature: `78.6 F`
+  - Humidity: `55.9 %`
+  - RSSI: `-43`
+  - Uptime: `9` seconds
+  - Restart reason: `Software`
+- Noted follow-up: telemetry still reports `firmwareVersion` as `0.1.0-local` even though the rollout version was `0.1.0-ota-mvp`.
+- Updated the firmware build flag to report `FIRMWARE_VERSION` as `0.1.1-ota-version`.
+- Built and staged `0.1.1-ota-version`; verified the dashboard served the new artifact with HTTP `200`, `824272` bytes.
+- Published OTA rollout `20260620T182134Z-0.1.1-ota-version` to `esp32-9c9c1fda3670`.
+- Verified retained device status after reboot reported `firmwareVersion` as `0.1.1-ota-version` at `2026-06-20T18:22:24Z`.
+- Verified post-OTA telemetry reported `firmwareVersion` as `0.1.1-ota-version`:
+  - Timestamp: `2026-06-20T18:24:12Z`
+  - Temperature: `78.1 F`
+  - Humidity: `51.0 %`
+  - RSSI: `-44`
+  - Uptime: `113` seconds
+  - Restart reason: `Software`
+- Verified the dashboard API now shows `Sunroom Test` online with `firmwareVersion` set to `0.1.1-ota-version`.
+
+## 2026-06-21
+
+### Web Dashboard Upgrade
+
+- Upgraded `app/iot_home/dashboard.py` from the minimal polling table into a fuller local web app:
+  - Summary metrics for device count, average temperature, average humidity, and average RSSI.
+  - Per-device cards with online/stale/offline state.
+  - Latest-reading table with firmware version and relative last-seen timestamps.
+  - Dependency-free inline SVG 24-hour temperature and humidity trend.
+- Added bounded SQLite history querying through `iot_home.db.reading_history`.
+- Added `/api/history` with bounded `hours` and `limit` query parameters.
+- Restarted `iot-home-dashboard.service` so the boot-enabled service loaded the new dashboard code.
+- Verified `iot-home-dashboard.service` is enabled, active, and listening on `0.0.0.0:8000`.
+- Verified the updated HTML, `/api/latest`, and `/api/history` are served from the live dashboard service.
+
+### Filtered Telemetry Policy
+
+- Confirmed the live retained ESP32 config was `reportIntervalSeconds=300` and `changeThresholdF=0.5`, producing roughly 5-minute readings.
+- Decided to return the default report interval to 600 seconds to preserve the original AWS-cost-conscious cadence if telemetry is later forwarded to cloud services.
+- Added firmware filtering policy for DHT22 readings:
+  - sample every 2 seconds,
+  - reject implausible temperature/humidity values,
+  - median-filter the last 5 valid samples,
+  - suppress one-off temperature jumps more than `8°F` from the recent median unless 3 similar samples arrive consecutively,
+  - publish early only after 3 consecutive valid filtered samples exceed the configured temperature threshold.
+- Updated default firmware and Pi config helper values to `reportIntervalSeconds=600` and `changeThresholdF=1.0`.
+- Updated dashboard stale-device default to 1200 seconds for 10-minute telemetry with headroom.
+- Built firmware version `0.1.2-filtered-telemetry`, staged it under `data/firmware/0.1.2-filtered-telemetry/`, verified the dashboard served the binary with HTTP `200`, and published the OTA command.
+- Verified the ESP32 came back online and published telemetry with `firmwareVersion` set to `0.1.2-filtered-telemetry`, `numFilteredReadings=0`, and active config `reportIntervalSeconds=600`, `changeThresholdF=1.0`.
+- Could not restart `iot-home-dashboard.service` to load the 1200-second stale threshold because `sudo` requires an interactive password in this session. The updated default will load on the next service restart or reboot.
+
+### Existing Device HTTP OTA
+
+- Checked existing device `http://10.10.10.113/update`; it serves ElegantOTA and reports identity `{"id":"C215B80C","hardware":"ESP32"}`.
+- Uploaded `0.1.2-filtered-telemetry` using ElegantOTA multipart `POST /update` with fields `MD5` and `firmware`.
+- Verified the device joined local MQTT as `esp32-0cb815c288f4` with `firmwareVersion` set to `0.1.2-filtered-telemetry`.
+- Published retained defaults for `esp32-0cb815c288f4`: `reportIntervalSeconds=600`, `changeThresholdF=1.0`.
+- Added `esp32-0cb815c288f4` to `config/locations.json` as `GarageDriveay` and updated the current SQLite device row so the live dashboard shows it immediately.
+- Updated dashboard code so `/api/latest` reloads `config/locations.json` on each request after the next service restart.
+- Committed the local source and documentation changes with message `Add filtered telemetry and dashboard history`.
+- Attempted to push to GitHub. HTTPS push failed because no username/token is configured locally; SSH push failed because this Pi does not have a GitHub public key configured.
+
 ## Next Work
 
-- Restart `iot-home-dashboard.service` locally so OTA files are served on port `8000`.
-- Run the first live OTA update on the USB-recoverable ESP32.
+- Add OTA rollback and failure-path tests.

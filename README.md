@@ -4,7 +4,7 @@ Local-first ESP32 temperature and humidity monitoring system.
 
 ## Project Direction
 
-ESP32 devices collect room temperature and humidity readings and publish them over the home network to this Raspberry Pi (`PiServer`). The Pi runs the message bus, collector, database, dashboard, and eventually the OTA update coordinator.
+ESP32 devices collect room temperature and humidity readings and publish them over the home network to this Raspberry Pi (`PiServer`). The Pi runs the message bus, collector, database, dashboard, and local OTA update coordinator.
 
 AWS IoT is no longer part of the core architecture.
 
@@ -12,19 +12,21 @@ AWS IoT is no longer part of the core architecture.
 
 ```text
 docs/                           Active project documentation
-firmware/                       Future ESP32 PlatformIO firmware
-dashboard/                      Future Pi dashboard and collector service
-scripts/                        Future helper scripts
+app/iot_home/                   Pi collector, dashboard, simulator, and helper CLIs
+config/                         Sample local Pi configuration
+deploy/systemd/                 Collector and dashboard service units
+firmware/                       ESP32 PlatformIO firmware
+scripts/                        Pi setup and maintenance helpers
 Local-First-Architecture.md
 ```
 
-## Current MVP
+## Current MVP Status
 
-1. Run a local MQTT broker on the Pi.
-2. Build a Pi collector that reads MQTT telemetry and writes SQLite.
-3. Build a local dashboard that shows current readings and stale/offline status.
-4. Build ESP32 firmware that publishes local MQTT telemetry.
-5. Add local OTA after the basic telemetry path is stable.
+1. Local MQTT, SQLite collection, and dashboard are running on the Pi.
+2. The first physical ESP32 publishes authenticated MQTT telemetry and appears in the dashboard as `Sunroom Test`.
+3. Runtime config works through retained MQTT config messages.
+4. Local OTA MVP is live-validated on the USB-recoverable ESP32.
+5. Next work is OTA rollback and failure-path testing before broader fleet rollout.
 
 ## Documentation
 

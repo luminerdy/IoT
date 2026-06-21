@@ -2,15 +2,15 @@
 
 ## Direction
 
-Future implementation will stay on ESP32 devices, remove all local ESP32 displays, and remove AWS IoT from the core design.
+The implementation stays on ESP32 devices, removes all local ESP32 displays, and removes AWS IoT from the core design.
 
-The Raspberry Pi host will run the local message bus, data collector, database, and dashboard. ESP32 sensors will publish temperature, humidity, and health telemetry to the Pi over the local network.
+The Raspberry Pi host runs the local message bus, data collector, database, dashboard, and OTA artifact server. ESP32 sensors publish temperature, humidity, and health telemetry to the Pi over the local network.
 
 Current target host:
 
 - Hostname: `PiServer`
 - OS/kernel family: Raspberry Pi Debian, aarch64
-- Role: MQTT broker, collector service, SQLite storage, web dashboard
+- Role: MQTT broker, collector service, SQLite storage, web dashboard, OTA artifact server
 
 ## Goals
 
@@ -33,7 +33,7 @@ Raspberry Pi / PiServer
     +-- Collector service
     +-- SQLite database
     +-- Dashboard web app
-    +-- Firmware/OTA file server, optional
+    +-- Firmware/OTA file server
 ```
 
 ## Raspberry Pi Services
@@ -58,31 +58,31 @@ Expected serial device paths:
 
 Current observation on this Pi:
 
-- No `/dev/ttyUSB*` or `/dev/ttyACM*` device was visible during review.
-- `lsusb` did not show a typical ESP32 USB serial bridge.
-- `esptool.py` and PlatformIO were not installed on PATH.
-- User `scotty` is not currently in a typical serial access group such as `dialout`.
+- The development ESP32 is visible as `/dev/ttyUSB0`.
+- USB enumeration shows a Silicon Labs CP210x UART bridge.
+- Project-local tools are installed at `.venv/bin/esptool` and `.venv/bin/pio`.
+- User `scotty` has `dialout` group access.
+- The device has been USB-flashed and used as the first live OTA validation target.
 
-Items to resolve before USB flashing from the Pi:
+If USB flashing stops working, check:
 
 - Confirm the ESP32 is connected with a data-capable USB cable, not charge-only.
 - Confirm the board is powered and exposes a USB serial chip.
 - Identify the serial adapter type, usually CP210x, CH340, FTDI, or native USB CDC.
-- Install firmware tooling on the Pi, preferably PlatformIO and `esptool`.
-- Add the runtime user to the serial device group if needed.
+- Confirm the runtime user still has serial device group access.
 
 Once visible, the basic smoke test is:
 
 ```bash
-esptool.py --port /dev/ttyUSB0 chip_id
+.venv/bin/esptool --port /dev/ttyUSB0 chip-id
 ```
 
 or, for PlatformIO:
 
 ```bash
-pio device list
-pio run -t upload --upload-port /dev/ttyUSB0
-pio device monitor --port /dev/ttyUSB0 --baud 115200
+.venv/bin/pio device list
+.venv/bin/pio run -d firmware -t upload --upload-port /dev/ttyUSB0
+.venv/bin/pio device monitor -d firmware --port /dev/ttyUSB0 --baud 115200
 ```
 
 ### MQTT Broker
@@ -99,7 +99,7 @@ Recommended ports:
 - `1883`: MQTT on trusted local network
 - `8883`: MQTT over TLS, optional later
 
-For the first version, plain MQTT on an isolated/trusted LAN is acceptable if the sensors are on a private home network. If sensors are placed on an IoT VLAN or untrusted WiFi, enable MQTT username/password and consider TLS.
+The current production broker listens on the LAN with username/password authentication. TLS remains optional future hardening if sensors move to an untrusted network.
 
 ### Collector Service
 
@@ -118,12 +118,11 @@ Responsibilities:
 
 The dashboard runs locally on the Pi.
 
-Recommended stack:
+Current stack:
 
-- Python FastAPI
+- Python standard-library HTTP server
 - SQLite
-- Jinja2 templates
-- HTMX or Server-Sent Events for live updates
+- Browser-side polling for live updates
 - Systemd services for automatic startup
 
 Initial dashboard scope:
@@ -137,7 +136,7 @@ Initial dashboard scope:
 
 ## ESP32 Firmware
 
-The ESP32 firmware should be rebuilt as a modular PlatformIO project.
+The ESP32 firmware is a modular PlatformIO project.
 
 Core responsibilities:
 
@@ -145,7 +144,7 @@ Core responsibilities:
 - Connect to local MQTT broker on `PiServer`.
 - Read DHT22 sensor.
 - Validate readings.
-- Publish telemetry at a configurable interval.
+- Filter noisy readings and publish telemetry at a configurable interval.
 - Publish online/offline status using MQTT Last Will and Testament.
 - Report health fields such as firmware version, RSSI, uptime, error count, and restart reason.
 
@@ -167,6 +166,7 @@ home/sensors/{deviceId}/status
 home/sensors/{deviceId}/config
 home/sensors/{deviceId}/command
 home/sensors/{deviceId}/response
+home/sensors/{deviceId}/ota/status
 home/fleet/config
 ```
 
@@ -232,12 +232,22 @@ Example retained config:
 
 ```json
 {
-  "reportIntervalSeconds": 300,
-  "changeThresholdF": 0.5,
+  "reportIntervalSeconds": 600,
+  "changeThresholdF": 1.0,
   "humidityThreshold": 2.0,
   "reportMode": "both"
 }
 ```
+
+Recommended telemetry policy:
+
+- Sample DHT22 frequently, currently every 2 seconds.
+- Reject impossible values before publishing logic: temperature outside `-40°F` to `140°F`, humidity outside `0%` to `100%`, `NaN`, and sensor read failures.
+- Use a small rolling median window, currently 5 valid samples, to smooth pockety air and one-sample noise.
+- Treat a temperature reading more than `8°F` from the recent median as a possible outlier. Ignore it unless 3 similar readings arrive in a row.
+- Publish on the configured interval even when values are stable. The target default is 600 seconds to preserve the original AWS-cost-conscious cadence if telemetry is later forwarded to cloud services.
+- Publish early for temperature change only after the filtered temperature differs from the last published temperature by `changeThresholdF` for 3 consecutive valid samples.
+- Report humidity in telemetry, but do not use humidity as an early-publish trigger unless a future use case needs it.
 
 ## OTA Updates
 

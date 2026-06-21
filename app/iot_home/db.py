@@ -170,3 +170,30 @@ def latest_readings(conn: sqlite3.Connection) -> list[sqlite3.Row]:
         ORDER BY COALESCE(d.location, d.device_id)
         """
     ).fetchall()
+
+
+def reading_history(
+    conn: sqlite3.Connection, hours: int = 24, limit: int = 500
+) -> list[sqlite3.Row]:
+    safe_hours = max(1, min(int(hours), 168))
+    safe_limit = max(1, min(int(limit), 2000))
+    return conn.execute(
+        """
+        SELECT
+            r.device_id,
+            COALESCE(d.location, r.location, r.device_id) AS location,
+            r.temperature,
+            r.humidity,
+            r.rssi,
+            r.status,
+            r.seq,
+            r.datetime,
+            r.created_at
+        FROM readings r
+        LEFT JOIN devices d ON d.device_id = r.device_id
+        WHERE r.created_at >= datetime('now', ?)
+        ORDER BY r.created_at DESC, r.id DESC
+        LIMIT ?
+        """,
+        (f"-{safe_hours} hours", safe_limit),
+    ).fetchall()

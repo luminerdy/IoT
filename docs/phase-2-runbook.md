@@ -88,13 +88,15 @@ Publish retained per-device config from the Pi:
 
 ```bash
 cd /home/scotty/IoT
-MQTT_USERNAME=iot MQTT_PASSWORD='<password>' PYTHONPATH=app python3 -m iot_home.publish_config esp32-9c9c1fda3670 --report-interval 300 --change-threshold 0.5
+MQTT_USERNAME=iot MQTT_PASSWORD='<password>' PYTHONPATH=app python3 -m iot_home.publish_config esp32-9c9c1fda3670 --report-interval 600 --change-threshold 1.0
 ```
 
 Supported fields:
 
 - `--report-interval`: seconds between periodic telemetry publishes, 10 to 3600.
 - `--change-threshold`: Fahrenheit temperature delta that triggers early telemetry, 0.1 to 10.0.
+
+Current recommended defaults are `--report-interval 600` and `--change-threshold 1.0`. Firmware still samples the DHT22 frequently, filters readings with a rolling median, rejects implausible and one-off outlier samples, and requires 3 consecutive filtered samples over the threshold before publishing early. Humidity is included in telemetry but does not trigger early publishing.
 
 Publish the firmware defaults as retained config. This is the offline-safe reset path because devices that reconnect later will receive the retained defaults:
 

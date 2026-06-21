@@ -1,6 +1,6 @@
 # MQTT Schema
 
-Draft schema for the local-first implementation.
+Schema for the local-first implementation.
 
 ## Topic Principles
 
@@ -49,6 +49,7 @@ Example:
   "rssi": -58,
   "uptimeSeconds": 3600,
   "numReadErrors": 0,
+  "numFilteredReadings": 0,
   "restartReason": "PowerOn",
   "status": "OK"
 }
@@ -97,8 +98,8 @@ Example:
 
 ```json
 {
-  "reportIntervalSeconds": 300,
-  "changeThresholdF": 0.5
+  "reportIntervalSeconds": 600,
+  "changeThresholdF": 1.0
 }
 ```
 
@@ -110,6 +111,8 @@ Supported fields:
 Devices ignore unsupported fields and reject config payloads that do not contain any supported fields.
 
 Publishing an empty retained payload deletes the retained broker value. A connected device treats that message as a request to restore firmware defaults; an offline device will not receive it later. Publish explicit default values when the reset must be applied on the next reconnect.
+
+Firmware filters raw DHT22 samples before telemetry publishing. The current policy samples every 2 seconds, rejects implausible readings, uses a 5-sample rolling median, suppresses one-off temperature jumps greater than `8°F` from the recent median unless 3 similar samples arrive consecutively, publishes on the configured interval, and publishes early only after `changeThresholdF` is exceeded for 3 consecutive valid filtered samples. Humidity is reported but does not trigger early publishing.
 
 ## Response
 
@@ -129,8 +132,52 @@ Config apply/reject example:
   "message": "config applied",
   "datetime": "2026-06-16T17:00:00Z",
   "activeConfig": {
-    "reportIntervalSeconds": 300,
-    "changeThresholdF": 0.5
+    "reportIntervalSeconds": 600,
+    "changeThresholdF": 1.0
   }
 }
 ```
+
+## Command
+
+Topic:
+
+```text
+home/sensors/{deviceId}/command
+```
+
+OTA command example:
+
+```json
+{
+  "type": "ota_update",
+  "rolloutId": "20260620T182134Z-0.1.1-ota-version",
+  "version": "0.1.1-ota-version",
+  "url": "http://piserver.local:8000/firmware/0.1.1-ota-version/firmware.bin",
+  "sha256": "hex-encoded-sha256",
+  "size": 824272
+}
+```
+
+## OTA Status
+
+Topic:
+
+```text
+home/sensors/{deviceId}/ota/status
+```
+
+Example:
+
+```json
+{
+  "deviceId": "esp32-aabbccddeeff",
+  "type": "ota_update",
+  "rolloutId": "20260620T182134Z-0.1.1-ota-version",
+  "status": "downloading",
+  "version": "0.1.1-ota-version",
+  "datetime": "2026-06-20T18:21:35Z"
+}
+```
+
+Observed successful OTA progression is `downloading`, then `rebooting`, followed by normal retained status and telemetry with the new firmware version.

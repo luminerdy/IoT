@@ -91,26 +91,31 @@ Acceptance criteria:
 
 ## Phase 4: Local OTA
 
-Status: In progress.
+Status: MVP validated; hardening pending.
 
 Goal: Update ESP32 devices over the air from the Pi.
 
 Tasks:
 
 - Add OTA partitions to firmware build. Done; default ESP32 partition table already has `ota_0` and `ota_1`.
-- Serve firmware binaries and manifest from the Pi. Implemented in dashboard; service restart pending.
+- Serve firmware binaries and manifest from the Pi. Done.
 - Add MQTT OTA command handling. Done.
-- Download firmware over HTTP from Pi. Implemented; live OTA validation pending.
-- Verify SHA-256. Implemented; live OTA validation pending.
-- Write OTA partition and reboot. Implemented; live OTA validation pending.
+- Download firmware over HTTP from Pi. Done.
+- Verify SHA-256. Done.
+- Write OTA partition and reboot. Done.
 - Report OTA status over MQTT. Done.
 - Add dashboard or CLI rollout control. CLI helper started.
 
 Acceptance criteria:
 
-- USB-connected test ESP32 can be updated OTA. Pending.
-- One canary device can be updated OTA.
+- USB-connected test ESP32 can be updated OTA. Done.
+- One canary device can be updated OTA. Done.
 - Failed update does not break USB recovery path.
+
+Hardening follow-up:
+
+- Test bad URL, bad SHA-256, interrupted download, and oversized image failure paths.
+- Decide whether firmware version should remain a PlatformIO build flag or move to a single release metadata source.
 
 ## Phase 5: Fleet Operations
 
@@ -118,6 +123,7 @@ Goal: Make the system reliable for all room sensors.
 
 Tasks:
 
+- Improve the Raspberry Pi-hosted web dashboard as the main IoT data view.
 - Add batch rollout control.
 - Add rollback workflow.
 - Add dashboard admin view for device/location mapping.
@@ -128,6 +134,22 @@ Tasks:
 Acceptance criteria:
 
 - All devices can be monitored from the dashboard.
+- Dashboard is reachable from the Pi and LAN and shows current readings, online/stale/offline state, and useful recent history.
 - Device mappings can be maintained on the Pi.
 - OTA rollout can be paused and retried.
 - Services restart after reboot.
+
+## Near-Term Dashboard Work
+
+Target date: 2026-06-21
+
+Goal: turn the current basic table into a useful Raspberry Pi web dashboard for daily IoT monitoring.
+
+Tasks:
+
+- Verify the dashboard service is reachable at `http://127.0.0.1:8000` on the Pi and `http://piserver.local:8000` on the LAN.
+- Keep the current latest-reading table, but improve layout for phone and desktop use.
+- Add at-a-glance cards for temperature, humidity, online/stale/offline state, RSSI, last seen, and firmware version.
+- Add a recent history view or simple chart from SQLite readings.
+- Add clear empty/error states if MQTT data or SQLite data is missing.
+- Decide whether to keep the current standard-library HTTP server or move the dashboard to a fuller web stack.

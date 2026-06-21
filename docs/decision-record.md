@@ -100,4 +100,24 @@ This file records project architecture decisions and the reasoning behind them.
 
 **Reasoning:** The system is still local-only and has a USB-connected test ESP32 for recovery. SHA-256 validation catches corrupted or wrong binaries, while keeping the first OTA path small enough to test end to end. Signing should be added before exposing update controls beyond the trusted local network.
 
-**Status:** Accepted for OTA MVP
+**Status:** Accepted and live-validated for OTA MVP
+
+## DR-011: Filtered Telemetry Publishing
+
+**Date:** 2026-06-21
+
+**Decision:** ESP32 firmware should sample DHT22 readings frequently, filter raw readings locally, publish periodic telemetry every 600 seconds by default, and publish early temperature-change telemetry only after repeated confirmation.
+
+**Reasoning:** Single DHT22 readings can move because of local air pockets, especially outdoors, and random way-off values should not drive MQTT/cloud-forwarded telemetry. A small rolling median plus outlier rejection keeps normal dashboard readings stable. Requiring 3 consecutive filtered samples above the configured temperature threshold avoids noisy early publishes while preserving the original cost-conscious 10-minute cadence if readings are later forwarded to AWS.
+
+**Status:** Accepted and live-validated in `0.1.2-filtered-telemetry`
+
+## DR-012: Existing Device Migration Through ElegantOTA
+
+**Date:** 2026-06-21
+
+**Decision:** Existing ESP32 devices that already expose ElegantOTA over trusted LAN HTTP can be migrated to the local-first firmware by uploading the tested `firmware.bin` through multipart `POST /update` with `MD5` and `firmware` fields.
+
+**Reasoning:** Some installed devices predate the local MQTT/OTA command path but still provide authenticated HTTP OTA. Using their existing ElegantOTA updater avoids physical access and brings them onto the same MQTT telemetry, retained config, dashboard, and future local OTA path. Each migrated device must be verified through MQTT after upload, then mapped in `config/locations.json`.
+
+**Status:** Accepted and validated on `10.10.10.113`, now `esp32-0cb815c288f4`

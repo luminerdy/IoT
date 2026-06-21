@@ -20,12 +20,21 @@ constexpr uint8_t DHT_PIN = 15;
 constexpr uint8_t DHT_TYPE = DHT22;
 constexpr unsigned long WIFI_RETRY_MS = 500;
 constexpr unsigned long MQTT_RETRY_MS = 5000;
-constexpr unsigned long DEFAULT_REPORT_INTERVAL_MS = 300000;
-constexpr float DEFAULT_CHANGE_THRESHOLD_F = 0.5;
+constexpr unsigned long DEFAULT_REPORT_INTERVAL_MS = 600000;
+constexpr float DEFAULT_CHANGE_THRESHOLD_F = 1.0;
 constexpr unsigned long MIN_REPORT_INTERVAL_MS = 10000;
 constexpr unsigned long MAX_REPORT_INTERVAL_MS = 3600000;
 constexpr float MIN_CHANGE_THRESHOLD_F = 0.1;
 constexpr float MAX_CHANGE_THRESHOLD_F = 10.0;
+constexpr size_t FILTER_WINDOW_SIZE = 5;
+constexpr uint8_t CHANGE_CONFIRMATION_SAMPLES = 3;
+constexpr float MIN_VALID_TEMPERATURE_F = -40.0;
+constexpr float MAX_VALID_TEMPERATURE_F = 140.0;
+constexpr float MIN_VALID_HUMIDITY = 0.0;
+constexpr float MAX_VALID_HUMIDITY = 100.0;
+constexpr float OUTLIER_TEMPERATURE_DELTA_F = 8.0;
+constexpr float OUTLIER_CONFIRMATION_DELTA_F = 2.0;
+constexpr uint8_t OUTLIER_CONFIRMATION_SAMPLES = 3;
 constexpr unsigned long OTA_NO_PROGRESS_TIMEOUT_MS = 15000;
 constexpr size_t TOPIC_LEN = 96;
 constexpr size_t PAYLOAD_LEN = 768;
@@ -47,8 +56,16 @@ unsigned long lastMqttAttemptMs = 0;
 unsigned long reportIntervalMs = DEFAULT_REPORT_INTERVAL_MS;
 uint32_t seq = 0;
 uint32_t readErrors = 0;
+uint32_t filteredReadings = 0;
 float lastTemperatureF = NAN;
 float changeThresholdF = DEFAULT_CHANGE_THRESHOLD_F;
+float temperatureWindow[FILTER_WINDOW_SIZE];
+float humidityWindow[FILTER_WINDOW_SIZE];
+size_t sampleCount = 0;
+size_t sampleIndex = 0;
+uint8_t consecutiveTempChangeSamples = 0;
+float candidateOutlierTemperatureF = NAN;
+uint8_t candidateOutlierSamples = 0;
 
 String isoTimestamp()
 {
@@ -183,6 +200,101 @@ void publishStatus(const char *status, bool retained)
   Serial.printf("Published status: %s\n", payload);
 }
 
+float medianOf(const float *values, size_t count)
+{
+  float sorted[FILTER_WINDOW_SIZE];
+  for (size_t i = 0; i < count; i++) {
+    sorted[i] = values[i];
+  }
+
+  for (size_t i = 1; i < count; i++) {
+    float current = sorted[i];
+    size_t j = i;
+    while (j > 0 && sorted[j - 1] > current) {
+      sorted[j] = sorted[j - 1];
+      j--;
+    }
+    sorted[j] = current;
+  }
+
+  if (count % 2 == 1) {
+    return sorted[count / 2];
+  }
+  return (sorted[(count / 2) - 1] + sorted[count / 2]) / 2.0f;
+}
+
+void resetSensorFilter()
+{
+  sampleCount = 0;
+  sampleIndex = 0;
+  consecutiveTempChangeSamples = 0;
+  candidateOutlierTemperatureF = NAN;
+  candidateOutlierSamples = 0;
+}
+
+bool acceptSensorReading(float temperatureF, float humidity)
+{
+  if (
+    temperatureF < MIN_VALID_TEMPERATURE_F ||
+    temperatureF > MAX_VALID_TEMPERATURE_F ||
+    humidity < MIN_VALID_HUMIDITY ||
+    humidity > MAX_VALID_HUMIDITY
+  ) {
+    filteredReadings++;
+    Serial.printf("Filtered implausible reading: temp %.1fF humidity %.1f%%\n", temperatureF, humidity);
+    return false;
+  }
+
+  if (sampleCount >= 3) {
+    float baselineTemperatureF = medianOf(temperatureWindow, sampleCount);
+    if (fabs(temperatureF - baselineTemperatureF) > OUTLIER_TEMPERATURE_DELTA_F) {
+      if (
+        isnan(candidateOutlierTemperatureF) ||
+        fabs(temperatureF - candidateOutlierTemperatureF) > OUTLIER_CONFIRMATION_DELTA_F
+      ) {
+        candidateOutlierTemperatureF = temperatureF;
+        candidateOutlierSamples = 1;
+      } else {
+        candidateOutlierSamples++;
+      }
+
+      if (candidateOutlierSamples < OUTLIER_CONFIRMATION_SAMPLES) {
+        filteredReadings++;
+        Serial.printf(
+          "Filtered possible temp outlier: temp %.1fF median %.1fF candidateCount=%u\n",
+          temperatureF,
+          baselineTemperatureF,
+          candidateOutlierSamples
+        );
+        return false;
+      }
+    } else {
+      candidateOutlierTemperatureF = NAN;
+      candidateOutlierSamples = 0;
+    }
+  }
+
+  temperatureWindow[sampleIndex] = temperatureF;
+  humidityWindow[sampleIndex] = humidity;
+  sampleIndex = (sampleIndex + 1) % FILTER_WINDOW_SIZE;
+  if (sampleCount < FILTER_WINDOW_SIZE) {
+    sampleCount++;
+  }
+
+  return true;
+}
+
+bool filteredSensorReading(float *temperatureF, float *humidity)
+{
+  if (sampleCount == 0) {
+    return false;
+  }
+
+  *temperatureF = medianOf(temperatureWindow, sampleCount);
+  *humidity = medianOf(humidityWindow, sampleCount);
+  return true;
+}
+
 bool extractNumber(const char *payload, const char *key, float *value)
 {
   char quotedKey[48];
@@ -277,6 +389,7 @@ void applyConfigPayload(const char *payload)
     reportIntervalMs = DEFAULT_REPORT_INTERVAL_MS;
     changeThresholdF = DEFAULT_CHANGE_THRESHOLD_F;
     lastTemperatureF = NAN;
+    resetSensorFilter();
     publishConfigResponse("applied", "config cleared");
     return;
   }
@@ -314,6 +427,7 @@ void applyConfigPayload(const char *payload)
   reportIntervalMs = newReportIntervalMs;
   changeThresholdF = newChangeThresholdF;
   lastTemperatureF = NAN;
+  resetSensorFilter();
   publishConfigResponse("applied", "config applied");
 }
 
@@ -577,12 +691,21 @@ bool connectMqtt()
 bool shouldPublish(float temperatureF)
 {
   if (isnan(lastTemperatureF)) {
+    consecutiveTempChangeSamples = 0;
     return true;
   }
   if (millis() - lastReportMs >= reportIntervalMs) {
+    consecutiveTempChangeSamples = 0;
     return true;
   }
-  return fabs(temperatureF - lastTemperatureF) >= changeThresholdF;
+
+  if (fabs(temperatureF - lastTemperatureF) >= changeThresholdF) {
+    consecutiveTempChangeSamples++;
+    return consecutiveTempChangeSamples >= CHANGE_CONFIRMATION_SAMPLES;
+  }
+
+  consecutiveTempChangeSamples = 0;
+  return false;
 }
 
 void publishTelemetry(float temperatureF, float humidity)
@@ -607,6 +730,7 @@ void publishTelemetry(float temperatureF, float humidity)
     "\"rssi\":%d,"
     "\"uptimeSeconds\":%lu,"
     "\"numReadErrors\":%lu,"
+    "\"numFilteredReadings\":%lu,"
     "\"restartReason\":\"%s\","
     "\"activeConfig\":{\"reportIntervalSeconds\":%lu,\"changeThresholdF\":%.1f},"
     "\"status\":\"OK\"}",
@@ -619,6 +743,7 @@ void publishTelemetry(float temperatureF, float humidity)
     WiFi.RSSI(),
     static_cast<unsigned long>(millis() / 1000),
     static_cast<unsigned long>(readErrors),
+    static_cast<unsigned long>(filteredReadings),
     resetReason(),
     static_cast<unsigned long>(reportIntervalMs / 1000),
     changeThresholdF
@@ -629,6 +754,7 @@ void publishTelemetry(float temperatureF, float humidity)
   if (ok) {
     lastTemperatureF = temperatureF;
     lastReportMs = millis();
+    consecutiveTempChangeSamples = 0;
     blink(1, 50);
   }
 }
@@ -673,10 +799,28 @@ void loop()
   }
 
   float temperatureF = (temperatureC * 1.8f) + 32.0f;
-  if (shouldPublish(temperatureF)) {
-    publishTelemetry(temperatureF, humidity);
+  if (!acceptSensorReading(temperatureF, humidity)) {
+    delay(2000);
+    return;
+  }
+
+  float filteredTemperatureF = NAN;
+  float filteredHumidity = NAN;
+  if (!filteredSensorReading(&filteredTemperatureF, &filteredHumidity)) {
+    delay(2000);
+    return;
+  }
+
+  if (shouldPublish(filteredTemperatureF)) {
+    publishTelemetry(filteredTemperatureF, filteredHumidity);
   } else {
-    Serial.printf("No publish: temp %.1fF humidity %.1f%% below threshold\n", temperatureF, humidity);
+    Serial.printf(
+      "No publish: raw %.1fF %.1f%% filtered %.1fF %.1f%% below confirmed threshold\n",
+      temperatureF,
+      humidity,
+      filteredTemperatureF,
+      filteredHumidity
+    );
   }
 
   delay(2000);

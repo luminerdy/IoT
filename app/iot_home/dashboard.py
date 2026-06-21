@@ -7,9 +7,9 @@ from html import escape
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from datetime import UTC, datetime
-from urllib.parse import unquote, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
-from iot_home.db import DEFAULT_DB_PATH, connect, init_db, latest_readings
+from iot_home.db import DEFAULT_DB_PATH, connect, init_db, latest_readings, reading_history
 from iot_home.locations import DEFAULT_LOCATIONS_PATH, load_locations, mapped_location
 
 
@@ -27,7 +27,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--stale-seconds",
         type=int,
-        default=120,
+        default=1200,
         help="Mark online devices stale when last_seen is older than this many seconds.",
     )
     parser.add_argument(
@@ -80,6 +80,27 @@ def row_to_dict(row, stale_seconds: int, locations: dict[str, str]) -> dict:
     }
 
 
+def history_row_to_dict(row) -> dict:
+    return {
+        "deviceId": row["device_id"],
+        "location": row["location"],
+        "temperature": row["temperature"],
+        "humidity": row["humidity"],
+        "rssi": row["rssi"],
+        "status": row["status"],
+        "seq": row["seq"],
+        "datetime": row["datetime"],
+        "createdAt": row["created_at"],
+    }
+
+
+def query_int(query: dict[str, list[str]], name: str, default: int) -> int:
+    try:
+        return int(query.get(name, [str(default)])[0])
+    except (TypeError, ValueError):
+        return default
+
+
 def page() -> bytes:
     return b"""<!doctype html>
 <html lang="en">
@@ -90,41 +111,204 @@ def page() -> bytes:
   <style>
     :root {
       color-scheme: light;
-      font-family: Arial, Helvetica, sans-serif;
-      background: #f6f7f9;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #f4f6f8;
       color: #17202a;
+      --panel: #ffffff;
+      --ink-soft: #53616f;
+      --line: #dbe2ea;
+      --green: #16803f;
+      --amber: #b7791f;
+      --red: #b42318;
+      --blue: #1f6feb;
+      --teal: #0f766e;
     }
+    * { box-sizing: border-box; }
     body {
       margin: 0;
-      padding: 24px;
+      min-width: 320px;
     }
     main {
-      max-width: 1100px;
+      width: min(1180px, calc(100% - 32px));
       margin: 0 auto;
+      padding: 24px 0 32px;
     }
     header {
       display: flex;
       justify-content: space-between;
-      align-items: end;
+      align-items: flex-end;
       gap: 16px;
-      margin-bottom: 20px;
+      margin-bottom: 18px;
     }
     h1 {
       margin: 0;
-      font-size: 28px;
-      font-weight: 700;
+      font-size: 30px;
+      line-height: 1.1;
+      font-weight: 750;
+      letter-spacing: 0;
     }
     .muted {
-      color: #5d6d7e;
+      color: var(--ink-soft);
       font-size: 14px;
     }
+    .toolbar {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 34px;
+      padding: 6px 10px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: var(--panel);
+      color: #24313d;
+      font-size: 13px;
+      white-space: nowrap;
+    }
+    .grid {
+      display: grid;
+      gap: 14px;
+    }
+    .summary {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      margin-bottom: 18px;
+    }
+    .stat, .device, .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: 0 1px 2px rgb(15 23 42 / 0.04);
+    }
+    .stat {
+      padding: 14px;
+      min-height: 92px;
+    }
+    .label {
+      color: var(--ink-soft);
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+    .value {
+      margin-top: 8px;
+      font-size: 30px;
+      line-height: 1;
+      font-weight: 760;
+    }
+    .subvalue {
+      margin-top: 8px;
+      color: var(--ink-soft);
+      font-size: 13px;
+    }
+    .devices {
+      grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+      margin-bottom: 18px;
+    }
+    .device {
+      padding: 14px;
+      min-height: 170px;
+    }
+    .device-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+    .device h2 {
+      margin: 0;
+      font-size: 17px;
+      line-height: 1.2;
+      letter-spacing: 0;
+    }
+    .metrics {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+    .metric {
+      min-height: 58px;
+      padding: 10px;
+      border: 1px solid #e5ebf2;
+      border-radius: 6px;
+      background: #f8fafc;
+    }
+    .metric strong {
+      display: block;
+      margin-top: 4px;
+      font-size: 20px;
+      line-height: 1.1;
+    }
+    .panel {
+      overflow: hidden;
+      margin-top: 18px;
+    }
+    .panel-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 14px;
+      border-bottom: 1px solid var(--line);
+    }
+    .panel-head h2 {
+      margin: 0;
+      font-size: 16px;
+      letter-spacing: 0;
+    }
+    .chart-wrap {
+      min-height: 220px;
+      padding: 14px;
+    }
+    #trend {
+      width: 100%;
+      height: 210px;
+      display: block;
+    }
+    .axis {
+      stroke: #d8e0e8;
+      stroke-width: 1;
+    }
+    .temp-line {
+      fill: none;
+      stroke: var(--red);
+      stroke-width: 3;
+    }
+    .humidity-line {
+      fill: none;
+      stroke: var(--teal);
+      stroke-width: 3;
+    }
+    .legend {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      color: var(--ink-soft);
+      font-size: 13px;
+    }
+    .key {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .swatch {
+      width: 18px;
+      height: 3px;
+      border-radius: 999px;
+      background: currentColor;
+    }
+    .temp-key { color: var(--red); }
+    .humidity-key { color: var(--teal); }
     table {
       width: 100%;
       border-collapse: collapse;
-      background: white;
-      border: 1px solid #d9dee5;
-      border-radius: 8px;
-      overflow: hidden;
     }
     th, td {
       padding: 12px 14px;
@@ -133,7 +317,7 @@ def page() -> bytes:
       white-space: nowrap;
     }
     th {
-      background: #eef2f6;
+      background: #f0f4f8;
       font-size: 13px;
       text-transform: uppercase;
       color: #4b5b6b;
@@ -152,26 +336,46 @@ def page() -> bytes:
       height: 10px;
       border-radius: 50%;
       background: #95a5a6;
+      flex: 0 0 auto;
     }
-    .online .dot {
-      background: #208a4b;
+    .online .dot { background: var(--green); }
+    .offline .dot { background: var(--red); }
+    .stale .dot { background: var(--amber); }
+    .empty {
+      padding: 28px 14px;
+      color: var(--ink-soft);
+      text-align: center;
     }
-    .offline .dot {
-      background: #b03a2e;
+    .table-wrap {
+      overflow-x: auto;
     }
-    .stale .dot {
-      background: #b7791f;
+    .error {
+      border-color: #f0b4ad;
+      background: #fff7f5;
+      color: #8f1d13;
     }
-    @media (max-width: 760px) {
-      body {
-        padding: 12px;
-      }
+    @media (max-width: 860px) {
       header {
-        display: block;
+        align-items: flex-start;
+        flex-direction: column;
       }
-      table {
-        display: block;
-        overflow-x: auto;
+      .toolbar {
+        justify-content: flex-start;
+      }
+      .summary {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+    @media (max-width: 560px) {
+      main {
+        width: min(100% - 20px, 1180px);
+        padding-top: 14px;
+      }
+      h1 {
+        font-size: 25px;
+      }
+      .summary, .metrics {
+        grid-template-columns: 1fr;
       }
     }
   </style>
@@ -181,59 +385,296 @@ def page() -> bytes:
     <header>
       <div>
         <h1>IoT Home Monitor</h1>
-        <div class="muted">Local readings from MQTT and SQLite</div>
+        <div class="muted">Live local readings from MQTT and SQLite</div>
       </div>
-      <div class="muted" id="last-refresh">Waiting for data</div>
+      <div class="toolbar">
+        <span class="pill" id="connection"><span class="dot"></span> Connecting</span>
+        <span class="pill" id="last-refresh">Waiting for data</span>
+      </div>
     </header>
-    <table>
-      <thead>
-        <tr>
-          <th>Location</th>
-          <th>Status</th>
-          <th>Temperature</th>
-          <th>Humidity</th>
-          <th>RSSI</th>
-          <th>Last Seen</th>
-          <th>Device</th>
-        </tr>
-      </thead>
-      <tbody id="readings">
-        <tr><td colspan="7">No readings yet.</td></tr>
-      </tbody>
-    </table>
+    <section class="grid summary" aria-label="Dashboard summary">
+      <div class="stat">
+        <div class="label">Devices</div>
+        <div class="value" id="device-count">0</div>
+        <div class="subvalue" id="online-count">0 online</div>
+      </div>
+      <div class="stat">
+        <div class="label">Average Temp</div>
+        <div class="value" id="avg-temp">--</div>
+        <div class="subvalue">Latest device readings</div>
+      </div>
+      <div class="stat">
+        <div class="label">Average Humidity</div>
+        <div class="value" id="avg-humidity">--</div>
+        <div class="subvalue">Latest device readings</div>
+      </div>
+      <div class="stat">
+        <div class="label">Signal</div>
+        <div class="value" id="avg-rssi">--</div>
+        <div class="subvalue">Average RSSI</div>
+      </div>
+    </section>
+
+    <section class="grid devices" id="devices" aria-label="Devices"></section>
+
+    <section class="panel" aria-label="24 hour trend">
+      <div class="panel-head">
+        <h2>24 Hour Trend</h2>
+        <div class="legend">
+          <span class="key temp-key"><span class="swatch"></span>Temperature</span>
+          <span class="key humidity-key"><span class="swatch"></span>Humidity</span>
+        </div>
+      </div>
+      <div class="chart-wrap">
+        <svg id="trend" viewBox="0 0 900 210" role="img" aria-label="Temperature and humidity trend"></svg>
+      </div>
+    </section>
+
+    <section class="panel" aria-label="Latest readings">
+      <div class="panel-head">
+        <h2>Latest Readings</h2>
+        <span class="muted" id="history-count">No history loaded</span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Location</th>
+              <th>Status</th>
+              <th>Temperature</th>
+              <th>Humidity</th>
+              <th>RSSI</th>
+              <th>Last Seen</th>
+              <th>Firmware</th>
+              <th>Device</th>
+            </tr>
+          </thead>
+          <tbody id="readings">
+            <tr><td colspan="8" class="empty">No readings yet.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
   </main>
   <script>
-    function fmt(value, suffix) {
-      if (value === null || value === undefined) return "";
+    const state = {latest: [], history: []};
+
+    function fmt(value, suffix = "") {
+      if (value === null || value === undefined || Number.isNaN(value)) return "--";
+      if (typeof value === "number") return `${Math.round(value * 10) / 10}${suffix}`;
       return `${value}${suffix}`;
+    }
+
+    function relativeTime(value) {
+      if (!value) return "--";
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return value;
+      const seconds = Math.max(0, Math.round((Date.now() - date.getTime()) / 1000));
+      if (seconds < 60) return `${seconds}s ago`;
+      const minutes = Math.round(seconds / 60);
+      if (minutes < 60) return `${minutes}m ago`;
+      const hours = Math.round(minutes / 60);
+      if (hours < 48) return `${hours}h ago`;
+      return date.toLocaleString();
+    }
+
+    function setText(id, value) {
+      document.getElementById(id).textContent = value;
+    }
+
+    function average(rows, key) {
+      const values = rows.map((row) => row[key]).filter((value) => typeof value === "number");
+      if (!values.length) return null;
+      return values.reduce((sum, value) => sum + value, 0) / values.length;
+    }
+
+    function deviceState(row) {
+      if (row.stale) return ["stale", "Stale"];
+      if (row.online) return ["online", "Online"];
+      return ["offline", "Offline"];
+    }
+
+    function renderSummary(rows) {
+      const online = rows.filter((row) => row.online && !row.stale).length;
+      const stale = rows.filter((row) => row.stale).length;
+      setText("device-count", rows.length);
+      setText("online-count", `${online} online${stale ? `, ${stale} stale` : ""}`);
+      setText("avg-temp", average(rows, "temperature") === null ? "--" : fmt(average(rows, "temperature"), " F"));
+      setText("avg-humidity", average(rows, "humidity") === null ? "--" : fmt(average(rows, "humidity"), "%"));
+      setText("avg-rssi", average(rows, "rssi") === null ? "--" : fmt(average(rows, "rssi"), " dBm"));
+    }
+
+    function renderDevices(rows) {
+      const devices = document.getElementById("devices");
+      devices.replaceChildren();
+      if (!rows.length) {
+        const empty = document.createElement("div");
+        empty.className = "device empty";
+        empty.textContent = "No devices have reported yet.";
+        devices.appendChild(empty);
+        return;
+      }
+
+      for (const row of rows) {
+        const [stateClass, stateText] = deviceState(row);
+        const card = document.createElement("article");
+        card.className = "device";
+
+        const head = document.createElement("div");
+        head.className = "device-head";
+        const titleBlock = document.createElement("div");
+        const title = document.createElement("h2");
+        title.textContent = row.location || row.deviceId;
+        const device = document.createElement("div");
+        device.className = "muted";
+        device.textContent = row.deviceId;
+        titleBlock.append(title, device);
+
+        const status = document.createElement("span");
+        status.className = `status ${stateClass}`;
+        const dot = document.createElement("span");
+        dot.className = "dot";
+        status.append(dot, document.createTextNode(stateText));
+        head.append(titleBlock, status);
+
+        const metrics = document.createElement("div");
+        metrics.className = "metrics";
+        for (const [label, value] of [
+          ["Temperature", fmt(row.temperature, " F")],
+          ["Humidity", fmt(row.humidity, "%")],
+          ["RSSI", fmt(row.rssi, " dBm")],
+          ["Seen", relativeTime(row.lastSeen)],
+        ]) {
+          const metric = document.createElement("div");
+          metric.className = "metric";
+          const metricLabel = document.createElement("div");
+          metricLabel.className = "label";
+          metricLabel.textContent = label;
+          const metricValue = document.createElement("strong");
+          metricValue.textContent = value;
+          metric.append(metricLabel, metricValue);
+          metrics.appendChild(metric);
+        }
+
+        card.append(head, metrics);
+        devices.appendChild(card);
+      }
     }
 
     function render(rows) {
       const body = document.getElementById("readings");
       if (!rows.length) {
-        body.innerHTML = '<tr><td colspan="7">No readings yet.</td></tr>';
+        body.innerHTML = '<tr><td colspan="8" class="empty">No readings yet.</td></tr>';
         return;
       }
-      body.innerHTML = rows.map((row) => {
-        const stateClass = row.stale ? "stale" : (row.online ? "online" : "offline");
-        const stateText = row.stale ? "Stale" : (row.online ? "Online" : "Offline");
-        return `<tr>
-          <td>${row.location}</td>
-          <td><span class="status ${stateClass}"><span class="dot"></span>${stateText}</span></td>
-          <td>${fmt(row.temperature, " F")}</td>
-          <td>${fmt(row.humidity, "%")}</td>
-          <td>${fmt(row.rssi, " dBm")}</td>
-          <td>${row.lastSeen || ""}</td>
-          <td>${row.deviceId}</td>
-        </tr>`;
-      }).join("");
+      body.replaceChildren();
+      for (const row of rows) {
+        const [stateClass, stateText] = deviceState(row);
+        const tr = document.createElement("tr");
+        const cells = [
+          row.location || row.deviceId,
+          stateText,
+          fmt(row.temperature, " F"),
+          fmt(row.humidity, "%"),
+          fmt(row.rssi, " dBm"),
+          relativeTime(row.lastSeen),
+          row.firmwareVersion || "--",
+          row.deviceId,
+        ];
+        cells.forEach((value, index) => {
+          const td = document.createElement("td");
+          if (index === 1) {
+            const status = document.createElement("span");
+            status.className = `status ${stateClass}`;
+            const dot = document.createElement("span");
+            dot.className = "dot";
+            status.append(dot, document.createTextNode(value));
+            td.appendChild(status);
+          } else {
+            td.textContent = value;
+          }
+          tr.appendChild(td);
+        });
+        body.appendChild(tr);
+      }
+    }
+
+    function points(rows, key, min, max) {
+      if (!rows.length || min === max) return "";
+      const sorted = [...rows].reverse();
+      const start = new Date(sorted[0].createdAt || sorted[0].datetime).getTime();
+      const end = new Date(sorted[sorted.length - 1].createdAt || sorted[sorted.length - 1].datetime).getTime();
+      const span = Math.max(1, end - start);
+      return sorted
+        .filter((row) => typeof row[key] === "number")
+        .map((row) => {
+          const time = new Date(row.createdAt || row.datetime).getTime();
+          const x = 36 + ((time - start) / span) * 828;
+          const y = 176 - ((row[key] - min) / (max - min)) * 140;
+          return `${x.toFixed(1)},${y.toFixed(1)}`;
+        })
+        .join(" ");
+    }
+
+    function renderTrend(rows) {
+      const svg = document.getElementById("trend");
+      svg.replaceChildren();
+      const grid = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      grid.setAttribute("class", "axis");
+      grid.setAttribute("d", "M36 36H864M36 106H864M36 176H864");
+      svg.appendChild(grid);
+      if (rows.length < 2) {
+        const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        text.setAttribute("x", "450");
+        text.setAttribute("y", "108");
+        text.setAttribute("text-anchor", "middle");
+        text.setAttribute("fill", "#53616f");
+        text.textContent = "Trend appears after more readings arrive";
+        svg.appendChild(text);
+        setText("history-count", `${rows.length} reading${rows.length === 1 ? "" : "s"}`);
+        return;
+      }
+      const temps = rows.map((row) => row.temperature).filter((value) => typeof value === "number");
+      const humidity = rows.map((row) => row.humidity).filter((value) => typeof value === "number");
+      const min = Math.min(...temps, ...humidity);
+      const max = Math.max(...temps, ...humidity);
+      for (const [className, key] of [["temp-line", "temperature"], ["humidity-line", "humidity"]]) {
+        const line = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
+        line.setAttribute("class", className);
+        line.setAttribute("points", points(rows, key, min, max));
+        svg.appendChild(line);
+      }
+      setText("history-count", `${rows.length} readings in 24h`);
+    }
+
+    function setConnection(ok, message) {
+      const el = document.getElementById("connection");
+      el.className = ok ? "pill online" : "pill offline error";
+      el.replaceChildren();
+      const dot = document.createElement("span");
+      dot.className = "dot";
+      el.append(dot, document.createTextNode(message));
     }
 
     async function refresh() {
-      const response = await fetch("/api/latest", {cache: "no-store"});
-      const rows = await response.json();
-      render(rows);
-      document.getElementById("last-refresh").textContent = `Updated ${new Date().toLocaleTimeString()}`;
+      try {
+        const [latestResponse, historyResponse] = await Promise.all([
+          fetch("/api/latest", {cache: "no-store"}),
+          fetch("/api/history?hours=24&limit=600", {cache: "no-store"}),
+        ]);
+        if (!latestResponse.ok || !historyResponse.ok) throw new Error("Dashboard API request failed");
+        state.latest = await latestResponse.json();
+        state.history = await historyResponse.json();
+        renderSummary(state.latest);
+        renderDevices(state.latest);
+        render(state.latest);
+        renderTrend(state.history);
+        setConnection(true, "Live");
+        document.getElementById("last-refresh").textContent = `Updated ${new Date().toLocaleTimeString()}`;
+      } catch (error) {
+        setConnection(false, "Disconnected");
+        document.getElementById("last-refresh").textContent = error.message;
+      }
     }
 
     refresh();
@@ -248,28 +689,47 @@ class Handler(BaseHTTPRequestHandler):
     db_path: Path = DEFAULT_DB_PATH
     firmware_dir: Path = Path("data/firmware")
     stale_seconds: int = 120
+    locations_path: Path = DEFAULT_LOCATIONS_PATH
     locations: dict[str, str] = {}
 
     def do_GET(self) -> None:
-        if self.path == "/" or self.path == "/index.html":
+        parsed = urlparse(self.path)
+        parsed_path = parsed.path
+
+        if parsed_path == "/" or parsed_path == "/index.html":
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.end_headers()
             self.wfile.write(page())
             return
 
-        parsed_path = urlparse(self.path).path
         if parsed_path.startswith("/firmware/"):
             self.serve_firmware(parsed_path)
             return
 
-        if self.path == "/api/latest":
+        if parsed_path == "/api/latest":
+            self.locations = load_locations(self.locations_path)
             with connect(self.db_path) as conn:
                 init_db(conn)
                 rows = [
                     row_to_dict(row, self.stale_seconds, self.locations)
                     for row in latest_readings(conn)
                 ]
+            payload = json.dumps(rows).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+            return
+
+        if parsed_path == "/api/history":
+            query = parse_qs(parsed.query)
+            hours = query_int(query, "hours", 24)
+            limit = query_int(query, "limit", 500)
+            with connect(self.db_path) as conn:
+                init_db(conn)
+                rows = [history_row_to_dict(row) for row in reading_history(conn, hours, limit)]
             payload = json.dumps(rows).encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
@@ -313,6 +773,7 @@ def main() -> None:
 
     Handler.db_path = args.db
     Handler.firmware_dir = args.firmware_dir
+    Handler.locations_path = args.locations
     Handler.stale_seconds = args.stale_seconds
     Handler.locations = load_locations(args.locations)
     server = ThreadingHTTPServer((args.host, args.port), Handler)

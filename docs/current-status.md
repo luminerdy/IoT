@@ -88,7 +88,7 @@ Latest SQLite/API check on 2026-06-24 shows these devices on `0.1.2-filtered-tel
 ## Stop Point
 
 - Local branch: `main`
-- Latest local commit: `c21424e update dashboard graph and diagram`
+- Latest local commit: `e8364a0 record dashboard PR handoff`
 - Public GitHub repo: `luminerdy/IoT`
 - Draft PR: `https://github.com/luminerdy/IoT/pull/1`
 - Local-only ignored files include runtime data, build output, `config/locations.json`, and `firmware/include/secrets.h`.

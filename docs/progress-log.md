@@ -164,7 +164,203 @@ Use this file for dated accomplishments and important observations. Keep future 
 - Verified the ESP32 came back online and published DHT22 telemetry after the OTA-capable USB flash.
 - Attempted to restart `iot-home-dashboard.service`, but sudo required an interactive password. The running dashboard still returns 404 for `/firmware/...` until restarted.
 
+## 2026-06-20
+
+### First Live OTA Rollout
+
+- Verified the normal dashboard service on port `8000` serves the staged OTA artifact with a `GET` request:
+  - URL: `http://127.0.0.1:8000/firmware/0.1.0-ota-mvp/firmware.bin`
+  - Result: HTTP `200`, `824272` bytes.
+- Confirmed `curl -I` is not a valid check for the current dashboard server because it does not implement `HEAD` and returns HTTP `501`.
+- Published OTA rollout `20260620T180807Z-0.1.0-ota-mvp` to `esp32-9c9c1fda3670`.
+- Observed OTA status progression:
+  - `downloading` at `2026-06-20T18:08:08Z`
+  - `rebooting` at `2026-06-20T18:08:22Z`
+- Verified post-OTA telemetry after reboot:
+  - Timestamp: `2026-06-20T18:08:33Z`
+  - Temperature: `78.6 F`
+  - Humidity: `55.9 %`
+  - RSSI: `-43`
+  - Uptime: `9` seconds
+  - Restart reason: `Software`
+- Noted follow-up: telemetry still reports `firmwareVersion` as `0.1.0-local` even though the rollout version was `0.1.0-ota-mvp`.
+- Updated the firmware build flag to report `FIRMWARE_VERSION` as `0.1.1-ota-version`.
+- Built and staged `0.1.1-ota-version`; verified the dashboard served the new artifact with HTTP `200`, `824272` bytes.
+- Published OTA rollout `20260620T182134Z-0.1.1-ota-version` to `esp32-9c9c1fda3670`.
+- Verified retained device status after reboot reported `firmwareVersion` as `0.1.1-ota-version` at `2026-06-20T18:22:24Z`.
+- Verified post-OTA telemetry reported `firmwareVersion` as `0.1.1-ota-version`:
+  - Timestamp: `2026-06-20T18:24:12Z`
+  - Temperature: `78.1 F`
+  - Humidity: `51.0 %`
+  - RSSI: `-44`
+  - Uptime: `113` seconds
+  - Restart reason: `Software`
+- Verified the dashboard API now shows `Sunroom Test` online with `firmwareVersion` set to `0.1.1-ota-version`.
+
+## 2026-06-21
+
+### Web Dashboard Upgrade
+
+- Upgraded `app/iot_home/dashboard.py` from the minimal polling table into a fuller local web app:
+  - Summary metrics for device count, average temperature, average humidity, and average RSSI.
+  - Per-device cards with online/stale/offline state.
+  - Latest-reading table with firmware version and relative last-seen timestamps.
+  - Dependency-free inline SVG 24-hour temperature and humidity trend.
+- Added bounded SQLite history querying through `iot_home.db.reading_history`.
+- Added `/api/history` with bounded `hours` and `limit` query parameters.
+- Restarted `iot-home-dashboard.service` so the boot-enabled service loaded the new dashboard code.
+- Verified `iot-home-dashboard.service` is enabled, active, and listening on `0.0.0.0:8000`.
+- Verified the updated HTML, `/api/latest`, and `/api/history` are served from the live dashboard service.
+
+### Filtered Telemetry Policy
+
+- Confirmed the live retained ESP32 config was `reportIntervalSeconds=300` and `changeThresholdF=0.5`, producing roughly 5-minute readings.
+- Decided to return the default report interval to 600 seconds to preserve the original AWS-cost-conscious cadence if telemetry is later forwarded to cloud services.
+- Added firmware filtering policy for DHT22 readings:
+  - sample every 2 seconds,
+  - reject implausible temperature/humidity values,
+  - median-filter the last 5 valid samples,
+  - suppress one-off temperature jumps more than `8°F` from the recent median unless 3 similar samples arrive consecutively,
+  - publish early only after 3 consecutive valid filtered samples exceed the configured temperature threshold.
+- Updated default firmware and Pi config helper values to `reportIntervalSeconds=600` and `changeThresholdF=1.0`.
+- Updated dashboard stale-device default to 1200 seconds for 10-minute telemetry with headroom.
+- Built firmware version `0.1.2-filtered-telemetry`, staged it under `data/firmware/0.1.2-filtered-telemetry/`, verified the dashboard served the binary with HTTP `200`, and published the OTA command.
+- Verified the ESP32 came back online and published telemetry with `firmwareVersion` set to `0.1.2-filtered-telemetry`, `numFilteredReadings=0`, and active config `reportIntervalSeconds=600`, `changeThresholdF=1.0`.
+- Could not restart `iot-home-dashboard.service` to load the 1200-second stale threshold because `sudo` requires an interactive password in this session. The updated default will load on the next service restart or reboot.
+
+### Existing Device HTTP OTA
+
+- Checked existing device `http://10.10.10.113/update`; it serves ElegantOTA and reports identity `{"id":"C215B80C","hardware":"ESP32"}`.
+- Uploaded `0.1.2-filtered-telemetry` using ElegantOTA multipart `POST /update` with fields `MD5` and `firmware`.
+- Verified the device joined local MQTT as `esp32-0cb815c288f4` with `firmwareVersion` set to `0.1.2-filtered-telemetry`.
+- Published retained defaults for `esp32-0cb815c288f4`: `reportIntervalSeconds=600`, `changeThresholdF=1.0`.
+- Added `esp32-0cb815c288f4` to `config/locations.json` as `GarageDriveay` and updated the current SQLite device row so the live dashboard shows it immediately.
+- Updated dashboard code so `/api/latest` reloads `config/locations.json` on each request after the next service restart.
+- Committed the local source and documentation changes with message `Add filtered telemetry and dashboard history`.
+- Attempted to push to GitHub. HTTPS push failed because no username/token is configured locally; SSH push failed because this Pi does not have a GitHub public key configured.
+
+### Fleet ElegantOTA HTTP Migration
+
+- Verified all ten requested legacy update URLs initially served `/update` with HTTP `200`:
+  - `Den` `10.10.10.107`
+  - `FrontBedroom` `10.10.10.111`
+  - `Garage` `10.10.10.110`
+  - `Laundryroom` `10.10.10.102`
+  - `LaundryroomAC` `10.10.10.105`
+  - `MasterBedroom` `10.10.10.104`
+  - `Office` `10.10.10.106`
+  - `Porch` `10.10.10.114`
+  - `WallBehindWH` `10.10.10.112`
+  - `WaterHeater` `10.10.10.101`
+- Added follow-up device candidate:
+  - `Lightpole` `10.10.10.122`; this device reportedly connects infrequently. Probes returned `Version 5.2.1` at `/` and HTTP `401` digest auth at `/update`. Neighbor discovery resolved MAC `94:b9:7e:d5:2a:78`, so the expected local firmware device ID is `esp32-94b97ed52a78`.
+- Uploaded `data/firmware/0.1.2-filtered-telemetry/firmware.bin` with MD5 `9071f35fb2984b23d05ab371a4192d48` using ElegantOTA multipart `POST /update`.
+- Upload responses:
+  - HTTP `200 OK`: `Den`, `FrontBedroom`, `Garage`, `LaundryroomAC`, `MasterBedroom`, `Office`, `Porch`, `WallBehindWH`, `WaterHeater`
+  - Uncertain/failure: `Laundryroom` returned an empty reply during the first POST; retry returned HTTP `400` with body `OTA could not begin`, and old `/update` still responds.
+- Confirmed MQTT reporting on `0.1.2-filtered-telemetry`:
+  - `Den` -> `esp32-3c71bf642440`
+  - `FrontBedroom` -> `esp32-9c9c1fdd632c`
+  - `Garage` -> `esp32-94b97ec7bcdc`
+  - `Porch` -> `esp32-240ac4f8f574`
+  - `WallBehindWH` -> `esp32-240ac4fa418c`
+- Added those mappings to ignored local `config/locations.json`, updated current SQLite device rows, and published retained defaults (`reportIntervalSeconds=600`, `changeThresholdF=1.0`) to the confirmed migrated devices. Also pre-added `Lightpole` as `esp32-94b97ed52a78` based on the resolved MAC-derived ID.
+- Final legacy `/update` probe after upload:
+  - still HTTP `200`: `Laundryroom` `10.10.10.102`
+  - no longer responding on old `/update`: all other nine requested IPs
+- `LaundryroomAC`, `MasterBedroom`, `Office`, and `WaterHeater` had HTTP `200 OK` upload responses and old `/update` disappeared, but no MQTT status/telemetry had been seen by the final check.
+- Attempted `systemctl restart iot-home-collector.service` so the collector would reload the new local mappings, but systemd required interactive authentication. A reboot should reload `config/locations.json` for collector writes; the dashboard API already reloads the mapping file dynamically.
+
+### 12-Device Follow-Up Check
+
+- Rechecked the 11 listed fleet devices plus `Sunroom Test` on 2026-06-21 at about 21:06 CDT.
+- Dashboard API confirmed MQTT telemetry on firmware `0.1.2-filtered-telemetry` for `Den`, `FrontBedroom`, `Garage`, `LaundryroomAC`, `Porch`, `WallBehindWH`, and `Sunroom Test`. The existing `GarageDriveay` sensor is also online on the same firmware.
+- Neighbor discovery showed `Sunroom Test` at `10.10.10.124`, matching MAC/device ID `9c:9c:1f:da:36:70` / `esp32-9c9c1fda3670`.
+- Direct HTTP probes showed the migrated MQTT-reporting devices refuse port 80, which is expected after leaving the old ElegantOTA firmware.
+- `Laundryroom` at `10.10.10.102` still serves legacy `Version 5.2.1` at `/` and returns HTTP `401` on `/update`.
+- `MasterBedroom` (`10.10.10.104`), `Office` (`10.10.10.106`), `WaterHeater` (`10.10.10.101`), and `Lightpole` (`10.10.10.122`) failed direct HTTP checks and have no current MQTT telemetry records.
+- Corrected the current SQLite `devices` row for `esp32-4022d8ee4904` from `UNMAPPED` to `LaundryroomAC`; collector service restart remains blocked by interactive systemd authentication, so a reboot or manual service restart is still needed for future collector log lines to load the newest location file.
+
+### Post-Device-Reboot Follow-Up
+
+- Rechecked after manual reboot of all target IoT devices except `Lightpole` on 2026-06-21 at about 21:32 CDT.
+- `Office` came online as `esp32-240ac4f8fecc`; neighbor discovery maps that MAC-derived ID to `10.10.10.106`.
+- `WaterHeater` came online as `esp32-9c9c1fc5cf1c`; neighbor discovery maps that MAC-derived ID to `10.10.10.101`.
+- Added `Office` and `WaterHeater` to ignored local `config/locations.json`, updated their SQLite device rows, and published retained defaults (`reportIntervalSeconds=600`, `changeThresholdF=1.0`) to both devices.
+- Dashboard API now shows `Den`, `FrontBedroom`, `Garage`, `GarageDriveay`, `LaundryroomAC`, `Office`, `Porch`, `Sunroom Test`, `WallBehindWH`, and `WaterHeater` online on `0.1.2-filtered-telemetry`.
+- `MasterBedroom` (`10.10.10.104`) still times out on `/` and `/update` and has no MQTT telemetry record.
+- `Laundryroom` (`10.10.10.102`) still serves legacy `Version 5.2.1` at `/` and returns HTTP `401` on `/update`.
+- `Lightpole` was not rebooted during this check and remains pending/not reporting.
+- Attempted `systemctl restart iot-home-collector.service` after adding the new local mappings, but systemd still requires interactive authentication. The dashboard API shows the corrected labels; collector log labels will need a Pi reboot or manual service restart to load the new mapping file.
+
+### Post-Pi-Reboot Verification
+
+- Rechecked after the Pi reboot on 2026-06-21 at about 21:37 CDT.
+- Verified `mosquitto.service`, `iot-home-collector.service`, and `iot-home-dashboard.service` are enabled and active since boot at 21:35:51 CDT.
+- Verified the collector loaded `config/locations.json`; service logs show `Office` and `WaterHeater` by name.
+- Verified `http://127.0.0.1:8000/api/latest` shows `Den`, `FrontBedroom`, `Garage`, `GarageDriveay`, `LaundryroomAC`, `Office`, `Porch`, `Sunroom Test`, `WallBehindWH`, and `WaterHeater` online on `0.1.2-filtered-telemetry`.
+- Confirmed `Office` and `WaterHeater` mappings are present in `config/locations.json` and SQLite device rows.
+- Rechecked remaining devices:
+  - `Laundryroom` (`10.10.10.102`) still serves legacy `Version 5.2.1` at `/` and HTTP `401` digest auth at `/update`; mapped ID `esp32-240ac4fa383c` still has no retained MQTT status or telemetry.
+  - `MasterBedroom` (`10.10.10.104`) still fails direct HTTP checks on `/` and `/update`; no device ID has been discovered from MQTT.
+  - `Lightpole` (`10.10.10.122`) still fails direct HTTP checks on `/` and `/update`; mapped expected ID `esp32-94b97ed52a78` still has no retained MQTT status or telemetry.
+
+### SunroomDoor Added
+
+- Added `SunroomDoor` at `10.10.10.109` on 2026-06-21 at about 21:43 CDT.
+- Verified it still serves legacy `Version 5.2.1` at `/` and HTTP `401` digest auth at `/update`.
+- Neighbor discovery resolved MAC `24:0a:c4:fa:39:3c`, so the expected local firmware device ID is `esp32-240ac4fa393c`.
+- Added `esp32-240ac4fa393c` to ignored local `config/locations.json` as `SunroomDoor`.
+- Added a current SQLite device placeholder for `SunroomDoor` with status `legacy-pending` so the dashboard/API can track it before migration.
+
+### Laundryroom OTA Retry
+
+- Retried `Laundryroom` (`10.10.10.102`, expected `esp32-240ac4fa383c`) ElegantOTA migration on 2026-06-21 at about 21:50 CDT.
+- Precheck confirmed it was still serving legacy `Version 5.2.1` at `/` and HTTP `401` digest auth at `/update`.
+- Reused `data/firmware/0.1.2-filtered-telemetry/firmware.bin` with MD5 `9071f35fb2984b23d05ab371a4192d48`.
+- Authenticated multipart upload returned HTTP `200 OK` with body `OK`; this is different from the earlier `OTA could not begin` failure.
+- Follow-up checks found the legacy HTTP endpoint no longer responding and neighbor discovery showing `10.10.10.102` as incomplete.
+- No fresh MQTT status or telemetry arrived during two post-upload listen windows, and `/api/latest` still shows `Laundryroom` offline with no firmware version or last-seen timestamp.
+- Updated the SQLite device status for `esp32-240ac4fa383c` to `ota-upload-ok-no-mqtt`.
+
+### SunroomDoor OTA Attempt
+
+- Tried migrating `SunroomDoor` (`10.10.10.109`, expected `esp32-240ac4fa393c`) on 2026-06-21 at about 21:55 CDT.
+- Precheck confirmed it was still serving legacy `Version 5.2.1` at `/` and HTTP `401` digest auth at `/update`; neighbor discovery still matched MAC `24:0a:c4:fa:39:3c`.
+- Reused `data/firmware/0.1.2-filtered-telemetry/firmware.bin` with MD5 `9071f35fb2984b23d05ab371a4192d48`.
+- Two authenticated multipart upload attempts reset the connection without returning `OK`.
+- Follow-up checks showed `SunroomDoor` still serving legacy `Version 5.2.1`, still exposing authenticated `/update`, and not publishing MQTT as `esp32-240ac4fa393c`.
+- Updated the SQLite device status for `esp32-240ac4fa393c` to `ota-upload-reset`.
+
+### End-of-Day Handoff for 2026-06-22
+
+- Final dashboard/API state before stopping: 10 devices are online on `0.1.2-filtered-telemetry`: `Den`, `FrontBedroom`, `Garage`, `GarageDriveay`, `LaundryroomAC`, `Office`, `Porch`, `Sunroom Test`, `WallBehindWH`, and `WaterHeater`.
+- Offline mapped follow-up devices:
+  - `Laundryroom` / `esp32-240ac4fa383c`: latest ElegantOTA upload returned `OK`, old HTTP disappeared, no MQTT yet; SQLite status `ota-upload-ok-no-mqtt`.
+  - `SunroomDoor` / `esp32-240ac4fa393c`: two ElegantOTA uploads reset, old HTTP still serves `Version 5.2.1`, no MQTT; SQLite status `ota-upload-reset`.
+  - `MasterBedroom` / unknown device ID: earlier upload returned HTTP `200 OK`, old HTTP disappeared, no MQTT.
+  - `Lightpole` / `esp32-94b97ed52a78`: pre-mapped from MAC, currently not reachable/reporting.
+- Tomorrow's first checks should be `/api/latest`, retained MQTT status/telemetry for the expected IDs, and direct HTTP probes for `10.10.10.102`, `10.10.10.109`, `10.10.10.104`, and `10.10.10.122`.
+- Operational note for tomorrow: if a device accepted upload but has no MQTT, try physical power-cycle before another upload attempt; use USB recovery if it stays silent after power-cycle.
+
+## 2026-06-24
+
+### Device List Cleanup And Recovery
+
+- Removed stale duplicate `Garage` device `esp32-240ac4ecafd8` from ignored local `config/locations.json` and from the live SQLite `devices` table. No historical readings existed for that ID. The remaining `Garage` device is `esp32-94b97ec7bcdc`.
+- Added `Entryway` at `10.10.10.137`. Neighbor discovery resolved MAC `94:b9:7e:d5:4c:54`, so the expected local firmware device ID is `esp32-94b97ed54c54`.
+- Uploaded `data/firmware/0.1.2-filtered-telemetry/firmware.bin` to `Entryway` through authenticated legacy `/update`; the upload returned HTTP `200 OK` with body `OK`.
+- Published retained default config for `esp32-94b97ed54c54`. Follow-up live data now shows `Entryway` reporting telemetry on `0.1.2-filtered-telemetry`; the device still reports location `UNMAPPED`, and the dashboard maps it to `Entryway` through `config/locations.json`.
+- Retried `Lightpole` at `10.10.10.122` using the same firmware artifact and MD5 `9071f35fb2984b23d05ab371a4192d48`; authenticated `/update` returned HTTP `200 OK` with body `OK`.
+- Published retained default config for `esp32-94b97ed52a78`. Follow-up live data shows `Lightpole` online on `0.1.2-filtered-telemetry`, but as of the latest check it had status only and no DHT telemetry payload yet.
+- Removed stale `AtticChimney` device `esp32-240ac4f9019c` from ignored local `config/locations.json` and from the live SQLite `devices` table. No historical readings existed for that ID.
+- Live SQLite/API state now shows `Laundryroom`, `MasterBedroom`, and `SunroomDoor` reporting on `0.1.2-filtered-telemetry`; those are no longer offline recovery blockers.
+- Corrected the local display spelling from `GarageDriveay` to `GarageDriveway` in `config/locations.json`, the live SQLite device row, and current documentation.
+- Marked `Lightpole` as parked for manual physical inspection tomorrow. Check DHT22 VCC, GND, DATA pin, pull-up, and configured GPIO before resuming software-side follow-up.
+- Expanded the OTA hardening backlog into concrete bad URL, bad SHA-256, interrupted download, and oversized image test cases.
+
 ## Next Work
 
-- Restart `iot-home-dashboard.service` locally so OTA files are served on port `8000`.
-- Run the first live OTA update on the USB-recoverable ESP32.
+- Start OTA failure-path tests.
+- Confirm newly recovered devices stay stable across a few 10-minute telemetry intervals.
+- Resume `Lightpole` software checks after manual physical inspection.

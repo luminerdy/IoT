@@ -91,33 +91,41 @@ Acceptance criteria:
 
 ## Phase 4: Local OTA
 
-Status: In progress.
+Status: MVP validated; hardening pending.
 
 Goal: Update ESP32 devices over the air from the Pi.
 
 Tasks:
 
 - Add OTA partitions to firmware build. Done; default ESP32 partition table already has `ota_0` and `ota_1`.
-- Serve firmware binaries and manifest from the Pi. Implemented in dashboard; service restart pending.
+- Serve firmware binaries and manifest from the Pi. Done.
 - Add MQTT OTA command handling. Done.
-- Download firmware over HTTP from Pi. Implemented; live OTA validation pending.
-- Verify SHA-256. Implemented; live OTA validation pending.
-- Write OTA partition and reboot. Implemented; live OTA validation pending.
+- Download firmware over HTTP from Pi. Done.
+- Verify SHA-256. Done.
+- Write OTA partition and reboot. Done.
 - Report OTA status over MQTT. Done.
 - Add dashboard or CLI rollout control. CLI helper started.
 
 Acceptance criteria:
 
-- USB-connected test ESP32 can be updated OTA. Pending.
-- One canary device can be updated OTA.
+- USB-connected test ESP32 can be updated OTA. Done.
+- One canary device can be updated OTA. Done.
 - Failed update does not break USB recovery path.
 
+Hardening follow-up:
+
+- Test bad URL, bad SHA-256, interrupted download, and oversized image failure paths.
+- Decide whether firmware version should remain a PlatformIO build flag or move to a single release metadata source.
+
 ## Phase 5: Fleet Operations
+
+Status: In progress.
 
 Goal: Make the system reliable for all room sensors.
 
 Tasks:
 
+- Improve the Raspberry Pi-hosted web dashboard as the main IoT data view.
 - Add batch rollout control.
 - Add rollback workflow.
 - Add dashboard admin view for device/location mapping.
@@ -125,9 +133,42 @@ Tasks:
 - Add systemd services for broker, collector, dashboard, and OTA coordinator.
 - Add basic operational runbook.
 
+Immediate tasks for 2026-06-24:
+
+- Park `Lightpole` (`esp32-94b97ed52a78`) until manual physical inspection; it has reported firmware status but had no temperature/humidity payload at the latest check. Check DHT22 VCC, GND, DATA pin, pull-up, and configured GPIO before resuming software checks.
+- Confirm newly recovered devices remain stable across a few 10-minute telemetry intervals: `Laundryroom`, `MasterBedroom`, `SunroomDoor`, and `Entryway`.
+- Keep `config/locations.json` and SQLite placeholders clean when devices are removed or renamed.
+- Start OTA failure-path testing.
+
 Acceptance criteria:
 
 - All devices can be monitored from the dashboard.
+- Dashboard is reachable from the Pi and LAN and shows current readings, online/stale/offline state, and useful recent history.
 - Device mappings can be maintained on the Pi.
 - OTA rollout can be paused and retried.
 - Services restart after reboot.
+
+## Near-Term Dashboard Work
+
+Target date: 2026-06-21
+
+Goal: turn the current basic table into a useful Raspberry Pi web dashboard for daily IoT monitoring.
+
+Tasks:
+
+- Verify the dashboard service is reachable at `http://127.0.0.1:8000` on the Pi and `http://piserver.local:8000` on the LAN.
+- Keep the current latest-reading table, but improve layout for phone and desktop use.
+- Add at-a-glance cards for temperature, humidity, online/stale/offline state, RSSI, last seen, and firmware version.
+- Add a recent history view or simple chart from SQLite readings.
+- Add clear empty/error states if MQTT data or SQLite data is missing.
+- Decide whether to keep the current standard-library HTTP server or move the dashboard to a fuller web stack.
+
+## OTA Hardening Backlog
+
+- Test bad OTA URL failure path: publish an OTA command with a reachable rollout ID but an invalid firmware URL; verify `ota/status` reports failure and the device keeps running the current firmware.
+- Test bad SHA-256 failure path: publish an OTA command with a valid firmware URL and intentionally wrong SHA-256; verify download completes, validation fails, and no reboot occurs.
+- Test interrupted download failure path: serve a truncated firmware response or stop the HTTP server during download; verify the device reports failure and keeps running.
+- Test oversized image failure path: publish or serve an image larger than the available OTA partition; verify OTA write fails cleanly and no reboot occurs.
+- Record expected `home/sensors/{deviceId}/ota/status` messages for each failure mode in `docs/mqtt-schema.md` or the Phase 4 runbook.
+- Decide whether firmware version should remain a PlatformIO build flag or move to a single release metadata source.
+- Consider firmware signing after failure-path tests are documented.

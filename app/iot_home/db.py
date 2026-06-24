@@ -25,6 +25,9 @@ CREATE TABLE IF NOT EXISTS readings (
 CREATE INDEX IF NOT EXISTS idx_readings_device_created
 ON readings (device_id, created_at DESC);
 
+CREATE INDEX IF NOT EXISTS idx_readings_created
+ON readings (created_at DESC);
+
 CREATE TABLE IF NOT EXISTS devices (
     device_id TEXT PRIMARY KEY,
     location TEXT,
@@ -176,7 +179,7 @@ def reading_history(
     conn: sqlite3.Connection, hours: int = 24, limit: int = 500
 ) -> list[sqlite3.Row]:
     safe_hours = max(1, min(int(hours), 168))
-    safe_limit = max(1, min(int(limit), 2000))
+    safe_limit = max(1, min(int(limit), 50000))
     return conn.execute(
         """
         SELECT

@@ -372,6 +372,8 @@ Use this file for dated accomplishments and important observations. Keep future 
 - Moved `Lightpole` to its outside location and restored `Sunroom Test` as the USB-connected bench target. `esptool` confirmed `/dev/ttyUSB0` is MAC `9c:9c:1f:da:36:70`, device ID `esp32-9c9c1fda3670`. Use this device for code updates and new feature testing before fleet deployment.
 - Added an approximate dashboard house diagram using the current known locations, with live temperature and humidity values placed in each zone. Added follow-up work to replace it with an uploaded house image and configurable sensor overlays. Verified syntax with `python3 -m py_compile app/iot_home/dashboard.py` and tested the new page/API on temporary port `8002`; normal port `8000` needs a reboot or service restart to pick up the code.
 - Refined the house diagram labels so humidity and last-seen sit on the line below location/temp, removed the per-room box outline, and changed `BunkHouse` from exterior/detached to an interior grandkids room.
+- Updated the dashboard history graph into a selectable temperature graph with 6h, 12h, 24h, 48h, and 7-day ranges plus per-device toggles. History rows now use the configured location mapping, and the SQLite readings table has a created-at index plus a larger bounded history limit for longer chart ranges.
+- Adjusted the dashboard house diagram placement: moved `Garage` and `GarageDriveway` to the right side, and moved `Lightpole` to the top row immediately right of `Porch`. Verified syntax with `python3 -m py_compile app/iot_home/dashboard.py`.
 
 ## Next Work
 

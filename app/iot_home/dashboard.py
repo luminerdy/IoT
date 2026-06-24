@@ -80,10 +80,11 @@ def row_to_dict(row, stale_seconds: int, locations: dict[str, str]) -> dict:
     }
 
 
-def history_row_to_dict(row) -> dict:
+def history_row_to_dict(row, locations: dict[str, str]) -> dict:
+    device_id = row["device_id"]
     return {
-        "deviceId": row["device_id"],
-        "location": row["location"],
+        "deviceId": device_id,
+        "location": mapped_location(device_id, row["location"], locations),
         "temperature": row["temperature"],
         "humidity": row["humidity"],
         "rssi": row["rssi"],
@@ -254,6 +255,7 @@ def page() -> bytes:
       align-items: center;
       justify-content: space-between;
       gap: 12px;
+      flex-wrap: wrap;
       padding: 14px;
       border-bottom: 1px solid var(--line);
     }
@@ -265,6 +267,61 @@ def page() -> bytes:
     .chart-wrap {
       min-height: 220px;
       padding: 14px;
+    }
+    .chart-controls {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+    .select-wrap {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--ink-soft);
+      font-size: 13px;
+      font-weight: 650;
+    }
+    .select-wrap select {
+      min-height: 34px;
+      padding: 5px 28px 5px 10px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fff;
+      color: #17202a;
+      font: inherit;
+    }
+    .device-toggles {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      padding-top: 12px;
+    }
+    .device-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      min-height: 32px;
+      padding: 5px 9px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: #fff;
+      color: #24313d;
+      font-size: 13px;
+      cursor: pointer;
+      user-select: none;
+    }
+    .device-toggle input {
+      width: 14px;
+      height: 14px;
+      margin: 0;
+      accent-color: var(--blue);
+    }
+    .device-toggle .swatch {
+      width: 16px;
+      height: 3px;
+      flex: 0 0 auto;
     }
     .house-wrap {
       padding: 14px;
@@ -295,16 +352,19 @@ def page() -> bytes:
       box-shadow: 0 10px 24px rgb(15 23 42 / 0.08);
     }
     .room-zone {
+      --box-width: 124px;
+      --box-half: 62px;
       position: absolute;
-      left: var(--x);
+      left: clamp(var(--box-half), var(--x), calc(100% - var(--box-half)));
       top: var(--y);
-      width: var(--w);
-      height: var(--h);
+      width: var(--box-width);
+      height: 36px;
+      transform: translateX(-50%);
       display: flex;
       flex-direction: column;
-      justify-content: space-between;
-      gap: 5px;
-      padding: 8px;
+      justify-content: center;
+      gap: 0;
+      padding: 5px 7px;
       border-radius: 7px;
       background: rgb(255 255 255 / 0.92);
       color: #17202a;
@@ -324,13 +384,17 @@ def page() -> bytes:
       display: flex;
       align-items: baseline;
       justify-content: space-between;
-      gap: 6px;
+      gap: 5px;
+      min-height: 0;
     }
     .room-zone .room-name {
       font-size: 12px;
       font-weight: 780;
       line-height: 1.1;
       min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
     .room-zone .room-reading {
       color: var(--green);
@@ -349,7 +413,9 @@ def page() -> bytes:
     .room-zone .room-meta {
       color: var(--ink-soft);
       font-size: 10px;
-      line-height: 1.2;
+      line-height: 1.05;
+      overflow: hidden;
+      text-overflow: ellipsis;
       white-space: nowrap;
     }
     .floorplan-key {
@@ -388,13 +454,9 @@ def page() -> bytes:
     }
     .temp-line {
       fill: none;
-      stroke: var(--red);
-      stroke-width: 3;
-    }
-    .humidity-line {
-      fill: none;
-      stroke: var(--teal);
-      stroke-width: 3;
+      stroke-width: 2.5;
+      stroke-linecap: round;
+      stroke-linejoin: round;
     }
     .legend {
       display: flex;
@@ -415,8 +477,10 @@ def page() -> bytes:
       border-radius: 999px;
       background: currentColor;
     }
-    .temp-key { color: var(--red); }
-    .humidity-key { color: var(--teal); }
+    .axis-label {
+      fill: #53616f;
+      font-size: 12px;
+    }
     table {
       width: 100%;
       border-collapse: collapse;
@@ -505,7 +569,10 @@ def page() -> bytes:
         min-height: 760px;
       }
       .room-zone {
-        padding: 7px;
+        --box-width: 112px;
+        --box-half: 56px;
+        height: 34px;
+        padding: 4px 6px;
       }
       .room-zone .room-reading {
         font-size: 13px;
@@ -564,23 +631,33 @@ def page() -> bytes:
 
     <section class="grid devices" id="devices" aria-label="Devices"></section>
 
-    <section class="panel" aria-label="24 hour trend">
+    <section class="panel" aria-label="Temperature graph">
       <div class="panel-head">
-        <h2>24 Hour Trend</h2>
-        <div class="legend">
-          <span class="key temp-key"><span class="swatch"></span>Temperature</span>
-          <span class="key humidity-key"><span class="swatch"></span>Humidity</span>
+        <h2>Temperature Graph</h2>
+        <div class="chart-controls">
+          <span class="muted" id="history-count">No history loaded</span>
+          <label class="select-wrap" for="history-hours">
+            Duration
+            <select id="history-hours">
+              <option value="6">6 hours</option>
+              <option value="12">12 hours</option>
+              <option value="24" selected>24 hours</option>
+              <option value="48">48 hours</option>
+              <option value="168">7 days</option>
+            </select>
+          </label>
         </div>
       </div>
       <div class="chart-wrap">
-        <svg id="trend" viewBox="0 0 900 210" role="img" aria-label="Temperature and humidity trend"></svg>
+        <svg id="trend" viewBox="0 0 900 230" role="img" aria-label="Temperature graph by device"></svg>
+        <div class="device-toggles" id="device-toggles" aria-label="Temperature graph devices"></div>
       </div>
     </section>
 
     <section class="panel" aria-label="Latest readings">
       <div class="panel-head">
         <h2>Latest Readings</h2>
-        <span class="muted" id="history-count">No history loaded</span>
+        <span class="muted">Current device state</span>
       </div>
       <div class="table-wrap">
         <table>
@@ -604,7 +681,18 @@ def page() -> bytes:
     </section>
   </main>
   <script>
-    const state = {latest: [], history: []};
+    const state = {
+      latest: [],
+      history: [],
+      selectedDevices: new Set(),
+      knownDevices: new Set(),
+      deviceColors: new Map(),
+      hours: 24,
+    };
+    const seriesColors = [
+      "#b42318", "#1f6feb", "#0f766e", "#7c3aed", "#b7791f", "#0f6b8f",
+      "#a21caf", "#2f855a", "#c2410c", "#475569", "#be123c", "#2563eb",
+    ];
     const floorplanZones = [
       {location: "Porch", x: 30, y: 4, w: 18, h: 10, type: "outdoor"},
       {location: "Entryway", x: 48, y: 13, w: 12, h: 14},
@@ -619,11 +707,11 @@ def page() -> bytes:
       {location: "MasterBedroom", x: 23, y: 71, w: 27, h: 11},
       {location: "Sunroom", x: 50, y: 71, w: 18, h: 11},
       {location: "SunroomDoor", x: 68, y: 71, w: 8, h: 11},
-      {location: "Sunroom Test", x: 78, y: 72, w: 13, h: 10, type: "utility"},
-      {location: "Garage", x: 3, y: 25, w: 16, h: 22, type: "outdoor"},
-      {location: "GarageDriveway", x: 3, y: 48, w: 16, h: 15, type: "outdoor"},
+      {location: "Sunroom Test", x: 62, y: 76, w: 13, h: 10, type: "utility"},
+      {location: "Garage", x: 78, y: 25, w: 16, h: 22, type: "outdoor"},
+      {location: "GarageDriveway", x: 78, y: 48, w: 16, h: 15, type: "outdoor"},
       {location: "BunkHouse", x: 60, y: 25, w: 16, h: 11},
-      {location: "Lightpole", x: 82, y: 43, w: 13, h: 13, type: "outdoor"},
+      {location: "Lightpole", x: 49, y: 4, w: 13, h: 13, type: "outdoor"},
     ];
 
     function fmt(value, suffix = "") {
@@ -728,10 +816,8 @@ def page() -> bytes:
         const [stateClass] = row ? deviceState(row) : ["offline", "No data"];
         const room = document.createElement("article");
         room.className = `room-zone ${zone.type || ""} ${stateClass}`.trim();
-        room.style.setProperty("--x", `${zone.x}%`);
+        room.style.setProperty("--x", `${zone.x + zone.w / 2}%`);
         room.style.setProperty("--y", `${zone.y}%`);
-        room.style.setProperty("--w", `${zone.w}%`);
-        room.style.setProperty("--h", `${zone.h}%`);
 
         const top = document.createElement("div");
         top.className = "room-head";
@@ -792,18 +878,66 @@ def page() -> bytes:
       }
     }
 
-    function points(rows, key, min, max) {
+    function deviceLabel(row) {
+      return row.location || row.deviceId;
+    }
+
+    function sortedDevices(rows) {
+      const seen = new Map();
+      for (const row of rows) {
+        if (!seen.has(row.deviceId)) seen.set(row.deviceId, deviceLabel(row));
+      }
+      return [...seen.entries()].sort((a, b) => a[1].localeCompare(b[1]));
+    }
+
+    function syncSelectedDevices(rows) {
+      for (const [deviceId] of sortedDevices(rows)) {
+        if (!state.knownDevices.has(deviceId)) {
+          state.knownDevices.add(deviceId);
+          state.selectedDevices.add(deviceId);
+        }
+      }
+    }
+
+    function renderDeviceToggles(rows) {
+      const toggles = document.getElementById("device-toggles");
+      toggles.replaceChildren();
+      for (const [deviceId, label] of sortedDevices(rows)) {
+        const color = colorForDevice(deviceId);
+        const item = document.createElement("label");
+        item.className = "device-toggle";
+        const input = document.createElement("input");
+        input.type = "checkbox";
+        input.checked = state.selectedDevices.has(deviceId);
+        input.addEventListener("change", () => {
+          if (input.checked) state.selectedDevices.add(deviceId);
+          else state.selectedDevices.delete(deviceId);
+          renderTrend(state.history);
+        });
+        const swatch = document.createElement("span");
+        swatch.className = "swatch";
+        swatch.style.background = color;
+        item.append(input, swatch, document.createTextNode(label));
+        toggles.appendChild(item);
+      }
+    }
+
+    function colorForDevice(deviceId) {
+      if (!state.deviceColors.has(deviceId)) {
+        state.deviceColors.set(deviceId, seriesColors[state.deviceColors.size % seriesColors.length]);
+      }
+      return state.deviceColors.get(deviceId);
+    }
+
+    function points(rows, min, max, start, end) {
       if (!rows.length || min === max) return "";
-      const sorted = [...rows].reverse();
-      const start = new Date(sorted[0].createdAt || sorted[0].datetime).getTime();
-      const end = new Date(sorted[sorted.length - 1].createdAt || sorted[sorted.length - 1].datetime).getTime();
       const span = Math.max(1, end - start);
-      return sorted
-        .filter((row) => typeof row[key] === "number")
+      return [...rows].reverse()
+        .filter((row) => typeof row.temperature === "number")
         .map((row) => {
           const time = new Date(row.createdAt || row.datetime).getTime();
           const x = 36 + ((time - start) / span) * 828;
-          const y = 176 - ((row[key] - min) / (max - min)) * 140;
+          const y = 176 - ((row.temperature - min) / (max - min)) * 140;
           return `${x.toFixed(1)},${y.toFixed(1)}`;
         })
         .join(" ");
@@ -816,28 +950,51 @@ def page() -> bytes:
       grid.setAttribute("class", "axis");
       grid.setAttribute("d", "M36 36H864M36 106H864M36 176H864");
       svg.appendChild(grid);
-      if (rows.length < 2) {
+      syncSelectedDevices([...state.latest, ...rows]);
+      renderDeviceToggles([...state.latest, ...rows]);
+      const selectedRows = rows.filter((row) => state.selectedDevices.has(row.deviceId));
+      if (selectedRows.length < 2) {
         const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
         text.setAttribute("x", "450");
         text.setAttribute("y", "108");
         text.setAttribute("text-anchor", "middle");
         text.setAttribute("fill", "#53616f");
-        text.textContent = "Trend appears after more readings arrive";
+        text.textContent = rows.length ? "Select a device with more readings" : "Graph appears after readings arrive";
         svg.appendChild(text);
-        setText("history-count", `${rows.length} reading${rows.length === 1 ? "" : "s"}`);
+        setText("history-count", `${rows.length} reading${rows.length === 1 ? "" : "s"} in ${durationLabel()}`);
         return;
       }
-      const temps = rows.map((row) => row.temperature).filter((value) => typeof value === "number");
-      const humidity = rows.map((row) => row.humidity).filter((value) => typeof value === "number");
-      const min = Math.min(...temps, ...humidity);
-      const max = Math.max(...temps, ...humidity);
-      for (const [className, key] of [["temp-line", "temperature"], ["humidity-line", "humidity"]]) {
+      const temps = selectedRows.map((row) => row.temperature).filter((value) => typeof value === "number");
+      const min = Math.floor(Math.min(...temps) - 1);
+      const max = Math.ceil(Math.max(...temps) + 1);
+      const times = selectedRows
+        .map((row) => new Date(row.createdAt || row.datetime).getTime())
+        .filter((time) => !Number.isNaN(time));
+      const start = Math.min(...times);
+      const end = Math.max(...times);
+      for (const value of [max, Math.round((min + max) / 2), min]) {
+        const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        label.setAttribute("class", "axis-label");
+        label.setAttribute("x", "40");
+        label.setAttribute("y", `${180 - ((value - min) / (max - min)) * 140}`);
+        label.textContent = `${value} F`;
+        svg.appendChild(label);
+      }
+      for (const [deviceId] of sortedDevices(selectedRows)) {
+        const deviceRows = selectedRows.filter((row) => row.deviceId === deviceId);
+        if (deviceRows.length < 2) continue;
         const line = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
-        line.setAttribute("class", className);
-        line.setAttribute("points", points(rows, key, min, max));
+        line.setAttribute("class", "temp-line");
+        line.setAttribute("stroke", colorForDevice(deviceId));
+        line.setAttribute("points", points(deviceRows, min, max, start, end));
         svg.appendChild(line);
       }
-      setText("history-count", `${rows.length} readings in 24h`);
+      setText("history-count", `${selectedRows.length} selected readings in ${durationLabel()}`);
+    }
+
+    function durationLabel() {
+      if (state.hours === 168) return "7 days";
+      return `${state.hours}h`;
     }
 
     function setConnection(ok, message) {
@@ -853,7 +1010,7 @@ def page() -> bytes:
       try {
         const [latestResponse, historyResponse] = await Promise.all([
           fetch("/api/latest", {cache: "no-store"}),
-          fetch("/api/history?hours=24&limit=600", {cache: "no-store"}),
+          fetch(`/api/history?hours=${state.hours}&limit=50000`, {cache: "no-store"}),
         ]);
         if (!latestResponse.ok || !historyResponse.ok) throw new Error("Dashboard API request failed");
         state.latest = await latestResponse.json();
@@ -871,6 +1028,10 @@ def page() -> bytes:
       }
     }
 
+    document.getElementById("history-hours").addEventListener("change", (event) => {
+      state.hours = Number(event.target.value) || 24;
+      refresh();
+    });
     refresh();
     setInterval(refresh, 3000);
   </script>
@@ -921,9 +1082,13 @@ class Handler(BaseHTTPRequestHandler):
             query = parse_qs(parsed.query)
             hours = query_int(query, "hours", 24)
             limit = query_int(query, "limit", 500)
+            self.locations = load_locations(self.locations_path)
             with connect(self.db_path) as conn:
                 init_db(conn)
-                rows = [history_row_to_dict(row) for row in reading_history(conn, hours, limit)]
+                rows = [
+                    history_row_to_dict(row, self.locations)
+                    for row in reading_history(conn, hours, limit)
+                ]
             payload = json.dumps(rows).encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "application/json")

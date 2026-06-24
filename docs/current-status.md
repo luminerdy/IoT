@@ -12,7 +12,7 @@ The project is a local-first Raspberry Pi IoT system with MQTT, SQLite, a boot-e
 
 Phase 4: Local OTA plus daily dashboard improvements
 
-Status: The local OTA firmware is deployed broadly. The dashboard service is enabled at boot and serves live device cards, summary metrics, latest readings, and a 24-hour trend from SQLite.
+Status: The local OTA firmware is deployed broadly. The dashboard service is enabled at boot and serves live device cards, summary metrics, latest readings, a selectable temperature graph from SQLite, and an approximate house diagram.
 
 ## Accomplished
 
@@ -28,6 +28,8 @@ Status: The local OTA firmware is deployed broadly. The dashboard service is ena
 - Replaced `Lightpole` with the USB-flashed ESP32 `esp32-0cb815c28ac8`; after replacing the DHT22 sensor it reports valid telemetry.
 - Restored `Sunroom Test` (`esp32-9c9c1fda3670`) as the USB-connected bench device for firmware changes and feature testing before fleet deployment.
 - Added a first-pass dashboard house diagram using approximate zones from the known sensor locations; the diagram was tested on temporary port `8002`.
+- Updated the dashboard graph to support selectable 6h, 12h, 24h, 48h, and 7-day temperature ranges with per-device toggles.
+- Adjusted the house diagram placements so `Garage` and `GarageDriveway` sit on the right side and `Lightpole` sits on the top row just right of `Porch`.
 
 ## Live Dashboard State
 

@@ -119,6 +119,8 @@ Hardening follow-up:
 
 ## Phase 5: Fleet Operations
 
+Status: In progress.
+
 Goal: Make the system reliable for all room sensors.
 
 Tasks:
@@ -130,6 +132,13 @@ Tasks:
 - Add backup/export for SQLite.
 - Add systemd services for broker, collector, dashboard, and OTA coordinator.
 - Add basic operational runbook.
+
+Immediate tasks for 2026-06-24:
+
+- Park `Lightpole` (`esp32-94b97ed52a78`) until manual physical inspection; it has reported firmware status but had no temperature/humidity payload at the latest check. Check DHT22 VCC, GND, DATA pin, pull-up, and configured GPIO before resuming software checks.
+- Confirm newly recovered devices remain stable across a few 10-minute telemetry intervals: `Laundryroom`, `MasterBedroom`, `SunroomDoor`, and `Entryway`.
+- Keep `config/locations.json` and SQLite placeholders clean when devices are removed or renamed.
+- Start OTA failure-path testing.
 
 Acceptance criteria:
 
@@ -153,3 +162,13 @@ Tasks:
 - Add a recent history view or simple chart from SQLite readings.
 - Add clear empty/error states if MQTT data or SQLite data is missing.
 - Decide whether to keep the current standard-library HTTP server or move the dashboard to a fuller web stack.
+
+## OTA Hardening Backlog
+
+- Test bad OTA URL failure path: publish an OTA command with a reachable rollout ID but an invalid firmware URL; verify `ota/status` reports failure and the device keeps running the current firmware.
+- Test bad SHA-256 failure path: publish an OTA command with a valid firmware URL and intentionally wrong SHA-256; verify download completes, validation fails, and no reboot occurs.
+- Test interrupted download failure path: serve a truncated firmware response or stop the HTTP server during download; verify the device reports failure and keeps running.
+- Test oversized image failure path: publish or serve an image larger than the available OTA partition; verify OTA write fails cleanly and no reboot occurs.
+- Record expected `home/sensors/{deviceId}/ota/status` messages for each failure mode in `docs/mqtt-schema.md` or the Phase 4 runbook.
+- Decide whether firmware version should remain a PlatformIO build flag or move to a single release metadata source.
+- Consider firmware signing after failure-path tests are documented.

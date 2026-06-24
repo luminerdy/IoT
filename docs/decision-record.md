@@ -120,4 +120,14 @@ This file records project architecture decisions and the reasoning behind them.
 
 **Reasoning:** Some installed devices predate the local MQTT/OTA command path but still provide authenticated HTTP OTA. Using their existing ElegantOTA updater avoids physical access and brings them onto the same MQTT telemetry, retained config, dashboard, and future local OTA path. Each migrated device must be verified through MQTT after upload, then mapped in `config/locations.json`.
 
-**Status:** Accepted and validated on `10.10.10.113`, now `esp32-0cb815c288f4`
+**Status:** Accepted and validated on multiple legacy devices. Some legacy devices can still accept or reset uploads without subsequently reporting MQTT, so migration is not considered complete until verified through `/api/latest` or MQTT status/telemetry.
+
+## DR-013: Recovery Path for Problem Legacy OTA Devices
+
+**Date:** 2026-06-21
+
+**Decision:** For legacy ElegantOTA devices that reset connections, stop serving HTTP, or fail to report MQTT after upload, do not keep blindly retrying the same HTTP upload. Verify MQTT and HTTP state first, then power-cycle the device, and use USB recovery if it remains unreachable or silent.
+
+**Reasoning:** `Laundryroom` accepted an ElegantOTA upload and then stopped serving legacy HTTP without reporting MQTT. `SunroomDoor` reset two upload attempts and stayed on legacy firmware. Repeating the same upload can obscure the actual failure mode and risks leaving the device in an uncertain state. A controlled recovery ladder preserves evidence and gives the best chance of recovering the device without unnecessary writes.
+
+**Status:** Accepted as operational guidance. The specific devices that originally triggered this decision later reported or were retried, but the recovery ladder still applies to future legacy OTA failures.

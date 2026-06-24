@@ -374,6 +374,7 @@ Use this file for dated accomplishments and important observations. Keep future 
 - Refined the house diagram labels so humidity and last-seen sit on the line below location/temp, removed the per-room box outline, and changed `BunkHouse` from exterior/detached to an interior grandkids room.
 - Updated the dashboard history graph into a selectable temperature graph with 6h, 12h, 24h, 48h, and 7-day ranges plus per-device toggles. History rows now use the configured location mapping, and the SQLite readings table has a created-at index plus a larger bounded history limit for longer chart ranges.
 - Adjusted the dashboard house diagram placement: moved `Garage` and `GarageDriveway` to the right side, and moved `Lightpole` to the top row immediately right of `Porch`. Verified syntax with `python3 -m py_compile app/iot_home/dashboard.py`.
+- Published the dashboard graph, diagram placement, and memory updates to GitHub as draft PR #1 (`https://github.com/luminerdy/IoT/pull/1`) through the GitHub connector. Local `git push` remains blocked by missing HTTPS/SSH credentials on the Pi.
 
 ## Next Work
 

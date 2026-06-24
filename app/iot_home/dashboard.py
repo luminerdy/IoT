@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import argparse
 import json
+import mimetypes
 from html import escape
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from datetime import UTC, datetime
+from urllib.parse import parse_qs, unquote, urlparse
 
-from iot_home.db import DEFAULT_DB_PATH, connect, init_db, latest_readings
+from iot_home.db import DEFAULT_DB_PATH, connect, init_db, latest_readings, reading_history
 from iot_home.locations import DEFAULT_LOCATIONS_PATH, load_locations, mapped_location
 
 
@@ -25,8 +27,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--stale-seconds",
         type=int,
-        default=120,
+        default=1200,
         help="Mark online devices stale when last_seen is older than this many seconds.",
+    )
+    parser.add_argument(
+        "--firmware-dir",
+        type=Path,
+        default=Path("data/firmware"),
+        help="Directory served under /firmware/ for local OTA downloads.",
     )
     return parser.parse_args()
 
@@ -72,6 +80,28 @@ def row_to_dict(row, stale_seconds: int, locations: dict[str, str]) -> dict:
     }
 
 
+def history_row_to_dict(row, locations: dict[str, str]) -> dict:
+    device_id = row["device_id"]
+    return {
+        "deviceId": device_id,
+        "location": mapped_location(device_id, row["location"], locations),
+        "temperature": row["temperature"],
+        "humidity": row["humidity"],
+        "rssi": row["rssi"],
+        "status": row["status"],
+        "seq": row["seq"],
+        "datetime": row["datetime"],
+        "createdAt": row["created_at"],
+    }
+
+
+def query_int(query: dict[str, list[str]], name: str, default: int) -> int:
+    try:
+        return int(query.get(name, [str(default)])[0])
+    except (TypeError, ValueError):
+        return default
+
+
 def page() -> bytes:
     return b"""<!doctype html>
 <html lang="en">
@@ -82,41 +112,378 @@ def page() -> bytes:
   <style>
     :root {
       color-scheme: light;
-      font-family: Arial, Helvetica, sans-serif;
-      background: #f6f7f9;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #f4f6f8;
       color: #17202a;
+      --panel: #ffffff;
+      --ink-soft: #53616f;
+      --line: #dbe2ea;
+      --green: #16803f;
+      --amber: #b7791f;
+      --red: #b42318;
+      --blue: #1f6feb;
+      --teal: #0f766e;
     }
+    * { box-sizing: border-box; }
     body {
       margin: 0;
-      padding: 24px;
+      min-width: 320px;
     }
     main {
-      max-width: 1100px;
+      width: min(1180px, calc(100% - 32px));
       margin: 0 auto;
+      padding: 24px 0 32px;
     }
     header {
       display: flex;
       justify-content: space-between;
-      align-items: end;
+      align-items: flex-end;
       gap: 16px;
-      margin-bottom: 20px;
+      margin-bottom: 18px;
     }
     h1 {
       margin: 0;
-      font-size: 28px;
-      font-weight: 700;
+      font-size: 30px;
+      line-height: 1.1;
+      font-weight: 750;
+      letter-spacing: 0;
     }
     .muted {
-      color: #5d6d7e;
+      color: var(--ink-soft);
       font-size: 14px;
+    }
+    .toolbar {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 34px;
+      padding: 6px 10px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: var(--panel);
+      color: #24313d;
+      font-size: 13px;
+      white-space: nowrap;
+    }
+    .grid {
+      display: grid;
+      gap: 14px;
+    }
+    .summary {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      margin-bottom: 18px;
+    }
+    .stat, .device, .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: 0 1px 2px rgb(15 23 42 / 0.04);
+    }
+    .stat {
+      padding: 14px;
+      min-height: 92px;
+    }
+    .label {
+      color: var(--ink-soft);
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+    .value {
+      margin-top: 8px;
+      font-size: 30px;
+      line-height: 1;
+      font-weight: 760;
+    }
+    .subvalue {
+      margin-top: 8px;
+      color: var(--ink-soft);
+      font-size: 13px;
+    }
+    .devices {
+      grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+      margin-bottom: 18px;
+    }
+    .device {
+      padding: 14px;
+      min-height: 130px;
+    }
+    .device-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+    .device h2 {
+      margin: 0;
+      font-size: 17px;
+      line-height: 1.2;
+      letter-spacing: 0;
+    }
+    .metrics {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+    .metric {
+      min-height: 58px;
+      padding: 10px;
+      border: 1px solid #e5ebf2;
+      border-radius: 6px;
+      background: #f8fafc;
+    }
+    .metric strong {
+      display: block;
+      margin-top: 4px;
+      font-size: 20px;
+      line-height: 1.1;
+    }
+    .panel {
+      overflow: hidden;
+      margin-top: 18px;
+    }
+    .panel-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+      padding: 14px;
+      border-bottom: 1px solid var(--line);
+    }
+    .panel-head h2 {
+      margin: 0;
+      font-size: 16px;
+      letter-spacing: 0;
+    }
+    .chart-wrap {
+      min-height: 220px;
+      padding: 14px;
+    }
+    .chart-controls {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+    .select-wrap {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--ink-soft);
+      font-size: 13px;
+      font-weight: 650;
+    }
+    .select-wrap select {
+      min-height: 34px;
+      padding: 5px 28px 5px 10px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fff;
+      color: #17202a;
+      font: inherit;
+    }
+    .device-toggles {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      padding-top: 12px;
+    }
+    .device-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      min-height: 32px;
+      padding: 5px 9px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: #fff;
+      color: #24313d;
+      font-size: 13px;
+      cursor: pointer;
+      user-select: none;
+    }
+    .device-toggle input {
+      width: 14px;
+      height: 14px;
+      margin: 0;
+      accent-color: var(--blue);
+    }
+    .device-toggle .swatch {
+      width: 16px;
+      height: 3px;
+      flex: 0 0 auto;
+    }
+    .house-wrap {
+      padding: 14px;
+    }
+    .floorplan {
+      position: relative;
+      min-height: 520px;
+      aspect-ratio: 16 / 9;
+      overflow: hidden;
+      border: 1px solid #cfd8e3;
+      border-radius: 8px;
+      background:
+        linear-gradient(90deg, rgb(207 216 227 / 0.45) 1px, transparent 1px),
+        linear-gradient(0deg, rgb(207 216 227 / 0.45) 1px, transparent 1px),
+        #eef3f7;
+      background-size: 40px 40px;
+    }
+    .floorplan::before {
+      content: "";
+      position: absolute;
+      left: 22%;
+      top: 11%;
+      width: 56%;
+      height: 72%;
+      border: 3px solid #334155;
+      border-radius: 6px;
+      background: #fdfefe;
+      box-shadow: 0 10px 24px rgb(15 23 42 / 0.08);
+    }
+    .room-zone {
+      --box-width: 124px;
+      --box-half: 62px;
+      position: absolute;
+      left: clamp(var(--box-half), var(--x), calc(100% - var(--box-half)));
+      top: var(--y);
+      width: var(--box-width);
+      height: 36px;
+      transform: translateX(-50%);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 0;
+      padding: 5px 7px;
+      border-radius: 7px;
+      background: rgb(255 255 255 / 0.92);
+      color: #17202a;
+      overflow: hidden;
+    }
+    .room-zone.outdoor {
+      background: rgb(246 251 248 / 0.92);
+    }
+    .room-zone.utility {
+      background: rgb(249 250 251 / 0.94);
+    }
+    .room-zone.stale,
+    .room-zone.offline {
+      opacity: 0.74;
+    }
+    .room-zone .room-head {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 5px;
+      min-height: 0;
+    }
+    .room-zone .room-name {
+      font-size: 12px;
+      font-weight: 780;
+      line-height: 1.1;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .room-zone .room-reading {
+      color: var(--green);
+      font-size: 14px;
+      line-height: 1;
+      font-weight: 780;
+      white-space: nowrap;
+      flex: 0 0 auto;
+    }
+    .room-zone.stale .room-reading {
+      color: var(--amber);
+    }
+    .room-zone.offline .room-reading {
+      color: var(--red);
+    }
+    .room-zone .room-meta {
+      color: var(--ink-soft);
+      font-size: 10px;
+      line-height: 1.05;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .floorplan-key {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      padding-top: 10px;
+      color: var(--ink-soft);
+      font-size: 13px;
+    }
+    .zone-key {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .zone-sample {
+      width: 18px;
+      height: 12px;
+      border: 2px solid #9db1c7;
+      border-radius: 4px;
+      background: #fff;
+    }
+    .zone-sample.outdoor {
+      border-style: dashed;
+      background: #f6fbf8;
+    }
+    #trend {
+      width: 100%;
+      height: 210px;
+      display: block;
+    }
+    .axis {
+      stroke: #d8e0e8;
+      stroke-width: 1;
+    }
+    .temp-line {
+      fill: none;
+      stroke-width: 2.5;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+    .legend {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      color: var(--ink-soft);
+      font-size: 13px;
+    }
+    .key {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .swatch {
+      width: 18px;
+      height: 3px;
+      border-radius: 999px;
+      background: currentColor;
+    }
+    .axis-label {
+      fill: #53616f;
+      font-size: 12px;
     }
     table {
       width: 100%;
       border-collapse: collapse;
-      background: white;
-      border: 1px solid #d9dee5;
-      border-radius: 8px;
-      overflow: hidden;
     }
     th, td {
       padding: 12px 14px;
@@ -125,7 +492,7 @@ def page() -> bytes:
       white-space: nowrap;
     }
     th {
-      background: #eef2f6;
+      background: #f0f4f8;
       font-size: 13px;
       text-transform: uppercase;
       color: #4b5b6b;
@@ -144,26 +511,71 @@ def page() -> bytes:
       height: 10px;
       border-radius: 50%;
       background: #95a5a6;
+      flex: 0 0 auto;
     }
-    .online .dot {
-      background: #208a4b;
+    .online .dot { background: var(--green); }
+    .offline .dot { background: var(--red); }
+    .stale .dot { background: var(--amber); }
+    .empty {
+      padding: 28px 14px;
+      color: var(--ink-soft);
+      text-align: center;
     }
-    .offline .dot {
-      background: #b03a2e;
+    .table-wrap {
+      overflow-x: auto;
     }
-    .stale .dot {
-      background: #b7791f;
+    .error {
+      border-color: #f0b4ad;
+      background: #fff7f5;
+      color: #8f1d13;
     }
-    @media (max-width: 760px) {
-      body {
-        padding: 12px;
-      }
+    @media (max-width: 860px) {
       header {
-        display: block;
+        align-items: flex-start;
+        flex-direction: column;
       }
-      table {
-        display: block;
-        overflow-x: auto;
+      .toolbar {
+        justify-content: flex-start;
+      }
+      .summary {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+      .floorplan {
+        min-height: 720px;
+        aspect-ratio: 9 / 13;
+      }
+      .floorplan::before {
+        left: 8%;
+        top: 12%;
+        width: 84%;
+        height: 70%;
+      }
+    }
+    @media (max-width: 560px) {
+      main {
+        width: min(100% - 20px, 1180px);
+        padding-top: 14px;
+      }
+      h1 {
+        font-size: 25px;
+      }
+      .summary, .metrics {
+        grid-template-columns: 1fr;
+      }
+      .house-wrap {
+        padding: 10px;
+      }
+      .floorplan {
+        min-height: 760px;
+      }
+      .room-zone {
+        --box-width: 112px;
+        --box-half: 56px;
+        height: 34px;
+        padding: 4px 6px;
+      }
+      .room-zone .room-reading {
+        font-size: 13px;
       }
     }
   </style>
@@ -173,61 +585,453 @@ def page() -> bytes:
     <header>
       <div>
         <h1>IoT Home Monitor</h1>
-        <div class="muted">Local readings from MQTT and SQLite</div>
+        <div class="muted">Live local readings from MQTT and SQLite</div>
       </div>
-      <div class="muted" id="last-refresh">Waiting for data</div>
+      <div class="toolbar">
+        <span class="pill" id="connection"><span class="dot"></span> Connecting</span>
+        <span class="pill" id="last-refresh">Waiting for data</span>
+      </div>
     </header>
-    <table>
-      <thead>
-        <tr>
-          <th>Location</th>
-          <th>Status</th>
-          <th>Temperature</th>
-          <th>Humidity</th>
-          <th>RSSI</th>
-          <th>Last Seen</th>
-          <th>Device</th>
-        </tr>
-      </thead>
-      <tbody id="readings">
-        <tr><td colspan="7">No readings yet.</td></tr>
-      </tbody>
-    </table>
+    <section class="grid summary" aria-label="Dashboard summary">
+      <div class="stat">
+        <div class="label">Devices</div>
+        <div class="value" id="device-count">0</div>
+        <div class="subvalue" id="online-count">0 online</div>
+      </div>
+      <div class="stat">
+        <div class="label">Average Temp</div>
+        <div class="value" id="avg-temp">--</div>
+        <div class="subvalue">Latest device readings</div>
+      </div>
+      <div class="stat">
+        <div class="label">Average Humidity</div>
+        <div class="value" id="avg-humidity">--</div>
+        <div class="subvalue">Latest device readings</div>
+      </div>
+      <div class="stat">
+        <div class="label">Signal</div>
+        <div class="value" id="avg-rssi">--</div>
+        <div class="subvalue">Average RSSI</div>
+      </div>
+    </section>
+
+    <section class="panel" aria-label="House diagram">
+      <div class="panel-head">
+        <h2>House Diagram</h2>
+        <span class="muted">Live readings by approximate location</span>
+      </div>
+      <div class="house-wrap">
+        <div class="floorplan" id="floorplan"></div>
+        <div class="floorplan-key" aria-label="Diagram key">
+          <span class="zone-key"><span class="zone-sample"></span>Interior</span>
+          <span class="zone-key"><span class="zone-sample outdoor"></span>Exterior or detached</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="grid devices" id="devices" aria-label="Devices"></section>
+
+    <section class="panel" aria-label="Temperature graph">
+      <div class="panel-head">
+        <h2>Temperature Graph</h2>
+        <div class="chart-controls">
+          <span class="muted" id="history-count">No history loaded</span>
+          <label class="select-wrap" for="history-hours">
+            Duration
+            <select id="history-hours">
+              <option value="6">6 hours</option>
+              <option value="12">12 hours</option>
+              <option value="24" selected>24 hours</option>
+              <option value="48">48 hours</option>
+              <option value="168">7 days</option>
+            </select>
+          </label>
+        </div>
+      </div>
+      <div class="chart-wrap">
+        <svg id="trend" viewBox="0 0 900 230" role="img" aria-label="Temperature graph by device"></svg>
+        <div class="device-toggles" id="device-toggles" aria-label="Temperature graph devices"></div>
+      </div>
+    </section>
+
+    <section class="panel" aria-label="Latest readings">
+      <div class="panel-head">
+        <h2>Latest Readings</h2>
+        <span class="muted">Current device state</span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Location</th>
+              <th>Status</th>
+              <th>Temperature</th>
+              <th>Humidity</th>
+              <th>RSSI</th>
+              <th>Last Seen</th>
+              <th>Firmware</th>
+              <th>Device</th>
+            </tr>
+          </thead>
+          <tbody id="readings">
+            <tr><td colspan="8" class="empty">No readings yet.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
   </main>
   <script>
-    function fmt(value, suffix) {
-      if (value === null || value === undefined) return "";
+    const state = {
+      latest: [],
+      history: [],
+      selectedDevices: new Set(),
+      knownDevices: new Set(),
+      deviceColors: new Map(),
+      hours: 24,
+    };
+    const seriesColors = [
+      "#b42318", "#1f6feb", "#0f766e", "#7c3aed", "#b7791f", "#0f6b8f",
+      "#a21caf", "#2f855a", "#c2410c", "#475569", "#be123c", "#2563eb",
+    ];
+    const floorplanZones = [
+      {location: "Porch", x: 30, y: 4, w: 18, h: 10, type: "outdoor"},
+      {location: "Entryway", x: 48, y: 13, w: 12, h: 14},
+      {location: "FrontBedroom", x: 23, y: 14, w: 25, h: 22},
+      {location: "Office", x: 60, y: 14, w: 16, h: 22},
+      {location: "Den", x: 44, y: 36, w: 18, h: 20},
+      {location: "Kitchen", x: 62, y: 36, w: 14, h: 20},
+      {location: "Laundryroom", x: 23, y: 56, w: 15, h: 15, type: "utility"},
+      {location: "LaundryroomAC", x: 38, y: 56, w: 12, h: 15, type: "utility"},
+      {location: "WaterHeater", x: 50, y: 56, w: 12, h: 15, type: "utility"},
+      {location: "WallBehindWH", x: 62, y: 56, w: 14, h: 15, type: "utility"},
+      {location: "MasterBedroom", x: 23, y: 71, w: 27, h: 11},
+      {location: "Sunroom", x: 50, y: 71, w: 18, h: 11},
+      {location: "SunroomDoor", x: 68, y: 71, w: 8, h: 11},
+      {location: "Sunroom Test", x: 62, y: 76, w: 13, h: 10, type: "utility"},
+      {location: "Garage", x: 78, y: 25, w: 16, h: 22, type: "outdoor"},
+      {location: "GarageDriveway", x: 78, y: 48, w: 16, h: 15, type: "outdoor"},
+      {location: "BunkHouse", x: 60, y: 25, w: 16, h: 11},
+      {location: "Lightpole", x: 49, y: 4, w: 13, h: 13, type: "outdoor"},
+    ];
+
+    function fmt(value, suffix = "") {
+      if (value === null || value === undefined || Number.isNaN(value)) return "--";
+      if (typeof value === "number") return `${Math.round(value * 10) / 10}${suffix}`;
       return `${value}${suffix}`;
+    }
+
+    function relativeTime(value) {
+      if (!value) return "--";
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return value;
+      const seconds = Math.max(0, Math.round((Date.now() - date.getTime()) / 1000));
+      if (seconds < 60) return `${seconds}s ago`;
+      const minutes = Math.round(seconds / 60);
+      if (minutes < 60) return `${minutes}m ago`;
+      const hours = Math.round(minutes / 60);
+      if (hours < 48) return `${hours}h ago`;
+      return date.toLocaleString();
+    }
+
+    function setText(id, value) {
+      document.getElementById(id).textContent = value;
+    }
+
+    function average(rows, key) {
+      const values = rows.map((row) => row[key]).filter((value) => typeof value === "number");
+      if (!values.length) return null;
+      return values.reduce((sum, value) => sum + value, 0) / values.length;
+    }
+
+    function deviceState(row) {
+      if (row.stale) return ["stale", "Stale"];
+      if (row.online) return ["online", "Online"];
+      return ["offline", "Offline"];
+    }
+
+    function renderSummary(rows) {
+      const online = rows.filter((row) => row.online && !row.stale).length;
+      const stale = rows.filter((row) => row.stale).length;
+      setText("device-count", rows.length);
+      setText("online-count", `${online} online${stale ? `, ${stale} stale` : ""}`);
+      setText("avg-temp", average(rows, "temperature") === null ? "--" : fmt(average(rows, "temperature"), " F"));
+      setText("avg-humidity", average(rows, "humidity") === null ? "--" : fmt(average(rows, "humidity"), "%"));
+      setText("avg-rssi", average(rows, "rssi") === null ? "--" : fmt(average(rows, "rssi"), " dBm"));
+    }
+
+    function renderDevices(rows) {
+      const devices = document.getElementById("devices");
+      devices.replaceChildren();
+      if (!rows.length) {
+        const empty = document.createElement("div");
+        empty.className = "device empty";
+        empty.textContent = "No devices have reported yet.";
+        devices.appendChild(empty);
+        return;
+      }
+
+      for (const row of rows) {
+        const card = document.createElement("article");
+        card.className = "device";
+
+        const head = document.createElement("div");
+        head.className = "device-head";
+        const titleBlock = document.createElement("div");
+        const title = document.createElement("h2");
+        title.textContent = row.location || row.deviceId;
+        titleBlock.append(title);
+        head.append(titleBlock);
+
+        const metrics = document.createElement("div");
+        metrics.className = "metrics";
+        for (const [label, value] of [
+          ["Temperature", fmt(row.temperature, " F")],
+          ["Last Seen", relativeTime(row.lastSeen)],
+        ]) {
+          const metric = document.createElement("div");
+          metric.className = "metric";
+          const metricLabel = document.createElement("div");
+          metricLabel.className = "label";
+          metricLabel.textContent = label;
+          const metricValue = document.createElement("strong");
+          metricValue.textContent = value;
+          metric.append(metricLabel, metricValue);
+          metrics.appendChild(metric);
+        }
+
+        card.append(head, metrics);
+        devices.appendChild(card);
+      }
+    }
+
+    function findByLocation(rows, location) {
+      return rows.find((row) => row.location === location);
+    }
+
+    function renderFloorplan(rows) {
+      const plan = document.getElementById("floorplan");
+      plan.replaceChildren();
+      for (const zone of floorplanZones) {
+        const row = findByLocation(rows, zone.location);
+        const [stateClass] = row ? deviceState(row) : ["offline", "No data"];
+        const room = document.createElement("article");
+        room.className = `room-zone ${zone.type || ""} ${stateClass}`.trim();
+        room.style.setProperty("--x", `${zone.x + zone.w / 2}%`);
+        room.style.setProperty("--y", `${zone.y}%`);
+
+        const top = document.createElement("div");
+        top.className = "room-head";
+        const name = document.createElement("div");
+        name.className = "room-name";
+        name.textContent = zone.location;
+        const reading = document.createElement("div");
+        reading.className = "room-reading";
+        reading.textContent = row ? fmt(row.temperature, " F") : "--";
+        top.append(name, reading);
+
+        const meta = document.createElement("div");
+        meta.className = "room-meta";
+        meta.textContent = row
+          ? `${fmt(row.humidity, "%")} humidity - ${relativeTime(row.lastSeen)}`
+          : "Waiting for reading";
+
+        room.append(top, meta);
+        plan.appendChild(room);
+      }
     }
 
     function render(rows) {
       const body = document.getElementById("readings");
       if (!rows.length) {
-        body.innerHTML = '<tr><td colspan="7">No readings yet.</td></tr>';
+        body.innerHTML = '<tr><td colspan="8" class="empty">No readings yet.</td></tr>';
         return;
       }
-      body.innerHTML = rows.map((row) => {
-        const stateClass = row.stale ? "stale" : (row.online ? "online" : "offline");
-        const stateText = row.stale ? "Stale" : (row.online ? "Online" : "Offline");
-        return `<tr>
-          <td>${row.location}</td>
-          <td><span class="status ${stateClass}"><span class="dot"></span>${stateText}</span></td>
-          <td>${fmt(row.temperature, " F")}</td>
-          <td>${fmt(row.humidity, "%")}</td>
-          <td>${fmt(row.rssi, " dBm")}</td>
-          <td>${row.lastSeen || ""}</td>
-          <td>${row.deviceId}</td>
-        </tr>`;
-      }).join("");
+      body.replaceChildren();
+      for (const row of rows) {
+        const [stateClass, stateText] = deviceState(row);
+        const tr = document.createElement("tr");
+        const cells = [
+          row.location || row.deviceId,
+          stateText,
+          fmt(row.temperature, " F"),
+          fmt(row.humidity, "%"),
+          fmt(row.rssi, " dBm"),
+          relativeTime(row.lastSeen),
+          row.firmwareVersion || "--",
+          row.deviceId,
+        ];
+        cells.forEach((value, index) => {
+          const td = document.createElement("td");
+          if (index === 1) {
+            const status = document.createElement("span");
+            status.className = `status ${stateClass}`;
+            const dot = document.createElement("span");
+            dot.className = "dot";
+            status.append(dot, document.createTextNode(value));
+            td.appendChild(status);
+          } else {
+            td.textContent = value;
+          }
+          tr.appendChild(td);
+        });
+        body.appendChild(tr);
+      }
+    }
+
+    function deviceLabel(row) {
+      return row.location || row.deviceId;
+    }
+
+    function sortedDevices(rows) {
+      const seen = new Map();
+      for (const row of rows) {
+        if (!seen.has(row.deviceId)) seen.set(row.deviceId, deviceLabel(row));
+      }
+      return [...seen.entries()].sort((a, b) => a[1].localeCompare(b[1]));
+    }
+
+    function syncSelectedDevices(rows) {
+      for (const [deviceId] of sortedDevices(rows)) {
+        if (!state.knownDevices.has(deviceId)) {
+          state.knownDevices.add(deviceId);
+          state.selectedDevices.add(deviceId);
+        }
+      }
+    }
+
+    function renderDeviceToggles(rows) {
+      const toggles = document.getElementById("device-toggles");
+      toggles.replaceChildren();
+      for (const [deviceId, label] of sortedDevices(rows)) {
+        const color = colorForDevice(deviceId);
+        const item = document.createElement("label");
+        item.className = "device-toggle";
+        const input = document.createElement("input");
+        input.type = "checkbox";
+        input.checked = state.selectedDevices.has(deviceId);
+        input.addEventListener("change", () => {
+          if (input.checked) state.selectedDevices.add(deviceId);
+          else state.selectedDevices.delete(deviceId);
+          renderTrend(state.history);
+        });
+        const swatch = document.createElement("span");
+        swatch.className = "swatch";
+        swatch.style.background = color;
+        item.append(input, swatch, document.createTextNode(label));
+        toggles.appendChild(item);
+      }
+    }
+
+    function colorForDevice(deviceId) {
+      if (!state.deviceColors.has(deviceId)) {
+        state.deviceColors.set(deviceId, seriesColors[state.deviceColors.size % seriesColors.length]);
+      }
+      return state.deviceColors.get(deviceId);
+    }
+
+    function points(rows, min, max, start, end) {
+      if (!rows.length || min === max) return "";
+      const span = Math.max(1, end - start);
+      return [...rows].reverse()
+        .filter((row) => typeof row.temperature === "number")
+        .map((row) => {
+          const time = new Date(row.createdAt || row.datetime).getTime();
+          const x = 36 + ((time - start) / span) * 828;
+          const y = 176 - ((row.temperature - min) / (max - min)) * 140;
+          return `${x.toFixed(1)},${y.toFixed(1)}`;
+        })
+        .join(" ");
+    }
+
+    function renderTrend(rows) {
+      const svg = document.getElementById("trend");
+      svg.replaceChildren();
+      const grid = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      grid.setAttribute("class", "axis");
+      grid.setAttribute("d", "M36 36H864M36 106H864M36 176H864");
+      svg.appendChild(grid);
+      syncSelectedDevices([...state.latest, ...rows]);
+      renderDeviceToggles([...state.latest, ...rows]);
+      const selectedRows = rows.filter((row) => state.selectedDevices.has(row.deviceId));
+      if (selectedRows.length < 2) {
+        const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        text.setAttribute("x", "450");
+        text.setAttribute("y", "108");
+        text.setAttribute("text-anchor", "middle");
+        text.setAttribute("fill", "#53616f");
+        text.textContent = rows.length ? "Select a device with more readings" : "Graph appears after readings arrive";
+        svg.appendChild(text);
+        setText("history-count", `${rows.length} reading${rows.length === 1 ? "" : "s"} in ${durationLabel()}`);
+        return;
+      }
+      const temps = selectedRows.map((row) => row.temperature).filter((value) => typeof value === "number");
+      const min = Math.floor(Math.min(...temps) - 1);
+      const max = Math.ceil(Math.max(...temps) + 1);
+      const times = selectedRows
+        .map((row) => new Date(row.createdAt || row.datetime).getTime())
+        .filter((time) => !Number.isNaN(time));
+      const start = Math.min(...times);
+      const end = Math.max(...times);
+      for (const value of [max, Math.round((min + max) / 2), min]) {
+        const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        label.setAttribute("class", "axis-label");
+        label.setAttribute("x", "40");
+        label.setAttribute("y", `${180 - ((value - min) / (max - min)) * 140}`);
+        label.textContent = `${value} F`;
+        svg.appendChild(label);
+      }
+      for (const [deviceId] of sortedDevices(selectedRows)) {
+        const deviceRows = selectedRows.filter((row) => row.deviceId === deviceId);
+        if (deviceRows.length < 2) continue;
+        const line = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
+        line.setAttribute("class", "temp-line");
+        line.setAttribute("stroke", colorForDevice(deviceId));
+        line.setAttribute("points", points(deviceRows, min, max, start, end));
+        svg.appendChild(line);
+      }
+      setText("history-count", `${selectedRows.length} selected readings in ${durationLabel()}`);
+    }
+
+    function durationLabel() {
+      if (state.hours === 168) return "7 days";
+      return `${state.hours}h`;
+    }
+
+    function setConnection(ok, message) {
+      const el = document.getElementById("connection");
+      el.className = ok ? "pill online" : "pill offline error";
+      el.replaceChildren();
+      const dot = document.createElement("span");
+      dot.className = "dot";
+      el.append(dot, document.createTextNode(message));
     }
 
     async function refresh() {
-      const response = await fetch("/api/latest", {cache: "no-store"});
-      const rows = await response.json();
-      render(rows);
-      document.getElementById("last-refresh").textContent = `Updated ${new Date().toLocaleTimeString()}`;
+      try {
+        const [latestResponse, historyResponse] = await Promise.all([
+          fetch("/api/latest", {cache: "no-store"}),
+          fetch(`/api/history?hours=${state.hours}&limit=50000`, {cache: "no-store"}),
+        ]);
+        if (!latestResponse.ok || !historyResponse.ok) throw new Error("Dashboard API request failed");
+        state.latest = await latestResponse.json();
+        state.history = await historyResponse.json();
+        renderSummary(state.latest);
+        renderFloorplan(state.latest);
+        renderDevices(state.latest);
+        render(state.latest);
+        renderTrend(state.history);
+        setConnection(true, "Live");
+        document.getElementById("last-refresh").textContent = `Updated ${new Date().toLocaleTimeString()}`;
+      } catch (error) {
+        setConnection(false, "Disconnected");
+        document.getElementById("last-refresh").textContent = error.message;
+      }
     }
 
+    document.getElementById("history-hours").addEventListener("change", (event) => {
+      state.hours = Number(event.target.value) || 24;
+      refresh();
+    });
     refresh();
     setInterval(refresh, 3000);
   </script>
@@ -238,18 +1042,28 @@ def page() -> bytes:
 
 class Handler(BaseHTTPRequestHandler):
     db_path: Path = DEFAULT_DB_PATH
+    firmware_dir: Path = Path("data/firmware")
     stale_seconds: int = 120
+    locations_path: Path = DEFAULT_LOCATIONS_PATH
     locations: dict[str, str] = {}
 
     def do_GET(self) -> None:
-        if self.path == "/" or self.path == "/index.html":
+        parsed = urlparse(self.path)
+        parsed_path = parsed.path
+
+        if parsed_path == "/" or parsed_path == "/index.html":
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.end_headers()
             self.wfile.write(page())
             return
 
-        if self.path == "/api/latest":
+        if parsed_path.startswith("/firmware/"):
+            self.serve_firmware(parsed_path)
+            return
+
+        if parsed_path == "/api/latest":
+            self.locations = load_locations(self.locations_path)
             with connect(self.db_path) as conn:
                 init_db(conn)
                 rows = [
@@ -264,7 +1078,47 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(payload)
             return
 
+        if parsed_path == "/api/history":
+            query = parse_qs(parsed.query)
+            hours = query_int(query, "hours", 24)
+            limit = query_int(query, "limit", 500)
+            self.locations = load_locations(self.locations_path)
+            with connect(self.db_path) as conn:
+                init_db(conn)
+                rows = [
+                    history_row_to_dict(row, self.locations)
+                    for row in reading_history(conn, hours, limit)
+                ]
+            payload = json.dumps(rows).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+            return
+
         self.send_error(404)
+
+    def serve_firmware(self, parsed_path: str) -> None:
+        relative = unquote(parsed_path.removeprefix("/firmware/"))
+        parts = Path(relative).parts
+        if not parts or any(part in {"", ".", ".."} for part in parts):
+            self.send_error(404)
+            return
+
+        firmware_root = self.firmware_dir.resolve()
+        firmware_path = firmware_root.joinpath(*parts).resolve()
+        if not firmware_path.is_relative_to(firmware_root) or not firmware_path.is_file():
+            self.send_error(404)
+            return
+
+        content_type = mimetypes.guess_type(firmware_path.name)[0] or "application/octet-stream"
+        content = firmware_path.read_bytes()
+        self.send_response(200)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(content)))
+        self.end_headers()
+        self.wfile.write(content)
 
     def log_message(self, format: str, *args) -> None:
         safe_path = escape(self.path)
@@ -277,6 +1131,8 @@ def main() -> None:
         init_db(conn)
 
     Handler.db_path = args.db
+    Handler.firmware_dir = args.firmware_dir
+    Handler.locations_path = args.locations
     Handler.stale_seconds = args.stale_seconds
     Handler.locations = load_locations(args.locations)
     server = ThreadingHTTPServer((args.host, args.port), Handler)

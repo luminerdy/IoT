@@ -11,7 +11,7 @@ Goal: update ESP32 firmware over the local network from the Raspberry Pi.
 
 ## Prerequisites
 
-The currently connected ESP32 has been USB-flashed with OTA-capable firmware.
+Use the USB-connected `Sunroom Test` ESP32 (`esp32-9c9c1fda3670`) as the bench target for firmware and feature validation before publishing OTA commands to other devices.
 
 If the dashboard code or service unit changes, restart the dashboard service:
 

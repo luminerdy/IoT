@@ -212,7 +212,7 @@ def page() -> bytes:
     }
     .device {
       padding: 14px;
-      min-height: 170px;
+      min-height: 130px;
     }
     .device-head {
       display: flex;
@@ -265,6 +265,117 @@ def page() -> bytes:
     .chart-wrap {
       min-height: 220px;
       padding: 14px;
+    }
+    .house-wrap {
+      padding: 14px;
+    }
+    .floorplan {
+      position: relative;
+      min-height: 520px;
+      aspect-ratio: 16 / 9;
+      overflow: hidden;
+      border: 1px solid #cfd8e3;
+      border-radius: 8px;
+      background:
+        linear-gradient(90deg, rgb(207 216 227 / 0.45) 1px, transparent 1px),
+        linear-gradient(0deg, rgb(207 216 227 / 0.45) 1px, transparent 1px),
+        #eef3f7;
+      background-size: 40px 40px;
+    }
+    .floorplan::before {
+      content: "";
+      position: absolute;
+      left: 22%;
+      top: 11%;
+      width: 56%;
+      height: 72%;
+      border: 3px solid #334155;
+      border-radius: 6px;
+      background: #fdfefe;
+      box-shadow: 0 10px 24px rgb(15 23 42 / 0.08);
+    }
+    .room-zone {
+      position: absolute;
+      left: var(--x);
+      top: var(--y);
+      width: var(--w);
+      height: var(--h);
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      gap: 5px;
+      padding: 8px;
+      border-radius: 7px;
+      background: rgb(255 255 255 / 0.92);
+      color: #17202a;
+      overflow: hidden;
+    }
+    .room-zone.outdoor {
+      background: rgb(246 251 248 / 0.92);
+    }
+    .room-zone.utility {
+      background: rgb(249 250 251 / 0.94);
+    }
+    .room-zone.stale,
+    .room-zone.offline {
+      opacity: 0.74;
+    }
+    .room-zone .room-head {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 6px;
+    }
+    .room-zone .room-name {
+      font-size: 12px;
+      font-weight: 780;
+      line-height: 1.1;
+      min-width: 0;
+    }
+    .room-zone .room-reading {
+      color: var(--green);
+      font-size: 14px;
+      line-height: 1;
+      font-weight: 780;
+      white-space: nowrap;
+      flex: 0 0 auto;
+    }
+    .room-zone.stale .room-reading {
+      color: var(--amber);
+    }
+    .room-zone.offline .room-reading {
+      color: var(--red);
+    }
+    .room-zone .room-meta {
+      color: var(--ink-soft);
+      font-size: 10px;
+      line-height: 1.2;
+      white-space: nowrap;
+    }
+    .floorplan-key {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      padding-top: 10px;
+      color: var(--ink-soft);
+      font-size: 13px;
+    }
+    .zone-key {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .zone-sample {
+      width: 18px;
+      height: 12px;
+      border: 2px solid #9db1c7;
+      border-radius: 4px;
+      background: #fff;
+    }
+    .zone-sample.outdoor {
+      border-style: dashed;
+      background: #f6fbf8;
     }
     #trend {
       width: 100%;
@@ -365,6 +476,16 @@ def page() -> bytes:
       .summary {
         grid-template-columns: repeat(2, minmax(0, 1fr));
       }
+      .floorplan {
+        min-height: 720px;
+        aspect-ratio: 9 / 13;
+      }
+      .floorplan::before {
+        left: 8%;
+        top: 12%;
+        width: 84%;
+        height: 70%;
+      }
     }
     @media (max-width: 560px) {
       main {
@@ -376,6 +497,18 @@ def page() -> bytes:
       }
       .summary, .metrics {
         grid-template-columns: 1fr;
+      }
+      .house-wrap {
+        padding: 10px;
+      }
+      .floorplan {
+        min-height: 760px;
+      }
+      .room-zone {
+        padding: 7px;
+      }
+      .room-zone .room-reading {
+        font-size: 13px;
       }
     }
   </style>
@@ -412,6 +545,20 @@ def page() -> bytes:
         <div class="label">Signal</div>
         <div class="value" id="avg-rssi">--</div>
         <div class="subvalue">Average RSSI</div>
+      </div>
+    </section>
+
+    <section class="panel" aria-label="House diagram">
+      <div class="panel-head">
+        <h2>House Diagram</h2>
+        <span class="muted">Live readings by approximate location</span>
+      </div>
+      <div class="house-wrap">
+        <div class="floorplan" id="floorplan"></div>
+        <div class="floorplan-key" aria-label="Diagram key">
+          <span class="zone-key"><span class="zone-sample"></span>Interior</span>
+          <span class="zone-key"><span class="zone-sample outdoor"></span>Exterior or detached</span>
+        </div>
       </div>
     </section>
 
@@ -458,6 +605,26 @@ def page() -> bytes:
   </main>
   <script>
     const state = {latest: [], history: []};
+    const floorplanZones = [
+      {location: "Porch", x: 30, y: 4, w: 18, h: 10, type: "outdoor"},
+      {location: "Entryway", x: 48, y: 13, w: 12, h: 14},
+      {location: "FrontBedroom", x: 23, y: 14, w: 25, h: 22},
+      {location: "Office", x: 60, y: 14, w: 16, h: 22},
+      {location: "Den", x: 44, y: 36, w: 18, h: 20},
+      {location: "Kitchen", x: 62, y: 36, w: 14, h: 20},
+      {location: "Laundryroom", x: 23, y: 56, w: 15, h: 15, type: "utility"},
+      {location: "LaundryroomAC", x: 38, y: 56, w: 12, h: 15, type: "utility"},
+      {location: "WaterHeater", x: 50, y: 56, w: 12, h: 15, type: "utility"},
+      {location: "WallBehindWH", x: 62, y: 56, w: 14, h: 15, type: "utility"},
+      {location: "MasterBedroom", x: 23, y: 71, w: 27, h: 11},
+      {location: "Sunroom", x: 50, y: 71, w: 18, h: 11},
+      {location: "SunroomDoor", x: 68, y: 71, w: 8, h: 11},
+      {location: "Sunroom Test", x: 78, y: 72, w: 13, h: 10, type: "utility"},
+      {location: "Garage", x: 3, y: 25, w: 16, h: 22, type: "outdoor"},
+      {location: "GarageDriveway", x: 3, y: 48, w: 16, h: 15, type: "outdoor"},
+      {location: "BunkHouse", x: 60, y: 25, w: 16, h: 11},
+      {location: "Lightpole", x: 82, y: 43, w: 13, h: 13, type: "outdoor"},
+    ];
 
     function fmt(value, suffix = "") {
       if (value === null || value === undefined || Number.isNaN(value)) return "--";
@@ -516,7 +683,6 @@ def page() -> bytes:
       }
 
       for (const row of rows) {
-        const [stateClass, stateText] = deviceState(row);
         const card = document.createElement("article");
         card.className = "device";
 
@@ -525,25 +691,14 @@ def page() -> bytes:
         const titleBlock = document.createElement("div");
         const title = document.createElement("h2");
         title.textContent = row.location || row.deviceId;
-        const device = document.createElement("div");
-        device.className = "muted";
-        device.textContent = row.deviceId;
-        titleBlock.append(title, device);
-
-        const status = document.createElement("span");
-        status.className = `status ${stateClass}`;
-        const dot = document.createElement("span");
-        dot.className = "dot";
-        status.append(dot, document.createTextNode(stateText));
-        head.append(titleBlock, status);
+        titleBlock.append(title);
+        head.append(titleBlock);
 
         const metrics = document.createElement("div");
         metrics.className = "metrics";
         for (const [label, value] of [
           ["Temperature", fmt(row.temperature, " F")],
-          ["Humidity", fmt(row.humidity, "%")],
-          ["RSSI", fmt(row.rssi, " dBm")],
-          ["Seen", relativeTime(row.lastSeen)],
+          ["Last Seen", relativeTime(row.lastSeen)],
         ]) {
           const metric = document.createElement("div");
           metric.className = "metric";
@@ -558,6 +713,44 @@ def page() -> bytes:
 
         card.append(head, metrics);
         devices.appendChild(card);
+      }
+    }
+
+    function findByLocation(rows, location) {
+      return rows.find((row) => row.location === location);
+    }
+
+    function renderFloorplan(rows) {
+      const plan = document.getElementById("floorplan");
+      plan.replaceChildren();
+      for (const zone of floorplanZones) {
+        const row = findByLocation(rows, zone.location);
+        const [stateClass] = row ? deviceState(row) : ["offline", "No data"];
+        const room = document.createElement("article");
+        room.className = `room-zone ${zone.type || ""} ${stateClass}`.trim();
+        room.style.setProperty("--x", `${zone.x}%`);
+        room.style.setProperty("--y", `${zone.y}%`);
+        room.style.setProperty("--w", `${zone.w}%`);
+        room.style.setProperty("--h", `${zone.h}%`);
+
+        const top = document.createElement("div");
+        top.className = "room-head";
+        const name = document.createElement("div");
+        name.className = "room-name";
+        name.textContent = zone.location;
+        const reading = document.createElement("div");
+        reading.className = "room-reading";
+        reading.textContent = row ? fmt(row.temperature, " F") : "--";
+        top.append(name, reading);
+
+        const meta = document.createElement("div");
+        meta.className = "room-meta";
+        meta.textContent = row
+          ? `${fmt(row.humidity, "%")} humidity - ${relativeTime(row.lastSeen)}`
+          : "Waiting for reading";
+
+        room.append(top, meta);
+        plan.appendChild(room);
       }
     }
 
@@ -666,6 +859,7 @@ def page() -> bytes:
         state.latest = await latestResponse.json();
         state.history = await historyResponse.json();
         renderSummary(state.latest);
+        renderFloorplan(state.latest);
         renderDevices(state.latest);
         render(state.latest);
         renderTrend(state.history);

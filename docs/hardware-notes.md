@@ -34,12 +34,13 @@ Future firmware should:
 
 Intent:
 
-- Keep one ESP32 connected to the Pi for firmware development and testing.
-- Use it to validate builds before OTA rollout.
+- Keep `Sunroom Test` connected to the Pi for firmware development and testing.
+- Use it to validate builds and new features before OTA rollout to the rest of the fleet.
 - Use USB flashing as the recovery path if OTA fails.
 
 Current status:
 
+- Bench device: `Sunroom Test` / `esp32-9c9c1fda3670`.
 - After changing USB cords, the ESP32 is visible as a Silicon Labs CP210x USB serial bridge.
 - The serial device is `/dev/ttyUSB0`.
 - Device permissions are `root:dialout` with mode `0660`.
@@ -55,6 +56,7 @@ Chip type: ESP32-D0WDQ6 (revision v1.0)
 Features: Wi-Fi, BT, Dual Core + LP Core, 240MHz
 Crystal frequency: 40MHz
 MAC: 9c:9c:1f:da:36:70
+Local device ID: esp32-9c9c1fda3670
 ```
 
 Serial log check:

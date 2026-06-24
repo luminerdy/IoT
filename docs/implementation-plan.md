@@ -126,6 +126,7 @@ Goal: Make the system reliable for all room sensors.
 Tasks:
 
 - Improve the Raspberry Pi-hosted web dashboard as the main IoT data view.
+- Add a dashboard house image upload and sensor placement overlay so readings can be positioned on the actual home image.
 - Add batch rollout control.
 - Add rollback workflow.
 - Add dashboard admin view for device/location mapping.
@@ -135,8 +136,8 @@ Tasks:
 
 Immediate tasks for 2026-06-24:
 
-- Park `Lightpole` (`esp32-94b97ed52a78`) until manual physical inspection; it has reported firmware status but had no temperature/humidity payload at the latest check. Check DHT22 VCC, GND, DATA pin, pull-up, and configured GPIO before resuming software checks.
-- Confirm newly recovered devices remain stable across a few 10-minute telemetry intervals: `Laundryroom`, `MasterBedroom`, `SunroomDoor`, and `Entryway`.
+- Confirm newly recovered devices remain stable across a few 10-minute telemetry intervals: `Laundryroom`, `Lightpole`, `MasterBedroom`, `SunroomDoor`, and `Entryway`.
+- Replace the approximate dashboard house diagram with an uploaded house image and configurable temperature/humidity placement.
 - Keep `config/locations.json` and SQLite placeholders clean when devices are removed or renamed.
 - Start OTA failure-path testing.
 

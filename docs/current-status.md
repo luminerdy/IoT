@@ -57,7 +57,7 @@ Latest SQLite/API check on 2026-06-24 shows these devices on `0.1.2-filtered-tel
 ## Active Blockers
 
 - Normal local `git push` from this Pi is still unavailable because local GitHub HTTPS/SSH credentials are not configured.
-- Latest local changes are not pushed to GitHub because HTTPS push needs a username/token and SSH push is denied by missing public-key auth.
+- Latest dashboard graph, house diagram, and memory changes were published to GitHub through the connector in draft PR #1 because local HTTPS push still needs a username/token and SSH push is denied by missing public-key auth.
 
 ## Next Actions
 
@@ -88,8 +88,9 @@ Latest SQLite/API check on 2026-06-24 shows these devices on `0.1.2-filtered-tel
 ## Stop Point
 
 - Local branch: `main`
-- Latest local commit: run `git log --oneline -1` in `/home/scotty/IoT`
+- Latest local commit: `c21424e update dashboard graph and diagram`
 - Public GitHub repo: `luminerdy/IoT`
+- Draft PR: `https://github.com/luminerdy/IoT/pull/1`
 - Local-only ignored files include runtime data, build output, `config/locations.json`, and `firmware/include/secrets.h`.
 - Dashboard URL on the Pi: `http://127.0.0.1:8000`; LAN URL: `http://piserver.local:8000` or `http://<pi-ip-address>:8000`.
 - Dashboard app: summary metrics, approximate house diagram, device cards, latest readings, and `/api/history` 24-hour trend data are in `app/iot_home/dashboard.py`. The new diagram uses two-line room labels with location/temp above humidity/last-seen, no per-room box outline, and treats `BunkHouse` as an interior grandkids room. The new diagram is code-tested and temporary-server tested; a reboot or dashboard service restart is needed for the boot-enabled service on port `8000` to load it.

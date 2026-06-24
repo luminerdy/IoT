@@ -359,8 +359,24 @@ Use this file for dated accomplishments and important observations. Keep future 
 - Marked `Lightpole` as parked for manual physical inspection tomorrow. Check DHT22 VCC, GND, DATA pin, pull-up, and configured GPIO before resuming software-side follow-up.
 - Expanded the OTA hardening backlog into concrete bad URL, bad SHA-256, interrupted download, and oversized image test cases.
 
+### Lightpole ESP32 Replacement
+
+- Identified the new USB-connected ESP32 MAC as `0c:b8:15:c2:8a:c8`, so its local firmware device ID is `esp32-0cb815c28ac8`.
+- USB-flashed `0.1.2-filtered-telemetry` to the replacement board on `/dev/ttyUSB0`.
+- Replaced the local `Lightpole` mapping from retired `esp32-94b97ed52a78` to `esp32-0cb815c28ac8`.
+- Published retained default config for `esp32-0cb815c28ac8`: `reportIntervalSeconds=600`, `changeThresholdF=1.0`.
+- Verified retained MQTT status: `esp32-0cb815c28ac8` is online on firmware `0.1.2-filtered-telemetry`.
+- Serial monitor verified the board received and applied the retained config. While bench-connected over USB, it repeatedly read implausible `265.8F` / `99.9%` DHT values, which firmware filtered. Validate normal DHT telemetry after installing it on the verified lightpole wiring.
+- Removed the retired `esp32-94b97ed52a78` row from live SQLite, set the replacement row to `Lightpole`, and cleared retained MQTT status/config/telemetry for the retired ID.
+- After replacing the DHT22 sensor and rebooting the ESP32, `Lightpole` published valid telemetry: `85.3F`, `51.7%`, RSSI `-43`, status `OK`, sequence `2` at `2026-06-24T16:59:21Z`. The dashboard API maps the row to `Lightpole`.
+- Moved `Lightpole` to its outside location and restored `Sunroom Test` as the USB-connected bench target. `esptool` confirmed `/dev/ttyUSB0` is MAC `9c:9c:1f:da:36:70`, device ID `esp32-9c9c1fda3670`. Use this device for code updates and new feature testing before fleet deployment.
+- Added an approximate dashboard house diagram using the current known locations, with live temperature and humidity values placed in each zone. Added follow-up work to replace it with an uploaded house image and configurable sensor overlays. Verified syntax with `python3 -m py_compile app/iot_home/dashboard.py` and tested the new page/API on temporary port `8002`; normal port `8000` needs a reboot or service restart to pick up the code.
+- Refined the house diagram labels so humidity and last-seen sit on the line below location/temp, removed the per-room box outline, and changed `BunkHouse` from exterior/detached to an interior grandkids room.
+- Updated the dashboard history graph into a selectable temperature graph with 6h, 12h, 24h, 48h, and 7-day ranges plus per-device toggles. History rows now use the configured location mapping, and the SQLite readings table has a created-at index plus a larger bounded history limit for longer chart ranges.
+- Adjusted the dashboard house diagram placement: moved `Garage` and `GarageDriveway` to the right side, and moved `Lightpole` to the top row immediately right of `Porch`. Verified syntax with `python3 -m py_compile app/iot_home/dashboard.py`.
+
 ## Next Work
 
 - Start OTA failure-path tests.
 - Confirm newly recovered devices stay stable across a few 10-minute telemetry intervals.
-- Resume `Lightpole` software checks after manual physical inspection.
+- Confirm replacement `Lightpole` remains stable across a few 10-minute telemetry intervals.

@@ -12,7 +12,7 @@ The project is a local-first Raspberry Pi IoT system with MQTT, SQLite, a boot-e
 
 Phase 4: Local OTA plus daily dashboard improvements
 
-Status: The local OTA firmware is deployed broadly. The dashboard service is enabled at boot and serves live device cards, summary metrics, latest readings, and a 24-hour trend from SQLite.
+Status: The local OTA firmware is deployed broadly. The dashboard service is enabled at boot and serves live device cards, summary metrics, latest readings, a selectable temperature graph from SQLite, and an approximate house diagram.
 
 ## Accomplished
 
@@ -25,7 +25,11 @@ Status: The local OTA firmware is deployed broadly. The dashboard service is ena
 - Published retained default runtime config for migrated devices: `reportIntervalSeconds=600`, `changeThresholdF=1.0`.
 - Removed stale local placeholders for `Garage` duplicate `esp32-240ac4ecafd8` and `AtticChimney` `esp32-240ac4f9019c`.
 - Added `Entryway` from `10.10.10.137` as expected device ID `esp32-94b97ed54c54`; it is now reporting telemetry.
-- Retried `Lightpole` at `10.10.10.122`; it accepted upload and now reports firmware status as `esp32-94b97ed52a78`.
+- Replaced `Lightpole` with the USB-flashed ESP32 `esp32-0cb815c28ac8`; after replacing the DHT22 sensor it reports valid telemetry.
+- Restored `Sunroom Test` (`esp32-9c9c1fda3670`) as the USB-connected bench device for firmware changes and feature testing before fleet deployment.
+- Added a first-pass dashboard house diagram using approximate zones from the known sensor locations; the diagram was tested on temporary port `8002`.
+- Updated the dashboard graph to support selectable 6h, 12h, 24h, 48h, and 7-day temperature ranges with per-device toggles.
+- Adjusted the house diagram placements so `Garage` and `GarageDriveway` sit on the right side and `Lightpole` sits on the top row just right of `Porch`.
 
 ## Live Dashboard State
 
@@ -40,7 +44,7 @@ Latest SQLite/API check on 2026-06-24 shows these devices on `0.1.2-filtered-tel
 - `Kitchen` / `esp32-9c9c1fdd67ec`: online, telemetry OK.
 - `Laundryroom` / `esp32-240ac4fa383c`: online, telemetry OK.
 - `LaundryroomAC` / `esp32-4022d8ee4904`: online, telemetry OK.
-- `Lightpole` / `esp32-94b97ed52a78`: manual physical follow-up pending; it reported firmware status but no DHT telemetry.
+- `Lightpole` / `esp32-0cb815c28ac8`: online, telemetry OK.
 - `MasterBedroom` / `esp32-240ac4fa4290`: online, telemetry OK.
 - `Office` / `esp32-240ac4f8fecc`: online, telemetry OK.
 - `Porch` / `esp32-240ac4f8f574`: online, telemetry OK.
@@ -57,11 +61,12 @@ Latest SQLite/API check on 2026-06-24 shows these devices on `0.1.2-filtered-tel
 
 ## Next Actions
 
-1. Lightpole is parked for manual physical inspection tomorrow; check DHT22 VCC, GND, DATA pin, pull-up, and configured GPIO before resuming software checks.
-2. Confirm the newly recovered devices stay stable across a few 10-minute report intervals: `Laundryroom`, `MasterBedroom`, `SunroomDoor`, and `Entryway`.
-3. Add OTA rollback/failure-path tests for bad URL, bad SHA-256, interrupted download, and oversized image cases.
-4. Consider firmware signing after the failure-path tests are documented.
-5. Configure GitHub push credentials or SSH key on the Pi.
+1. Confirm the newly recovered devices stay stable across a few 10-minute report intervals: `Laundryroom`, `Lightpole`, `MasterBedroom`, `SunroomDoor`, and `Entryway`.
+2. Use `Sunroom Test` (`esp32-9c9c1fda3670`) on `/dev/ttyUSB0` for firmware and feature validation before deploying to other devices.
+3. Replace the approximate dashboard house diagram with an uploaded house image and configurable sensor placement overlays.
+4. Add OTA rollback/failure-path tests for bad URL, bad SHA-256, interrupted download, and oversized image cases.
+5. Consider firmware signing after the failure-path tests are documented.
+6. Configure GitHub push credentials or SSH key on the Pi.
 
 ## Decisions To Revisit Soon
 
@@ -87,6 +92,7 @@ Latest SQLite/API check on 2026-06-24 shows these devices on `0.1.2-filtered-tel
 - Public GitHub repo: `luminerdy/IoT`
 - Local-only ignored files include runtime data, build output, `config/locations.json`, and `firmware/include/secrets.h`.
 - Dashboard URL on the Pi: `http://127.0.0.1:8000`; LAN URL: `http://piserver.local:8000` or `http://<pi-ip-address>:8000`.
-- Dashboard app: summary metrics, device cards, latest readings, and `/api/history` 24-hour trend data are live on the boot-enabled dashboard service.
+- Dashboard app: summary metrics, approximate house diagram, device cards, latest readings, and `/api/history` 24-hour trend data are in `app/iot_home/dashboard.py`. The new diagram uses two-line room labels with location/temp above humidity/last-seen, no per-room box outline, and treats `BunkHouse` as an interior grandkids room. The new diagram is code-tested and temporary-server tested; a reboot or dashboard service restart is needed for the boot-enabled service on port `8000` to load it.
+- Temporary dashboard note: port `8002` was used only to validate the new diagram and has been stopped. After reboot, use normal port `8000`.
 - Telemetry policy memory: ESP32s should read DHT22 frequently, reject impossible values and one-off large jumps, publish median-filtered temp/humidity every 600 seconds, and only publish early when filtered temperature differs by the configured threshold for 3 consecutive valid samples. Humidity is reported but does not trigger early publishes.
 - Latest live-tested OTA artifact: `data/firmware/0.1.2-filtered-telemetry/firmware.bin`; ignored by git because runtime/build artifacts stay local.

@@ -97,3 +97,73 @@ Version-reporting rollout also succeeded on 2026-06-20:
 - Device: `esp32-9c9c1fda3670`
 - Post-OTA retained status: reported `firmwareVersion` as `0.1.1-ota-version` at `2026-06-20T18:22:24Z`
 - Post-OTA telemetry: received at `2026-06-20T18:24:12Z` with `firmwareVersion` set to `0.1.1-ota-version`
+
+## Failure-Path Results
+
+Bad URL test on 2026-06-26:
+
+- Device: `Sunroom Test` / `esp32-9c9c1fda3670`
+- Rollout: `20260626T153900Z-bad-url-test`
+- Command URL: `http://piserver.local:8000/firmware/bad-url-test/missing.bin`
+- Observed OTA status progression:
+
+```text
+downloading: ota download started
+failed: firmware download failed
+```
+
+The retained status still reported firmware `0.1.2-filtered-telemetry`, and its retained online timestamp did not refresh, so there was no indication of a reboot during this failure test.
+
+Bad SHA-256 test on 2026-06-26:
+
+- Device: `Sunroom Test` / `esp32-9c9c1fda3670`
+- Rollout: `20260626T190800Z-bad-sha`
+- Command URL: `http://10.10.10.123:8000/firmware/0.1.2-filtered-telemetry/firmware.bin`
+- Command size: `825200`
+- Command SHA-256: intentionally wrong, all `f` characters
+- Observed OTA status progression:
+
+```text
+downloading: ota download started
+rejected: firmware sha256 mismatch
+```
+
+The retained status still reported firmware `0.1.2-filtered-telemetry`, and its retained online timestamp did not refresh. A normal telemetry sample after the earlier bad-SHA attempt reported high uptime and `restartReason` as `PowerOn`, so there was no indication of a reboot.
+
+Note: one earlier bad-SHA command used a version label longer than the firmware's 31-character command field and was rejected as `invalid ota command`. Keep OTA `version` labels short until command parsing is hardened.
+
+Interrupted download test on 2026-06-26:
+
+- Device: `Sunroom Test` / `esp32-9c9c1fda3670`
+- Rollout: `20260626T191300Z-interrupted`
+- Temporary server: port `8003`
+- Command URL: `http://10.10.10.123:8003/firmware-interrupted.bin`
+- Command size: `825200`
+- Command SHA-256: correct full firmware SHA-256
+- Server behavior: advertised `Content-Length: 825200`, sent `65536` bytes, then closed the connection
+- Observed OTA status progression:
+
+```text
+downloading: ota download started
+failed: firmware length mismatch
+```
+
+Server logs confirmed the ESP32 at `10.10.10.124` requested the interrupted firmware URL. The retained status still reported firmware `0.1.2-filtered-telemetry`, and the dashboard still showed `Sunroom Test` online and not stale.
+
+Oversized image test on 2026-06-26:
+
+- Device: `Sunroom Test` / `esp32-9c9c1fda3670`
+- Rollout: `20260626T203800Z-oversized`
+- Temporary server: port `8003`
+- Command URL: `http://10.10.10.123:8003/firmware-oversized.bin`
+- Command size: `2000000`
+- Command SHA-256: placeholder; partition size failure occurs before SHA validation
+- Server behavior: advertised `Content-Length: 2000000`, sent a small placeholder body, and kept the connection open briefly
+- Observed OTA status progression:
+
+```text
+downloading: ota download started
+failed: ota partition unavailable
+```
+
+Server logs confirmed the ESP32 at `10.10.10.124` requested the oversized firmware URL. The retained status still reported firmware `0.1.2-filtered-telemetry`, and the dashboard still showed `Sunroom Test` online and not stale.

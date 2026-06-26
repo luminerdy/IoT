@@ -114,7 +114,7 @@ Acceptance criteria:
 
 Hardening follow-up:
 
-- Test bad URL, bad SHA-256, interrupted download, and oversized image failure paths.
+- Test bad URL, bad SHA-256, interrupted download, and oversized image failure paths. Done on USB-recoverable `Sunroom Test`.
 - Decide whether firmware version should remain a PlatformIO build flag or move to a single release metadata source.
 
 ## Phase 5: Fleet Operations
@@ -127,6 +127,8 @@ Tasks:
 
 - Improve the Raspberry Pi-hosted web dashboard as the main IoT data view.
 - Add a dashboard house image upload and sensor placement overlay so readings can be positioned on the actual home image.
+- Keep the Temperature Graph useful for daily monitoring with grouped and individual device selection. Initial grouping done.
+- Flag suspect outdoor DHT22 humidity in the dashboard. Initial `>=99%` outdoor DHT22 rule done.
 - Add batch rollout control.
 - Add rollback workflow.
 - Add dashboard admin view for device/location mapping.
@@ -134,17 +136,19 @@ Tasks:
 - Add systemd services for broker, collector, dashboard, and OTA coordinator.
 - Add basic operational runbook.
 
-Immediate tasks for 2026-06-24:
+Ready next for 2026-06-27:
 
+- After the planned reboot, verify port `8000` loads the suspect humidity flag and no retired `esp32-94b97ed52a78` / `UNMAPPED` entry is present.
+- Provision the three new ESP32 devices when they arrive: flash firmware one at a time, capture each MAC/device ID, publish retained defaults, and map locations.
 - Confirm newly recovered devices remain stable across a few 10-minute telemetry intervals: `Laundryroom`, `Lightpole`, `MasterBedroom`, `SunroomDoor`, and `Entryway`.
-- Replace the approximate dashboard house diagram with an uploaded house image and configurable temperature/humidity placement.
 - Keep `config/locations.json` and SQLite placeholders clean when devices are removed or renamed.
-- Start OTA failure-path testing.
+- Replace the approximate dashboard house diagram with an uploaded house image and configurable temperature/humidity placement.
+- Decide whether firmware signing should be added before broader unattended fleet rollout.
 
 Acceptance criteria:
 
 - All devices can be monitored from the dashboard.
-- Dashboard is reachable from the Pi and LAN and shows current readings, online/stale/offline state, and useful recent history.
+- Dashboard is reachable from the Pi and LAN and shows current readings, online/stale/offline state, useful recent history, and grouped temperature graph selection.
 - Device mappings can be maintained on the Pi.
 - OTA rollout can be paused and retried.
 - Services restart after reboot.
@@ -160,16 +164,16 @@ Tasks:
 - Verify the dashboard service is reachable at `http://127.0.0.1:8000` on the Pi and `http://piserver.local:8000` on the LAN.
 - Keep the current latest-reading table, but improve layout for phone and desktop use.
 - Add at-a-glance cards for temperature, humidity, online/stale/offline state, RSSI, last seen, and firmware version.
-- Add a recent history view or simple chart from SQLite readings.
+- Add a recent history view or simple chart from SQLite readings. Done; Temperature Graph supports range selection plus grouped and individual device toggles.
 - Add clear empty/error states if MQTT data or SQLite data is missing.
 - Decide whether to keep the current standard-library HTTP server or move the dashboard to a fuller web stack.
 
 ## OTA Hardening Backlog
 
-- Test bad OTA URL failure path: publish an OTA command with a reachable rollout ID but an invalid firmware URL; verify `ota/status` reports failure and the device keeps running the current firmware.
-- Test bad SHA-256 failure path: publish an OTA command with a valid firmware URL and intentionally wrong SHA-256; verify download completes, validation fails, and no reboot occurs.
-- Test interrupted download failure path: serve a truncated firmware response or stop the HTTP server during download; verify the device reports failure and keeps running.
-- Test oversized image failure path: publish or serve an image larger than the available OTA partition; verify OTA write fails cleanly and no reboot occurs.
-- Record expected `home/sensors/{deviceId}/ota/status` messages for each failure mode in `docs/mqtt-schema.md` or the Phase 4 runbook.
+- Test bad OTA URL failure path: publish an OTA command with a reachable rollout ID but an invalid firmware URL; verify `ota/status` reports failure and the device keeps running the current firmware. Done for `Sunroom Test` with rollout `20260626T153900Z-bad-url-test`.
+- Test bad SHA-256 failure path: publish an OTA command with a valid firmware URL and intentionally wrong SHA-256; verify download completes, validation fails, and no reboot occurs. Done for `Sunroom Test` with rollout `20260626T190800Z-bad-sha`.
+- Test interrupted download failure path: serve a truncated firmware response or stop the HTTP server during download; verify the device reports failure and keeps running. Done for `Sunroom Test` with rollout `20260626T191300Z-interrupted`.
+- Test oversized image failure path: publish or serve an image larger than the available OTA partition; verify OTA write fails cleanly and no reboot occurs. Done for `Sunroom Test` with rollout `20260626T203800Z-oversized`.
+- Record expected `home/sensors/{deviceId}/ota/status` messages for each failure mode in `docs/mqtt-schema.md` or the Phase 4 runbook. Done in the Phase 4 runbook.
 - Decide whether firmware version should remain a PlatformIO build flag or move to a single release metadata source.
 - Consider firmware signing after failure-path tests are documented.

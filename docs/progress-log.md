@@ -376,8 +376,67 @@ Use this file for dated accomplishments and important observations. Keep future 
 - Adjusted the dashboard house diagram placement: moved `Garage` and `GarageDriveway` to the right side, and moved `Lightpole` to the top row immediately right of `Porch`. Verified syntax with `python3 -m py_compile app/iot_home/dashboard.py`.
 - Published the dashboard graph, diagram placement, and memory updates to GitHub as draft PR #1 (`https://github.com/luminerdy/IoT/pull/1`) through the GitHub connector. Local `git push` remains blocked by missing HTTPS/SSH credentials on the Pi.
 
+## 2026-06-26
+
+### Temperature Graph Grouping
+
+- Updated the dashboard Temperature Graph selector from one flat list of per-device toggles to three grouped sections with group-level `All` checkboxes and individual device checkboxes.
+- Group membership is currently hard-coded in `app/iot_home/dashboard.py`:
+  - `Outside`: `Porch`, `Lightpole`, `GarageDriveway`.
+  - `Separate`: `Garage`, `WaterHeater`, `WallBehindWH`, `LaundryroomAC`.
+  - `Inside`: all other reporting locations not in `Outside` or `Separate`.
+- Preserved the existing graph behavior: new devices are selected by default, individual device toggles still work, and the selected readings count updates from the chosen devices.
+- Added responsive styling so the three group panels sit side by side on desktop and stack on narrower screens.
+- Verified syntax with `python3 -m py_compile app/iot_home/dashboard.py`.
+- Tested the updated dashboard on temporary port `8002` with live SQLite data and headless Chromium screenshots. The review server is currently running at `http://10.10.10.123:8002`.
+- Attempted to restart `iot-home-dashboard.service` so the normal port `8000` would load the new code, but systemd required interactive authentication. Port `8000` may still show the older dashboard until the service is restarted manually or the Pi reboots.
+- Confirmed the Pi rebooted at `2026-06-25 22:12:45 CDT`; `iot-home-dashboard.service` started at `2026-06-25 22:12:57 CDT` and normal port `8000` now serves the grouped Temperature Graph code.
+- Live dashboard/API smoke test on port `8000` showed 18 mapped devices. The recovered follow-up devices `Laundryroom`, `Lightpole`, `MasterBedroom`, `SunroomDoor`, and `Entryway` were online with fresh telemetry and had readings in the last hour. `GarageDriveway` initially appeared stale, then reported again by the final check at `2026-06-26T18:23:13Z`.
+
+### Humidity Quality Flagging
+
+- Accepted the operating assumption that outdoor DHT22 humidity readings are approximate and can degrade over time.
+- Added a dashboard-side suspect humidity flag for outdoor DHT22 locations when humidity is at or above `99%`.
+- The current outdoor humidity flag applies to `Porch`, `Lightpole`, and `GarageDriveway`; live data flags `Porch` at `99.9%`, while current `Lightpole` and `GarageDriveway` readings are not flagged.
+- Suspect humidity is excluded from the dashboard average humidity summary, while temperature and device status remain visible.
+- Verified syntax with `python3 -m py_compile app/iot_home/dashboard.py` and smoke-tested the modified dashboard on temporary port `8002`.
+- Tried to restart `iot-home-dashboard.service` so normal port `8000` would load the suspect humidity flag, but systemd required interactive authentication. The change will load after a manual service restart or the planned reboot.
+
+### USB Cable Check
+
+- Plugged the retired old `Lightpole` ESP32 into the test cable to confirm the cable supports data.
+- The Pi enumerated the board as a CP2102 serial bridge on `/dev/ttyUSB1`; the existing bench ESP32 remained on `/dev/ttyUSB0`.
+- `esptool` connected to `/dev/ttyUSB1` and read MAC `94:b9:7e:d5:2a:78`, confirming the cable is data-capable.
+- The probe/reset briefly caused retained MQTT/status and SQLite rows for retired device `esp32-94b97ed52a78`; cleared retained MQTT state and removed the transient SQLite row. Final API check showed `unmapped_count=0`.
+
+### OTA Failure-Path Testing
+
+- Tested the bad OTA URL failure path against USB-recoverable `Sunroom Test` / `esp32-9c9c1fda3670`.
+- Published rollout `20260626T153900Z-bad-url-test` with a missing firmware URL: `http://piserver.local:8000/firmware/bad-url-test/missing.bin`.
+- Observed OTA status progression on `home/sensors/esp32-9c9c1fda3670/ota/status`: `downloading` with message `ota download started`, then `failed` with message `firmware download failed`.
+- Verified the retained status still reports firmware `0.1.2-filtered-telemetry`; the retained online timestamp did not refresh, so there was no indication of a reboot during the bad URL test.
+- Tested the bad SHA-256 failure path against `Sunroom Test` using the valid staged firmware URL and an intentionally wrong SHA-256.
+- First bad-SHA command used a version string longer than the firmware's 31-character field and was rejected as `invalid ota command`; reran with shorter version `bad-sha-test`.
+- Published rollout `20260626T190800Z-bad-sha` with URL `http://10.10.10.123:8000/firmware/0.1.2-filtered-telemetry/firmware.bin`, size `825200`, and SHA-256 set to all `f` characters.
+- Observed OTA status progression: `downloading` with message `ota download started`, then `rejected` with message `firmware sha256 mismatch`.
+- Verified retained status still reports firmware `0.1.2-filtered-telemetry`; retained online timestamp did not refresh. Latest telemetry after the earlier bad-SHA attempt still had high uptime and `restartReason` set to `PowerOn`, so there was no indication of a reboot.
+- Tested the interrupted download failure path against `Sunroom Test` using a temporary HTTP server on port `8003`.
+- The temporary server advertised the full firmware `Content-Length` of `825200` bytes but sent only `65536` bytes before closing the connection. Server logs confirmed the ESP32 at `10.10.10.124` requested the interrupted firmware URL.
+- Published rollout `20260626T191300Z-interrupted` with URL `http://10.10.10.123:8003/firmware-interrupted.bin`, the correct full SHA-256, and expected size `825200`.
+- Observed OTA status progression: `downloading` with message `ota download started`, then `failed` with message `firmware length mismatch`.
+- Stopped the temporary port `8003` server after the test. Retained status still reported firmware `0.1.2-filtered-telemetry`, and the dashboard still showed `Sunroom Test` online and not stale.
+- Tested the oversized image failure path against `Sunroom Test` using a temporary HTTP server on port `8003`.
+- The temporary server advertised `Content-Length: 2000000`, larger than the OTA partition capacity, and sent a small placeholder body. Server logs confirmed the ESP32 at `10.10.10.124` requested the oversized firmware URL.
+- Published rollout `20260626T203800Z-oversized` with URL `http://10.10.10.123:8003/firmware-oversized.bin`, expected size `2000000`, and a placeholder SHA-256.
+- Observed OTA status progression: `downloading` with message `ota download started`, then `failed` with message `ota partition unavailable`.
+- Stopped the temporary port `8003` server after the test. Retained status still reported firmware `0.1.2-filtered-telemetry`, and the dashboard still showed `Sunroom Test` online and not stale.
+- Added decision record `DR-015` accepting the OTA failure-path safety validation for the local OTA MVP, while leaving firmware signing, rollback workflow, and richer rollout controls as Phase 5 hardening work.
+- Updated the implementation plan and current status so OTA failure-path testing is marked complete and new ESP32 provisioning is listed as an upcoming task.
+- Added decision record `DR-016` accepting outdoor DHT22 humidity as advisory and documenting the dashboard suspect-humidity threshold.
+
 ## Next Work
 
-- Start OTA failure-path tests.
+- After the planned reboot, verify port `8000` loads the suspect humidity flag and no retired `Lightpole` / `UNMAPPED` row is present.
+- Provision the three new ESP32 devices when they arrive.
 - Confirm newly recovered devices stay stable across a few 10-minute telemetry intervals.
 - Confirm replacement `Lightpole` remains stable across a few 10-minute telemetry intervals.

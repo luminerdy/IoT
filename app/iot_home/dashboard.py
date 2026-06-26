@@ -246,6 +246,14 @@ def page() -> bytes:
       font-size: 20px;
       line-height: 1.1;
     }
+    .metric-note {
+      display: block;
+      margin-top: 5px;
+      color: var(--amber);
+      font-size: 12px;
+      font-weight: 700;
+      line-height: 1.1;
+    }
     .panel {
       overflow: hidden;
       margin-top: 18px;
@@ -293,10 +301,53 @@ def page() -> bytes:
       font: inherit;
     }
     .device-toggles {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      padding-top: 12px;
+    }
+    .device-group {
+      min-width: 0;
+      padding: 10px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #f8fafc;
+    }
+    .device-group-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 8px;
+    }
+    .device-group-title {
+      margin: 0;
+      color: #24313d;
+      font-size: 13px;
+      font-weight: 780;
+      letter-spacing: 0;
+    }
+    .group-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--ink-soft);
+      font-size: 12px;
+      font-weight: 650;
+      cursor: pointer;
+      user-select: none;
+      white-space: nowrap;
+    }
+    .group-toggle input {
+      width: 14px;
+      height: 14px;
+      margin: 0;
+      accent-color: var(--blue);
+    }
+    .device-group-items {
       display: flex;
       gap: 8px;
       flex-wrap: wrap;
-      padding-top: 12px;
     }
     .device-toggle {
       display: inline-flex;
@@ -410,6 +461,10 @@ def page() -> bytes:
     .room-zone.offline .room-reading {
       color: var(--red);
     }
+    .room-zone.humidity-suspect {
+      outline: 2px solid rgb(183 121 31 / 0.45);
+      outline-offset: -2px;
+    }
     .room-zone .room-meta {
       color: var(--ink-soft);
       font-size: 10px;
@@ -516,6 +571,26 @@ def page() -> bytes:
     .online .dot { background: var(--green); }
     .offline .dot { background: var(--red); }
     .stale .dot { background: var(--amber); }
+    .humidity-value {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    .humidity-flag {
+      display: inline-flex;
+      align-items: center;
+      min-height: 20px;
+      padding: 2px 6px;
+      border: 1px solid rgb(183 121 31 / 0.45);
+      border-radius: 999px;
+      background: #fff7ed;
+      color: var(--amber);
+      font-size: 11px;
+      font-weight: 760;
+      line-height: 1;
+      white-space: nowrap;
+    }
     .empty {
       padding: 28px 14px;
       color: var(--ink-soft);
@@ -539,6 +614,9 @@ def page() -> bytes:
       }
       .summary {
         grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+      .device-toggles {
+        grid-template-columns: 1fr;
       }
       .floorplan {
         min-height: 720px;
@@ -693,6 +771,26 @@ def page() -> bytes:
       "#b42318", "#1f6feb", "#0f766e", "#7c3aed", "#b7791f", "#0f6b8f",
       "#a21caf", "#2f855a", "#c2410c", "#475569", "#be123c", "#2563eb",
     ];
+    const outsideGraphLocations = new Set(["Porch", "Lightpole", "GarageDriveway"]);
+    const separateGraphLocations = new Set(["Garage", "WaterHeater", "WallBehindWH", "LaundryroomAC"]);
+    const outdoorHumidityLocations = new Set(["Porch", "Lightpole", "GarageDriveway"]);
+    const graphGroups = [
+      {
+        key: "inside",
+        label: "Inside",
+        match: (location) => !outsideGraphLocations.has(location) && !separateGraphLocations.has(location),
+      },
+      {
+        key: "outside",
+        label: "Outside",
+        match: (location) => outsideGraphLocations.has(location),
+      },
+      {
+        key: "separate",
+        label: "Separate",
+        match: (location) => separateGraphLocations.has(location),
+      },
+    ];
     const floorplanZones = [
       {location: "Porch", x: 30, y: 4, w: 18, h: 10, type: "outdoor"},
       {location: "FrontBedroom", x: 22, y: 14, w: 17, h: 18},
@@ -743,6 +841,27 @@ def page() -> bytes:
       return values.reduce((sum, value) => sum + value, 0) / values.length;
     }
 
+    function trustedAverage(rows, key, predicate) {
+      const values = rows
+        .filter(predicate)
+        .map((row) => row[key])
+        .filter((value) => typeof value === "number");
+      if (!values.length) return null;
+      return values.reduce((sum, value) => sum + value, 0) / values.length;
+    }
+
+    function isHumiditySuspect(row) {
+      return row
+        && row.sensorType === "DHT22"
+        && outdoorHumidityLocations.has(row.location)
+        && typeof row.humidity === "number"
+        && row.humidity >= 99;
+    }
+
+    function humidityText(row) {
+      return row ? fmt(row.humidity, "%") : "--";
+    }
+
     function deviceState(row) {
       if (row.stale) return ["stale", "Stale"];
       if (row.online) return ["online", "Online"];
@@ -755,7 +874,8 @@ def page() -> bytes:
       setText("device-count", rows.length);
       setText("online-count", `${online} online${stale ? `, ${stale} stale` : ""}`);
       setText("avg-temp", average(rows, "temperature") === null ? "--" : fmt(average(rows, "temperature"), " F"));
-      setText("avg-humidity", average(rows, "humidity") === null ? "--" : fmt(average(rows, "humidity"), "%"));
+      const avgHumidity = trustedAverage(rows, "humidity", (row) => !isHumiditySuspect(row));
+      setText("avg-humidity", avgHumidity === null ? "--" : fmt(avgHumidity, "%"));
       setText("avg-rssi", average(rows, "rssi") === null ? "--" : fmt(average(rows, "rssi"), " dBm"));
     }
 
@@ -784,9 +904,10 @@ def page() -> bytes:
 
         const metrics = document.createElement("div");
         metrics.className = "metrics";
-        for (const [label, value] of [
-          ["Temperature", fmt(row.temperature, " F")],
-          ["Last Seen", relativeTime(row.lastSeen)],
+        for (const [label, value, note] of [
+          ["Temperature", fmt(row.temperature, " F"), ""],
+          ["Humidity", humidityText(row), isHumiditySuspect(row) ? "suspect" : ""],
+          ["Last Seen", relativeTime(row.lastSeen), ""],
         ]) {
           const metric = document.createElement("div");
           metric.className = "metric";
@@ -796,6 +917,12 @@ def page() -> bytes:
           const metricValue = document.createElement("strong");
           metricValue.textContent = value;
           metric.append(metricLabel, metricValue);
+          if (note) {
+            const metricNote = document.createElement("span");
+            metricNote.className = "metric-note";
+            metricNote.textContent = note;
+            metric.appendChild(metricNote);
+          }
           metrics.appendChild(metric);
         }
 
@@ -815,7 +942,7 @@ def page() -> bytes:
         const row = findByLocation(rows, zone.location);
         const [stateClass] = row ? deviceState(row) : ["offline", "No data"];
         const room = document.createElement("article");
-        room.className = `room-zone ${zone.type || ""} ${stateClass}`.trim();
+        room.className = `room-zone ${zone.type || ""} ${stateClass} ${isHumiditySuspect(row) ? "humidity-suspect" : ""}`.trim();
         room.style.setProperty("--x", `${zone.x + zone.w / 2}%`);
         room.style.setProperty("--y", `${zone.y}%`);
 
@@ -832,7 +959,7 @@ def page() -> bytes:
         const meta = document.createElement("div");
         meta.className = "room-meta";
         meta.textContent = row
-          ? `${fmt(row.humidity, "%")} humidity - ${relativeTime(row.lastSeen)}`
+          ? `${humidityText(row)} humidity${isHumiditySuspect(row) ? " suspect" : ""} - ${relativeTime(row.lastSeen)}`
           : "Waiting for reading";
 
         room.append(top, meta);
@@ -854,7 +981,7 @@ def page() -> bytes:
           row.location || row.deviceId,
           stateText,
           fmt(row.temperature, " F"),
-          fmt(row.humidity, "%"),
+          humidityText(row),
           fmt(row.rssi, " dBm"),
           relativeTime(row.lastSeen),
           row.firmwareVersion || "--",
@@ -869,6 +996,15 @@ def page() -> bytes:
             dot.className = "dot";
             status.append(dot, document.createTextNode(value));
             td.appendChild(status);
+          } else if (index === 3 && isHumiditySuspect(row)) {
+            const wrap = document.createElement("span");
+            wrap.className = "humidity-value";
+            wrap.append(document.createTextNode(value));
+            const flag = document.createElement("span");
+            flag.className = "humidity-flag";
+            flag.textContent = "suspect";
+            wrap.appendChild(flag);
+            td.appendChild(wrap);
           } else {
             td.textContent = value;
           }
@@ -890,6 +1026,17 @@ def page() -> bytes:
       return [...seen.entries()].sort((a, b) => a[1].localeCompare(b[1]));
     }
 
+    function sortedDeviceInfo(rows) {
+      const seen = new Map();
+      for (const row of rows) {
+        if (!seen.has(row.deviceId)) {
+          const label = deviceLabel(row);
+          seen.set(row.deviceId, {deviceId: row.deviceId, label, location: row.location || label});
+        }
+      }
+      return [...seen.values()].sort((a, b) => a.label.localeCompare(b.label));
+    }
+
     function syncSelectedDevices(rows) {
       for (const [deviceId] of sortedDevices(rows)) {
         if (!state.knownDevices.has(deviceId)) {
@@ -902,23 +1049,66 @@ def page() -> bytes:
     function renderDeviceToggles(rows) {
       const toggles = document.getElementById("device-toggles");
       toggles.replaceChildren();
-      for (const [deviceId, label] of sortedDevices(rows)) {
-        const color = colorForDevice(deviceId);
-        const item = document.createElement("label");
-        item.className = "device-toggle";
-        const input = document.createElement("input");
-        input.type = "checkbox";
-        input.checked = state.selectedDevices.has(deviceId);
-        input.addEventListener("change", () => {
-          if (input.checked) state.selectedDevices.add(deviceId);
-          else state.selectedDevices.delete(deviceId);
+      const devices = sortedDeviceInfo(rows);
+      for (const group of graphGroups) {
+        const groupDevices = devices.filter((device) => group.match(device.location));
+        const section = document.createElement("section");
+        section.className = "device-group";
+
+        const head = document.createElement("div");
+        head.className = "device-group-head";
+        const title = document.createElement("h3");
+        title.className = "device-group-title";
+        title.textContent = group.label;
+
+        const groupLabel = document.createElement("label");
+        groupLabel.className = "group-toggle";
+        const groupInput = document.createElement("input");
+        groupInput.type = "checkbox";
+        groupInput.disabled = groupDevices.length === 0;
+        const selectedCount = groupDevices.filter((device) => state.selectedDevices.has(device.deviceId)).length;
+        groupInput.checked = groupDevices.length > 0 && selectedCount === groupDevices.length;
+        groupInput.indeterminate = selectedCount > 0 && selectedCount < groupDevices.length;
+        groupInput.addEventListener("change", () => {
+          for (const device of groupDevices) {
+            if (groupInput.checked) state.selectedDevices.add(device.deviceId);
+            else state.selectedDevices.delete(device.deviceId);
+          }
           renderTrend(state.history);
         });
-        const swatch = document.createElement("span");
-        swatch.className = "swatch";
-        swatch.style.background = color;
-        item.append(input, swatch, document.createTextNode(label));
-        toggles.appendChild(item);
+        groupLabel.append(groupInput, document.createTextNode("All"));
+        head.append(title, groupLabel);
+
+        const items = document.createElement("div");
+        items.className = "device-group-items";
+        if (!groupDevices.length) {
+          const empty = document.createElement("span");
+          empty.className = "muted";
+          empty.textContent = "No devices";
+          items.appendChild(empty);
+        }
+
+        for (const {deviceId, label} of groupDevices) {
+          const color = colorForDevice(deviceId);
+          const item = document.createElement("label");
+          item.className = "device-toggle";
+          const input = document.createElement("input");
+          input.type = "checkbox";
+          input.checked = state.selectedDevices.has(deviceId);
+          input.addEventListener("change", () => {
+            if (input.checked) state.selectedDevices.add(deviceId);
+            else state.selectedDevices.delete(deviceId);
+            renderTrend(state.history);
+          });
+          const swatch = document.createElement("span");
+          swatch.className = "swatch";
+          swatch.style.background = color;
+          item.append(input, swatch, document.createTextNode(label));
+          items.appendChild(item);
+        }
+
+        section.append(head, items);
+        toggles.appendChild(section);
       }
     }
 

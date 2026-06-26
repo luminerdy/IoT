@@ -131,3 +131,33 @@ This file records project architecture decisions and the reasoning behind them.
 **Reasoning:** `Laundryroom` accepted an ElegantOTA upload and then stopped serving legacy HTTP without reporting MQTT. `SunroomDoor` reset two upload attempts and stayed on legacy firmware. Repeating the same upload can obscure the actual failure mode and risks leaving the device in an uncertain state. A controlled recovery ladder preserves evidence and gives the best chance of recovering the device without unnecessary writes.
 
 **Status:** Accepted as operational guidance. The specific devices that originally triggered this decision later reported or were retried, but the recovery ladder still applies to future legacy OTA failures.
+
+## DR-014: Hard-Coded Temperature Graph Groups
+
+**Date:** 2026-06-26
+
+**Decision:** Keep the Temperature Graph selector groups hard-coded in `app/iot_home/dashboard.py` for now, with `Outside` limited to `Porch`, `Lightpole`, and `GarageDriveway`; `Separate` containing `Garage`, `WaterHeater`, `WallBehindWH`, and `LaundryroomAC`; and all remaining locations treated as `Inside`.
+
+**Reasoning:** The group list is small, stable enough for the current dashboard, and directly supports the daily monitoring workflow without adding a location taxonomy editor or another config format. The Pi already owns device-to-location mapping, so future work can move graph grouping into `locations.json`, SQLite, or dashboard admin controls if group membership starts changing often.
+
+**Status:** Accepted for the current dashboard implementation; revisit when location/device mapping becomes editable from the dashboard.
+
+## DR-015: OTA Failure-Path Safety Validation
+
+**Date:** 2026-06-26
+
+**Decision:** Treat the current local OTA MVP failure handling as validated for bad URL, bad SHA-256, interrupted download, and oversized image cases on the USB-recoverable bench ESP32.
+
+**Reasoning:** Each failure mode was tested against `Sunroom Test` / `esp32-9c9c1fda3670` while it remained recoverable over USB. The device published clear terminal OTA statuses and stayed on firmware `0.1.2-filtered-telemetry`: bad URL produced `failed` / `firmware download failed`; bad SHA-256 produced `rejected` / `firmware sha256 mismatch`; interrupted download produced `failed` / `firmware length mismatch`; oversized image produced `failed` / `ota partition unavailable`. Retained status and dashboard checks showed no firmware change, no stale device state, and no reboot indication during the tested failures.
+
+**Status:** Accepted for the local OTA MVP. Firmware signing, rollback workflow, and richer rollout controls remain Phase 5 hardening work before broad unattended fleet rollout.
+
+## DR-016: Outdoor DHT22 Humidity Is Advisory
+
+**Date:** 2026-06-26
+
+**Decision:** Treat outdoor DHT22 humidity readings as advisory, and flag outdoor DHT22 humidity at or above `99%` as suspect in the dashboard.
+
+**Reasoning:** Outdoor DHT22 humidity sensing degrades over time and is not very accurate even when healthy. The Porch sensor is currently pegging near `99.9%`, which is more useful as a sensor-health signal than as an exact humidity measurement. Temperature can still be useful when stable, so the dashboard should flag suspect humidity without discarding the device or hiding its temperature.
+
+**Status:** Accepted for the current dashboard. The rule is intentionally conservative and currently applies to outdoor DHT22 locations: `Porch`, `Lightpole`, and `GarageDriveway`.

@@ -26,7 +26,8 @@ Local-First-Architecture.md
 2. The first physical ESP32 publishes authenticated MQTT telemetry and appears in the dashboard as `Sunroom Test`.
 3. Runtime config works through retained MQTT config messages.
 4. Local OTA MVP is live-validated on the USB-recoverable ESP32.
-5. Next work is OTA rollback and failure-path testing before broader fleet rollout.
+5. OTA failure-path hardening is validated for bad URL, bad SHA-256, interrupted download, and oversized image cases.
+6. Next work is new-device provisioning, dashboard house image placement, firmware signing/rollback decisions, and broader fleet operations.
 
 ## Documentation
 

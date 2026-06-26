@@ -150,7 +150,7 @@ OTA command example:
 
 ```json
 {
-  "type": "ota_update",
+  "command": "ota_update",
   "rolloutId": "20260620T182134Z-0.1.1-ota-version",
   "version": "0.1.1-ota-version",
   "url": "http://piserver.local:8000/firmware/0.1.1-ota-version/firmware.bin",

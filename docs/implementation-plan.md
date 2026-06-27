@@ -138,7 +138,6 @@ Tasks:
 
 Ready next for 2026-06-27:
 
-- After the planned reboot, verify port `8000` loads the suspect humidity flag, `Studio` and `UnderAC` appear on the house diagram, and no retired `esp32-94b97ed52a78` / `UNMAPPED` entry is present.
 - Provision the remaining new ESP32 devices when they arrive: flash firmware one at a time, capture each MAC/device ID, publish retained defaults, and map locations. `Studio` / `esp32-704bca480220` and `UnderAC` / `esp32-a4f00f75f358` are done.
 - Confirm newly recovered devices remain stable across a few 10-minute telemetry intervals: `Laundryroom`, `Lightpole`, `MasterBedroom`, `SunroomDoor`, and `Entryway`.
 - Keep `config/locations.json` and SQLite placeholders clean when devices are removed or renamed.
@@ -161,7 +160,7 @@ Goal: turn the current basic table into a useful Raspberry Pi web dashboard for 
 
 Tasks:
 
-- Verify the dashboard service is reachable at `http://127.0.0.1:8000` on the Pi and `http://piserver.local:8000` on the LAN.
+- Verify the dashboard service is reachable at `http://127.0.0.1:8000` on the Pi and `http://piserver.local:8000` on the LAN. Done on the Pi for port `8000`; LAN URL remains available through the same service binding.
 - Keep the current latest-reading table, but improve layout for phone and desktop use.
 - Add at-a-glance cards for temperature, humidity, online/stale/offline state, RSSI, last seen, and firmware version.
 - Add a recent history view or simple chart from SQLite readings. Done; Temperature Graph supports range selection plus grouped and individual device toggles.

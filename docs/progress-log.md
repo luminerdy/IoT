@@ -478,9 +478,20 @@ Use this file for dated accomplishments and important observations. Keep future 
 - Observation: both new boards were provisioned successfully over the same data-capable USB cable on `/dev/ttyUSB1`; `Sunroom Test` remained the bench device on `/dev/ttyUSB0`.
 - Issue: `iot-home-dashboard.service` still cannot be restarted from this session because `systemctl`/`sudo` requires interactive authentication, so the new floorplan code should be verified after reboot.
 
+### GitHub SSH and Dashboard Verification
+
+- Created and configured a dedicated GitHub SSH key at `/home/scotty/.ssh/id_ed25519_github`.
+- Switched the local repo remote to `git@github.com:luminerdy/IoT.git`.
+- Added a repo-local `core.sshCommand` so Git bypasses the broken system SSH config symlink at `/etc/ssh/ssh_config.d/20-systemd-ssh-proxy.conf`.
+- Verified GitHub accepts the key as `luminerdy`.
+- Reconciled the local `codex/dashboard-graph-diagram-memory` branch with its remote duplicate-history branch using a merge commit that keeps the local tree canonical.
+- Pushed the reconciled branch to GitHub; `HEAD` and `origin/codex/dashboard-graph-diagram-memory` are now in sync at merge commit `ad87d94`.
+- Verified normal port `8000` serves the suspect humidity flag and includes `Studio` and `UnderAC` in the house diagram floorplan.
+- Verified live device state shows 20 mapped devices online, no `UNMAPPED` rows, and no retired `esp32-94b97ed52a78` row.
+- Confirmed recovered-device telemetry is still arriving for `Laundryroom`, `Lightpole`, `MasterBedroom`, `SunroomDoor`, and `Entryway`.
+
 ### Ready Next
 
-- After reboot, verify normal port `8000` loads the suspect humidity flag plus `Studio` and `UnderAC` on the house diagram.
-- Confirm `/api/latest` still shows 20 mapped devices and zero `UNMAPPED` entries.
 - Provision the remaining new ESP32 device if it is still pending.
-- Confirm recovered devices stay stable across a few 10-minute telemetry intervals.
+- Continue watching recovered devices across a few 10-minute telemetry intervals.
+- Start the next dashboard improvement: replace the approximate house diagram with an uploaded house image and configurable sensor placement overlays.

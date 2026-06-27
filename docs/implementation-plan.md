@@ -126,7 +126,7 @@ Goal: Make the system reliable for all room sensors.
 Tasks:
 
 - Improve the Raspberry Pi-hosted web dashboard as the main IoT data view.
-- Add a dashboard house image upload and sensor placement overlay so readings can be positioned on the actual home image.
+- Add a dashboard house image upload and sensor placement overlay so readings can be positioned on the actual home image. Configurable overlay support is done; actual image upload/selection is pending.
 - Keep the Temperature Graph useful for daily monitoring with grouped and individual device selection. Initial grouping done.
 - Flag suspect outdoor DHT22 humidity in the dashboard. Initial `>=99%` outdoor DHT22 rule done.
 - Add batch rollout control.
@@ -140,7 +140,7 @@ Ready next for 2026-06-27:
 
 - Confirm newly recovered devices remain stable across a few 10-minute telemetry intervals: `Laundryroom`, `Lightpole`, `MasterBedroom`, `SunroomDoor`, and `Entryway`.
 - Keep `config/locations.json` and SQLite placeholders clean when devices are removed or renamed.
-- Replace the approximate dashboard house diagram with an uploaded house image and configurable temperature/humidity placement.
+- Upload the actual house image under `data/dashboard-assets/`, set `backgroundImage` in `config/floorplan.json`, and tune the configurable temperature/humidity placement overlay.
 - Decide whether firmware signing should be added before broader unattended fleet rollout.
 
 Acceptance criteria:
@@ -148,6 +148,7 @@ Acceptance criteria:
 - All devices can be monitored from the dashboard.
 - Current new ESP32 batch is provisioned: `Studio` / `esp32-704bca480220` and `UnderAC` / `esp32-a4f00f75f358`.
 - Dashboard is reachable from the Pi and LAN and shows current readings, online/stale/offline state, useful recent history, and grouped temperature graph selection.
+- Floorplan sensor placement can be maintained through local JSON without editing dashboard JavaScript.
 - Device mappings can be maintained on the Pi.
 - OTA rollout can be paused and retried.
 - Services restart after reboot.

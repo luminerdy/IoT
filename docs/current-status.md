@@ -1,6 +1,6 @@
 # Current Status
 
-Last updated: 2026-06-26
+Last updated: 2026-06-27
 
 This is the first file to read after a reboot, context switch, or long pause.
 
@@ -12,7 +12,7 @@ The project is a local-first Raspberry Pi IoT system with MQTT, SQLite, a boot-e
 
 Phase 5: Fleet operations plus daily dashboard improvements
 
-Status: The local OTA firmware is deployed broadly. OTA failure-path hardening is validated on the USB-recoverable bench device. The dashboard service is enabled at boot and serves live device cards, summary metrics, latest readings, a grouped selectable temperature graph from SQLite, and an approximate house diagram.
+Status: The local OTA firmware is deployed broadly. OTA failure-path hardening is validated on the USB-recoverable bench device. The dashboard service is enabled at boot and serves live device cards, summary metrics, latest readings, a grouped selectable temperature graph from SQLite, and a house diagram whose sensor placement overlay can now be loaded from local JSON.
 
 ## Accomplished
 
@@ -37,10 +37,15 @@ Status: The local OTA firmware is deployed broadly. OTA failure-path hardening i
 - Completed the interrupted-download OTA failure-path test: a temporary server sent only `65536` of `825200` bytes and the device reported `downloading` then `failed` / `firmware length mismatch` without changing firmware.
 - Completed the oversized-image OTA failure-path test: a temporary server advertised `2000000` bytes and the device reported `downloading` then `failed` / `ota partition unavailable` without changing firmware.
 - Added a dashboard-side suspect humidity flag for outdoor DHT22 locations at or above `99%`; live data currently flags `Porch`.
+- Confirmed on 2026-06-27 that Git SSH fetch works from the Pi and the local checkout is synced with `origin/main`.
+- Confirmed on 2026-06-27 that `mosquitto.service`, `iot-home-collector.service`, and `iot-home-dashboard.service` are active and enabled.
+- Confirmed on 2026-06-27 that `Sunroom Test` is visible as the USB bench device on `/dev/ttyUSB0`.
+- Added configurable dashboard floorplan support with `/api/floorplan`, ignored local `config/floorplan.json`, tracked `config/floorplan.sample.json`, and optional image assets served from `/dashboard-assets/...`.
+- Restarted the boot-enabled dashboard service on 2026-06-27 with the new floorplan config and asset directory arguments.
 
 ## Live Dashboard State
 
-Latest SQLite/API check on 2026-06-27 shows 20 mapped devices on `0.1.2-filtered-telemetry`:
+Latest SQLite/API check on 2026-06-27 after the dashboard restart shows 20 mapped devices on `0.1.2-filtered-telemetry`; all 20 are online and non-stale:
 
 - `BunkHouse` / `esp32-9c9c1fc5ce0c`: online, telemetry OK.
 - `Den` / `esp32-3c71bf642440`: online, telemetry OK.
@@ -66,12 +71,13 @@ Latest SQLite/API check on 2026-06-27 shows 20 mapped devices on `0.1.2-filtered
 ## Active Blockers
 
 - GitHub CLI `gh` is not installed, so GitHub Actions log inspection and some PR workflows still need the connector or local `git`.
+- The actual house image has not been uploaded yet. The dashboard is ready for it through `data/dashboard-assets/` plus `config/floorplan.json`.
 
 ## Next Actions
 
 1. Confirm the newly recovered devices stay stable across a few 10-minute report intervals: `Laundryroom`, `Lightpole`, `MasterBedroom`, `SunroomDoor`, and `Entryway`.
 2. Use `Sunroom Test` (`esp32-9c9c1fda3670`) on `/dev/ttyUSB0` for firmware and feature validation before deploying to other devices.
-3. Replace the approximate dashboard house diagram with an uploaded house image and configurable sensor placement overlays.
+3. Upload the actual house image under `data/dashboard-assets/`, set `backgroundImage` in `config/floorplan.json`, and tune the existing sensor placement overlay.
 4. Decide whether to add firmware signing now that OTA failure-path tests are documented.
 
 ## Decisions To Revisit Soon
@@ -103,7 +109,7 @@ Latest SQLite/API check on 2026-06-27 shows 20 mapped devices on `0.1.2-filtered
 - Local-only ignored files include runtime data, build output, `config/locations.json`, and `firmware/include/secrets.h`.
 - New ESP32 provisioning is complete for the current batch: `Studio` / `esp32-704bca480220` and `UnderAC` / `esp32-a4f00f75f358`.
 - Dashboard URL on the Pi: `http://127.0.0.1:8000`; LAN URL: `http://piserver.local:8000` or `http://<pi-ip-address>:8000`.
-- Dashboard app: summary metrics, approximate house diagram, device cards, latest readings, and `/api/history` trend data are in `app/iot_home/dashboard.py`. The diagram uses two-line room labels with location/temp above humidity/last-seen, no per-room box outline, treats `BunkHouse` as an interior grandkids room, places `Studio` between `FrontBedroom` and `Entryway`, and places `UnderAC` between `FrontBedroom` and `BunkHouse`. The Temperature Graph selector is grouped into `Inside`, `Outside`, and `Separate`, with both group-level `All` checkboxes and individual device checkboxes. Outdoor DHT22 humidity at or above `99%` is flagged as suspect and excluded from average humidity.
-- Dashboard verification: normal port `8000` serves the suspect humidity flag plus the `Studio` and `UnderAC` floorplan placements. Latest live check showed 20 mapped devices, no `UNMAPPED` rows, and no retired `esp32-94b97ed52a78` row.
+- Dashboard app: summary metrics, configurable house diagram, device cards, latest readings, and `/api/history` trend data are in `app/iot_home/dashboard.py`. The diagram supports fallback built-in placements plus local `config/floorplan.json`; actual image assets should live under `data/dashboard-assets/` and be referenced as `/dashboard-assets/<file>`. The Temperature Graph selector is grouped into `Inside`, `Outside`, and `Separate`, with both group-level `All` checkboxes and individual device checkboxes. Outdoor DHT22 humidity at or above `99%` is flagged as suspect and excluded from average humidity.
+- Dashboard verification: normal port `8000` serves `/api/floorplan`, the suspect humidity flag, and the `Studio` and `UnderAC` floorplan placements. Latest live check showed 20 mapped devices, all online/non-stale, no `UNMAPPED` rows, and no retired `esp32-94b97ed52a78` row.
 - Telemetry policy memory: ESP32s should read DHT22 frequently, reject impossible values and one-off large jumps, publish median-filtered temp/humidity every 600 seconds, and only publish early when filtered temperature differs by the configured threshold for 3 consecutive valid samples. Humidity is reported but does not trigger early publishes.
 - Latest live-tested OTA artifact: `data/firmware/0.1.2-filtered-telemetry/firmware.bin`; ignored by git because runtime/build artifacts stay local.

@@ -2,6 +2,25 @@
 
 Use this file for dated accomplishments and important observations. Keep future tasks in `docs/implementation-plan.md` and durable decisions in `docs/decision-record.md`.
 
+## 2026-06-27
+
+### Operational Review
+
+- Verified Git SSH fetch works from the Pi and the local branch is synced with `origin/main`.
+- Verified `mosquitto.service`, `iot-home-collector.service`, and `iot-home-dashboard.service` are active and enabled.
+- Verified the dashboard API on port `8000` reports 20 mapped devices, all online and non-stale.
+- Verified the recovered watch-list devices have recent readings within the expected 10-minute telemetry window: `Laundryroom`, `Lightpole`, `MasterBedroom`, `SunroomDoor`, and `Entryway`.
+- Verified `Sunroom Test` remains visible as the USB bench unit on `/dev/ttyUSB0`.
+
+### Dashboard Floorplan Configuration
+
+- Added `app/iot_home/floorplan.py` for loading and validating a local floorplan JSON file.
+- Added tracked `config/floorplan.sample.json` and ignored local `config/floorplan.json` so sensor placements can be tuned on the Pi without editing dashboard JavaScript.
+- Added `/api/floorplan` to the dashboard and updated the browser code to use configured zones when present, with built-in approximate zones as a fallback.
+- Added `/dashboard-assets/...` serving for local dashboard images under `data/dashboard-assets/`.
+- Updated the dashboard systemd unit to pass `--floorplan /home/scotty/IoT/config/floorplan.json` and `--asset-dir /home/scotty/IoT/data/dashboard-assets`.
+- Validated the new code with `python3 -m py_compile`, a temporary dashboard server on port `8002`, and the live restarted dashboard service on port `8000`.
+
 ## 2026-06-16
 
 ### Reviewed Existing Material

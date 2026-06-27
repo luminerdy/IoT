@@ -10,6 +10,7 @@ from datetime import UTC, datetime
 from urllib.parse import parse_qs, unquote, urlparse
 
 from iot_home.db import DEFAULT_DB_PATH, connect, init_db, latest_readings, reading_history
+from iot_home.floorplan import DEFAULT_FLOORPLAN_PATH, load_floorplan
 from iot_home.locations import DEFAULT_LOCATIONS_PATH, load_locations, mapped_location
 
 
@@ -35,6 +36,18 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=Path("data/firmware"),
         help="Directory served under /firmware/ for local OTA downloads.",
+    )
+    parser.add_argument(
+        "--floorplan",
+        type=Path,
+        default=DEFAULT_FLOORPLAN_PATH,
+        help="JSON file with optional house image URL and dashboard sensor placements.",
+    )
+    parser.add_argument(
+        "--asset-dir",
+        type=Path,
+        default=Path("data/dashboard-assets"),
+        help="Directory served under /dashboard-assets/ for dashboard images.",
     )
     return parser.parse_args()
 
@@ -390,6 +403,12 @@ def page() -> bytes:
         #eef3f7;
       background-size: 40px 40px;
     }
+    .floorplan.has-image {
+      background-color: #edf2f7;
+      background-position: center;
+      background-repeat: no-repeat;
+      background-size: contain;
+    }
     .floorplan::before {
       content: "";
       position: absolute;
@@ -401,6 +420,9 @@ def page() -> bytes:
       border-radius: 6px;
       background: #fdfefe;
       box-shadow: 0 10px 24px rgb(15 23 42 / 0.08);
+    }
+    .floorplan.has-image::before {
+      display: none;
     }
     .room-zone {
       --box-width: 124px;
@@ -766,6 +788,8 @@ def page() -> bytes:
       knownDevices: new Set(),
       deviceColors: new Map(),
       hours: 24,
+      floorplanBackgroundImage: null,
+      floorplanZones: [],
     };
     const seriesColors = [
       "#b42318", "#1f6feb", "#0f766e", "#7c3aed", "#b7791f", "#0f6b8f",
@@ -791,7 +815,7 @@ def page() -> bytes:
         match: (location) => separateGraphLocations.has(location),
       },
     ];
-    const floorplanZones = [
+    const defaultFloorplanZones = [
       {location: "Porch", x: 30, y: 4, w: 18, h: 10, type: "outdoor"},
       {location: "FrontBedroom", x: 19, y: 14, w: 14, h: 18},
       {location: "Studio", x: 33, y: 14, w: 12, h: 18},
@@ -940,7 +964,15 @@ def page() -> bytes:
     function renderFloorplan(rows) {
       const plan = document.getElementById("floorplan");
       plan.replaceChildren();
-      for (const zone of floorplanZones) {
+      const zones = state.floorplanZones.length ? state.floorplanZones : defaultFloorplanZones;
+      if (state.floorplanBackgroundImage) {
+        plan.classList.add("has-image");
+        plan.style.backgroundImage = `url("${state.floorplanBackgroundImage.replace(/"/g, "%22")}")`;
+      } else {
+        plan.classList.remove("has-image");
+        plan.style.backgroundImage = "";
+      }
+      for (const zone of zones) {
         const row = findByLocation(rows, zone.location);
         const [stateClass] = row ? deviceState(row) : ["offline", "No data"];
         const room = document.createElement("article");
@@ -1200,13 +1232,19 @@ def page() -> bytes:
 
     async function refresh() {
       try {
-        const [latestResponse, historyResponse] = await Promise.all([
+        const [latestResponse, historyResponse, floorplanResponse] = await Promise.all([
           fetch("/api/latest", {cache: "no-store"}),
           fetch(`/api/history?hours=${state.hours}&limit=50000`, {cache: "no-store"}),
+          fetch("/api/floorplan", {cache: "no-store"}),
         ]);
-        if (!latestResponse.ok || !historyResponse.ok) throw new Error("Dashboard API request failed");
+        if (!latestResponse.ok || !historyResponse.ok || !floorplanResponse.ok) {
+          throw new Error("Dashboard API request failed");
+        }
         state.latest = await latestResponse.json();
         state.history = await historyResponse.json();
+        const floorplan = await floorplanResponse.json();
+        state.floorplanBackgroundImage = floorplan.backgroundImage || null;
+        state.floorplanZones = Array.isArray(floorplan.zones) ? floorplan.zones : [];
         renderSummary(state.latest);
         renderFloorplan(state.latest);
         renderDevices(state.latest);
@@ -1235,6 +1273,8 @@ def page() -> bytes:
 class Handler(BaseHTTPRequestHandler):
     db_path: Path = DEFAULT_DB_PATH
     firmware_dir: Path = Path("data/firmware")
+    asset_dir: Path = Path("data/dashboard-assets")
+    floorplan_path: Path = DEFAULT_FLOORPLAN_PATH
     stale_seconds: int = 120
     locations_path: Path = DEFAULT_LOCATIONS_PATH
     locations: dict[str, str] = {}
@@ -1252,6 +1292,10 @@ class Handler(BaseHTTPRequestHandler):
 
         if parsed_path.startswith("/firmware/"):
             self.serve_firmware(parsed_path)
+            return
+
+        if parsed_path.startswith("/dashboard-assets/"):
+            self.serve_static_file(parsed_path, "/dashboard-assets/", self.asset_dir)
             return
 
         if parsed_path == "/api/latest":
@@ -1289,23 +1333,40 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(payload)
             return
 
+        if parsed_path == "/api/floorplan":
+            try:
+                floorplan = load_floorplan(self.floorplan_path)
+            except ValueError as exc:
+                self.send_error(500, str(exc))
+                return
+            payload = json.dumps(floorplan).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+            return
+
         self.send_error(404)
 
     def serve_firmware(self, parsed_path: str) -> None:
-        relative = unquote(parsed_path.removeprefix("/firmware/"))
+        self.serve_static_file(parsed_path, "/firmware/", self.firmware_dir)
+
+    def serve_static_file(self, parsed_path: str, prefix: str, root: Path) -> None:
+        relative = unquote(parsed_path.removeprefix(prefix))
         parts = Path(relative).parts
         if not parts or any(part in {"", ".", ".."} for part in parts):
             self.send_error(404)
             return
 
-        firmware_root = self.firmware_dir.resolve()
-        firmware_path = firmware_root.joinpath(*parts).resolve()
-        if not firmware_path.is_relative_to(firmware_root) or not firmware_path.is_file():
+        static_root = root.resolve()
+        static_path = static_root.joinpath(*parts).resolve()
+        if not static_path.is_relative_to(static_root) or not static_path.is_file():
             self.send_error(404)
             return
 
-        content_type = mimetypes.guess_type(firmware_path.name)[0] or "application/octet-stream"
-        content = firmware_path.read_bytes()
+        content_type = mimetypes.guess_type(static_path.name)[0] or "application/octet-stream"
+        content = static_path.read_bytes()
         self.send_response(200)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(content)))
@@ -1324,6 +1385,8 @@ def main() -> None:
 
     Handler.db_path = args.db
     Handler.firmware_dir = args.firmware_dir
+    Handler.asset_dir = args.asset_dir
+    Handler.floorplan_path = args.floorplan
     Handler.locations_path = args.locations
     Handler.stale_seconds = args.stale_seconds
     Handler.locations = load_locations(args.locations)

@@ -10,7 +10,7 @@ User=scotty
 Group=scotty
 WorkingDirectory=/home/scotty/IoT
 Environment=PYTHONPATH=/home/scotty/IoT/app
-ExecStart=/usr/bin/python3 -m iot_home.dashboard --host 0.0.0.0 --port 8000 --db /home/scotty/IoT/data/iot.db --locations /home/scotty/IoT/config/locations.json
+ExecStart=/usr/bin/python3 -m iot_home.dashboard --host 0.0.0.0 --port 8000 --db /home/scotty/IoT/data/iot.db --locations /home/scotty/IoT/config/locations.json --floorplan /home/scotty/IoT/config/floorplan.json --asset-dir /home/scotty/IoT/data/dashboard-assets
 Restart=on-failure
 RestartSec=5
 NoNewPrivileges=true

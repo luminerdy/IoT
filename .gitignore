@@ -23,6 +23,7 @@ dist/
 # Local runtime data
 data/
 config/locations.json
+config/floorplan.json
 *.db
 *.sqlite
 *.sqlite3

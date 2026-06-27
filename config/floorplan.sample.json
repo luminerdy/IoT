@@ -1,0 +1,25 @@
+{
+  "backgroundImage": "/dashboard-assets/house-floorplan.jpg",
+  "zones": [
+    {"location": "Porch", "x": 30, "y": 4, "w": 18, "h": 10, "type": "outdoor"},
+    {"location": "FrontBedroom", "x": 19, "y": 14, "w": 14, "h": 18},
+    {"location": "Studio", "x": 33, "y": 14, "w": 12, "h": 18},
+    {"location": "Entryway", "x": 45, "y": 14, "w": 10, "h": 18},
+    {"location": "Office", "x": 52, "y": 14, "w": 20, "h": 18},
+    {"location": "Laundryroom", "x": 64, "y": 14, "w": 14, "h": 8, "type": "utility"},
+    {"location": "LaundryroomAC", "x": 64, "y": 22, "w": 14, "h": 8, "type": "utility"},
+    {"location": "UnderAC", "x": 22, "y": 34, "w": 18, "h": 10, "type": "utility"},
+    {"location": "Den", "x": 48, "y": 30, "w": 20, "h": 18},
+    {"location": "Kitchen", "x": 64, "y": 30, "w": 14, "h": 18},
+    {"location": "BunkHouse", "x": 22, "y": 48, "w": 18, "h": 14},
+    {"location": "WallBehindWH", "x": 39, "y": 59, "w": 18, "h": 8, "type": "utility"},
+    {"location": "WaterHeater", "x": 39, "y": 67, "w": 18, "h": 8, "type": "utility"},
+    {"location": "MasterBedroom", "x": 22, "y": 76, "w": 18, "h": 8},
+    {"location": "Sunroom", "x": 58, "y": 67, "w": 16, "h": 8},
+    {"location": "Sunroom Test", "x": 58, "y": 75, "w": 16, "h": 8, "type": "utility"},
+    {"location": "SunroomDoor", "x": 68, "y": 83, "w": 10, "h": 8},
+    {"location": "Garage", "x": 78, "y": 25, "w": 16, "h": 22, "type": "outdoor"},
+    {"location": "GarageDriveway", "x": 78, "y": 48, "w": 16, "h": 15, "type": "outdoor"},
+    {"location": "Lightpole", "x": 49, "y": 4, "w": 13, "h": 13, "type": "outdoor"}
+  ]
+}

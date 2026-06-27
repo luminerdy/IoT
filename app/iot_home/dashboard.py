@@ -772,7 +772,7 @@ def page() -> bytes:
       "#a21caf", "#2f855a", "#c2410c", "#475569", "#be123c", "#2563eb",
     ];
     const outsideGraphLocations = new Set(["Porch", "Lightpole", "GarageDriveway"]);
-    const separateGraphLocations = new Set(["Garage", "WaterHeater", "WallBehindWH", "LaundryroomAC"]);
+    const separateGraphLocations = new Set(["Garage", "WaterHeater", "WallBehindWH", "LaundryroomAC", "UnderAC"]);
     const outdoorHumidityLocations = new Set(["Porch", "Lightpole", "GarageDriveway"]);
     const graphGroups = [
       {
@@ -793,11 +793,13 @@ def page() -> bytes:
     ];
     const floorplanZones = [
       {location: "Porch", x: 30, y: 4, w: 18, h: 10, type: "outdoor"},
-      {location: "FrontBedroom", x: 22, y: 14, w: 17, h: 18},
-      {location: "Entryway", x: 39, y: 14, w: 13, h: 18},
+      {location: "FrontBedroom", x: 19, y: 14, w: 14, h: 18},
+      {location: "Studio", x: 33, y: 14, w: 12, h: 18},
+      {location: "Entryway", x: 45, y: 14, w: 10, h: 18},
       {location: "Office", x: 52, y: 14, w: 20, h: 18},
       {location: "Laundryroom", x: 64, y: 14, w: 14, h: 8, type: "utility"},
       {location: "LaundryroomAC", x: 64, y: 22, w: 14, h: 8, type: "utility"},
+      {location: "UnderAC", x: 22, y: 34, w: 18, h: 10, type: "utility"},
       {location: "Den", x: 48, y: 30, w: 20, h: 18},
       {location: "Kitchen", x: 64, y: 30, w: 14, h: 18},
       {location: "BunkHouse", x: 22, y: 48, w: 18, h: 14},

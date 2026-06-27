@@ -30,7 +30,7 @@ Status: The local OTA firmware is deployed broadly. OTA failure-path hardening i
 - Added a first-pass dashboard house diagram using approximate zones from the known sensor locations; the diagram was tested on temporary port `8002`.
 - Updated the dashboard graph to support selectable 6h, 12h, 24h, 48h, and 7-day temperature ranges with grouped and per-device toggles.
 - Adjusted the house diagram placements so `Garage` and `GarageDriveway` sit on the right side and `Lightpole` sits on the top row just right of `Porch`.
-- Grouped the Temperature Graph device selector into `Inside`, `Outside`, and `Separate` sections. `Outside` is intentionally limited to `Porch`, `Lightpole`, and `GarageDriveway`; `Separate` contains `Garage`, `WaterHeater`, `WallBehindWH`, and `LaundryroomAC`; all remaining reporting locations are grouped as `Inside`.
+- Grouped the Temperature Graph device selector into `Inside`, `Outside`, and `Separate` sections. `Outside` is intentionally limited to `Porch`, `Lightpole`, and `GarageDriveway`; `Separate` contains `Garage`, `WaterHeater`, `WallBehindWH`, `LaundryroomAC`, and `UnderAC`; all remaining reporting locations are grouped as `Inside`.
 - Confirmed after the 2026-06-25 evening reboot that normal port `8000` serves the grouped Temperature Graph code.
 - Completed the first OTA failure-path test: a bad firmware URL against USB-recoverable `Sunroom Test` produced `downloading` then `failed` OTA statuses without changing firmware.
 - Completed the bad SHA-256 OTA failure-path test: a valid firmware URL with an intentionally wrong SHA produced `downloading` then `rejected` / `firmware sha256 mismatch` without changing firmware.
@@ -40,7 +40,7 @@ Status: The local OTA firmware is deployed broadly. OTA failure-path hardening i
 
 ## Live Dashboard State
 
-Latest SQLite/API check on 2026-06-26 shows 18 mapped devices on `0.1.2-filtered-telemetry`:
+Latest SQLite/API check on 2026-06-27 shows 20 mapped devices on `0.1.2-filtered-telemetry`:
 
 - `BunkHouse` / `esp32-9c9c1fc5ce0c`: online, telemetry OK.
 - `Den` / `esp32-3c71bf642440`: online, telemetry OK.
@@ -58,6 +58,8 @@ Latest SQLite/API check on 2026-06-26 shows 18 mapped devices on `0.1.2-filtered
 - `Sunroom` / `esp32-9c9c1fdd65d0`: online, telemetry OK.
 - `Sunroom Test` / `esp32-9c9c1fda3670`: online, telemetry OK.
 - `SunroomDoor` / `esp32-240ac4fa393c`: online, telemetry OK.
+- `Studio` / `esp32-704bca480220`: online, telemetry OK.
+- `UnderAC` / `esp32-a4f00f75f358`: online, telemetry OK.
 - `WallBehindWH` / `esp32-240ac4fa418c`: online, telemetry OK.
 - `WaterHeater` / `esp32-9c9c1fc5cf1c`: online, telemetry OK.
 
@@ -68,8 +70,8 @@ Latest SQLite/API check on 2026-06-26 shows 18 mapped devices on `0.1.2-filtered
 
 ## Next Actions
 
-1. After the planned reboot, verify port `8000` loads the suspect humidity flag and that no retired `esp32-94b97ed52a78` / `UNMAPPED` entry is present.
-2. Provision the three new ESP32 devices when they arrive: plug in one at a time, flash firmware, record MAC/device ID, publish retained defaults, and map each location.
+1. After the planned reboot, verify port `8000` loads the suspect humidity flag, `Studio` and `UnderAC` appear on the house diagram, and no retired `esp32-94b97ed52a78` / `UNMAPPED` entry is present.
+2. Provision the remaining new ESP32 devices when they arrive: plug in one at a time, flash firmware, record MAC/device ID, publish retained defaults, and map each location. `Studio` and `UnderAC` are done.
 3. Confirm the newly recovered devices stay stable across a few 10-minute report intervals: `Laundryroom`, `Lightpole`, `MasterBedroom`, `SunroomDoor`, and `Entryway`.
 4. Use `Sunroom Test` (`esp32-9c9c1fda3670`) on `/dev/ttyUSB0` for firmware and feature validation before deploying to other devices.
 5. Replace the approximate dashboard house diagram with an uploaded house image and configurable sensor placement overlays.
@@ -103,7 +105,7 @@ Latest SQLite/API check on 2026-06-26 shows 18 mapped devices on `0.1.2-filtered
 - Draft PR: `https://github.com/luminerdy/IoT/pull/1`
 - Local-only ignored files include runtime data, build output, `config/locations.json`, and `firmware/include/secrets.h`.
 - Dashboard URL on the Pi: `http://127.0.0.1:8000`; LAN URL: `http://piserver.local:8000` or `http://<pi-ip-address>:8000`.
-- Dashboard app: summary metrics, approximate house diagram, device cards, latest readings, and `/api/history` trend data are in `app/iot_home/dashboard.py`. The diagram uses two-line room labels with location/temp above humidity/last-seen, no per-room box outline, and treats `BunkHouse` as an interior grandkids room. The Temperature Graph selector is grouped into `Inside`, `Outside`, and `Separate`, with both group-level `All` checkboxes and individual device checkboxes. Outdoor DHT22 humidity at or above `99%` is flagged as suspect and excluded from average humidity.
-- Temporary dashboard note: port `8002` is stopped. Normal port `8000` is serving the latest grouped graph code after the 2026-06-25 evening reboot. The suspect humidity flag was smoke-tested on temporary port `8002` and will load on normal port `8000` after the planned reboot or a manual dashboard service restart.
+- Dashboard app: summary metrics, approximate house diagram, device cards, latest readings, and `/api/history` trend data are in `app/iot_home/dashboard.py`. The diagram uses two-line room labels with location/temp above humidity/last-seen, no per-room box outline, treats `BunkHouse` as an interior grandkids room, places `Studio` between `FrontBedroom` and `Entryway`, and places `UnderAC` between `FrontBedroom` and `BunkHouse`. The Temperature Graph selector is grouped into `Inside`, `Outside`, and `Separate`, with both group-level `All` checkboxes and individual device checkboxes. Outdoor DHT22 humidity at or above `99%` is flagged as suspect and excluded from average humidity.
+- Temporary dashboard note: port `8002` is stopped. Normal port `8000` could not be restarted through this session because `systemctl`/`sudo` required interactive authentication. The suspect humidity flag plus the new `Studio`/`UnderAC` diagram placements will load on normal port `8000` after the planned reboot or a manual dashboard service restart.
 - Telemetry policy memory: ESP32s should read DHT22 frequently, reject impossible values and one-off large jumps, publish median-filtered temp/humidity every 600 seconds, and only publish early when filtered temperature differs by the configured threshold for 3 consecutive valid samples. Humidity is reported but does not trigger early publishes.
 - Latest live-tested OTA artifact: `data/firmware/0.1.2-filtered-telemetry/firmware.bin`; ignored by git because runtime/build artifacts stay local.

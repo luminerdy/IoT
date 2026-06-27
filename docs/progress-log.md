@@ -434,9 +434,53 @@ Use this file for dated accomplishments and important observations. Keep future 
 - Updated the implementation plan and current status so OTA failure-path testing is marked complete and new ESP32 provisioning is listed as an upcoming task.
 - Added decision record `DR-016` accepting outdoor DHT22 humidity as advisory and documenting the dashboard suspect-humidity threshold.
 
-## Next Work
+## Ready Next
 
 - After the planned reboot, verify port `8000` loads the suspect humidity flag and no retired `Lightpole` / `UNMAPPED` row is present.
-- Provision the three new ESP32 devices when they arrive.
+- Provision the remaining new ESP32 devices when they arrive.
 - Confirm newly recovered devices stay stable across a few 10-minute telemetry intervals.
 - Confirm replacement `Lightpole` remains stable across a few 10-minute telemetry intervals.
+
+## 2026-06-27
+
+### Studio ESP32 Provisioned
+
+- Detected a new ESP32 on `/dev/ttyUSB1`; existing bench `Sunroom Test` remained on `/dev/ttyUSB0`.
+- Read MAC `70:4b:ca:48:02:20`, so the local device ID is `esp32-704bca480220`.
+- USB-flashed firmware `0.1.2-filtered-telemetry` to `/dev/ttyUSB1`.
+- Published retained default config: `reportIntervalSeconds=600`, `changeThresholdF=1.0`.
+- Verified MQTT status, config response, and telemetry:
+  - status: `online`
+  - firmware: `0.1.2-filtered-telemetry`
+  - config response: `applied`
+  - telemetry: `78.6F`, `48.9%`, RSSI `-46`, status `OK`
+- Mapped `esp32-704bca480220` to `Studio` in local `config/locations.json` and updated the current SQLite device/reading rows.
+- Added `Studio` to the dashboard house diagram between `FrontBedroom` and `Entryway`.
+- Verified `http://127.0.0.1:8000/api/latest` shows `Studio` online and `UNMAPPED` count is `0`.
+
+### UnderAC ESP32 Provisioned
+
+- Detected a new ESP32 on `/dev/ttyUSB1`; existing bench `Sunroom Test` remained on `/dev/ttyUSB0`.
+- Read MAC `a4:f0:0f:75:f3:58`, so the local device ID is `esp32-a4f00f75f358`.
+- USB-flashed firmware `0.1.2-filtered-telemetry` to `/dev/ttyUSB1`.
+- Published retained default config: `reportIntervalSeconds=600`, `changeThresholdF=1.0`.
+- Verified MQTT status, retained config, and telemetry:
+  - status: `online`
+  - firmware: `0.1.2-filtered-telemetry`
+  - telemetry: `76.6F`, `54.4%`, RSSI `-45`, status `OK`
+- Mapped `esp32-a4f00f75f358` to `UnderAC` in local `config/locations.json` and updated the current SQLite device/reading rows.
+- Added `UnderAC` to the dashboard house diagram between `FrontBedroom` and `BunkHouse`.
+- Added `UnderAC` to the dashboard Temperature Graph `Separate` group with other non-room/equipment readings.
+
+### Wrap-Up Notes
+
+- Decision: classify `UnderAC` as a `Separate` graph location because it is an equipment/utility reading rather than a normal room-comfort trend.
+- Observation: both new boards were provisioned successfully over the same data-capable USB cable on `/dev/ttyUSB1`; `Sunroom Test` remained the bench device on `/dev/ttyUSB0`.
+- Issue: `iot-home-dashboard.service` still cannot be restarted from this session because `systemctl`/`sudo` requires interactive authentication, so the new floorplan code should be verified after reboot.
+
+### Ready Next
+
+- After reboot, verify normal port `8000` loads the suspect humidity flag plus `Studio` and `UnderAC` on the house diagram.
+- Confirm `/api/latest` still shows 20 mapped devices and zero `UNMAPPED` entries.
+- Provision the remaining new ESP32 device if it is still pending.
+- Confirm recovered devices stay stable across a few 10-minute telemetry intervals.

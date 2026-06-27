@@ -138,8 +138,8 @@ Tasks:
 
 Ready next for 2026-06-27:
 
-- After the planned reboot, verify port `8000` loads the suspect humidity flag and no retired `esp32-94b97ed52a78` / `UNMAPPED` entry is present.
-- Provision the three new ESP32 devices when they arrive: flash firmware one at a time, capture each MAC/device ID, publish retained defaults, and map locations.
+- After the planned reboot, verify port `8000` loads the suspect humidity flag, `Studio` and `UnderAC` appear on the house diagram, and no retired `esp32-94b97ed52a78` / `UNMAPPED` entry is present.
+- Provision the remaining new ESP32 devices when they arrive: flash firmware one at a time, capture each MAC/device ID, publish retained defaults, and map locations. `Studio` / `esp32-704bca480220` and `UnderAC` / `esp32-a4f00f75f358` are done.
 - Confirm newly recovered devices remain stable across a few 10-minute telemetry intervals: `Laundryroom`, `Lightpole`, `MasterBedroom`, `SunroomDoor`, and `Entryway`.
 - Keep `config/locations.json` and SQLite placeholders clean when devices are removed or renamed.
 - Replace the approximate dashboard house diagram with an uploaded house image and configurable temperature/humidity placement.

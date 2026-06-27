@@ -136,11 +136,11 @@ This file records project architecture decisions and the reasoning behind them.
 
 **Date:** 2026-06-26
 
-**Decision:** Keep the Temperature Graph selector groups hard-coded in `app/iot_home/dashboard.py` for now, with `Outside` limited to `Porch`, `Lightpole`, and `GarageDriveway`; `Separate` containing `Garage`, `WaterHeater`, `WallBehindWH`, and `LaundryroomAC`; and all remaining locations treated as `Inside`.
+**Decision:** Keep the Temperature Graph selector groups hard-coded in `app/iot_home/dashboard.py` for now, with `Outside` limited to `Porch`, `Lightpole`, and `GarageDriveway`; `Separate` containing `Garage`, `WaterHeater`, `WallBehindWH`, `LaundryroomAC`, and `UnderAC`; and all remaining locations treated as `Inside`.
 
 **Reasoning:** The group list is small, stable enough for the current dashboard, and directly supports the daily monitoring workflow without adding a location taxonomy editor or another config format. The Pi already owns device-to-location mapping, so future work can move graph grouping into `locations.json`, SQLite, or dashboard admin controls if group membership starts changing often.
 
-**Status:** Accepted for the current dashboard implementation; revisit when location/device mapping becomes editable from the dashboard.
+**Status:** Accepted for the current dashboard implementation; updated on 2026-06-27 to classify `UnderAC` with the other separate/equipment readings. Revisit when location/device mapping becomes editable from the dashboard.
 
 ## DR-015: OTA Failure-Path Safety Validation
 

@@ -20,14 +20,24 @@ scripts/                        Pi setup and maintenance helpers
 Local-First-Architecture.md
 ```
 
-## Current MVP Status
+## Current Status
 
-1. Local MQTT, SQLite collection, and dashboard are running on the Pi.
-2. The first physical ESP32 publishes authenticated MQTT telemetry and appears in the dashboard as `Sunroom Test`.
-3. Runtime config works through retained MQTT config messages.
-4. Local OTA MVP is live-validated on the USB-recoverable ESP32.
-5. OTA failure-path hardening is validated for bad URL, bad SHA-256, interrupted download, and oversized image cases.
-6. Next work is new-device provisioning, dashboard house image placement, firmware signing/rollback decisions, and broader fleet operations.
+The original four implementation phases are done. The project is now in Phase 5: fleet operations and daily dashboard improvements.
+
+| Phase | Status | Result |
+| --- | --- | --- |
+| Phase 1: Local Data Path MVP | Complete | Mosquitto, SQLite collection, and the local dashboard run on the Pi. |
+| Phase 2: ESP32 Firmware MVP | Complete | ESP32 devices publish authenticated local MQTT telemetry with DHT22 readings and health fields. |
+| Phase 3: Runtime Configuration | Complete | Devices accept retained MQTT config for report interval and temperature-change threshold. |
+| Phase 4: Local OTA | Complete and hardened | OTA updates work locally; bad URL, bad SHA-256, interrupted download, and oversized image failures were validated on the USB-recoverable bench device. |
+| Phase 5: Fleet Operations | In progress | The fleet is broadly migrated to `0.1.2-filtered-telemetry`, 20 mapped devices are reporting, and the dashboard now includes live device cards, grouped temperature history, suspect outdoor humidity flagging, and an approximate house diagram. |
+
+Current next work is operational rather than MVP build-out:
+
+- Continue watching recovered devices across several 10-minute telemetry intervals.
+- Use `Sunroom Test` as the USB bench device before firmware or feature rollout.
+- Replace the approximate dashboard house diagram with an uploaded house image and configurable sensor placement overlays.
+- Decide whether to add firmware signing before broader unattended OTA rollout.
 
 ## Documentation
 

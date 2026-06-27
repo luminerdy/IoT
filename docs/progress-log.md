@@ -492,6 +492,6 @@ Use this file for dated accomplishments and important observations. Keep future 
 
 ### Ready Next
 
-- Provision the remaining new ESP32 device if it is still pending.
+- New ESP32 provisioning is complete for the current batch: `Studio` and `UnderAC`.
 - Continue watching recovered devices across a few 10-minute telemetry intervals.
 - Start the next dashboard improvement: replace the approximate house diagram with an uploaded house image and configurable sensor placement overlays.

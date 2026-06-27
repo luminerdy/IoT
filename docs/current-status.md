@@ -69,11 +69,10 @@ Latest SQLite/API check on 2026-06-27 shows 20 mapped devices on `0.1.2-filtered
 
 ## Next Actions
 
-1. Provision the remaining new ESP32 devices when they arrive: plug in one at a time, flash firmware, record MAC/device ID, publish retained defaults, and map each location. `Studio` and `UnderAC` are done.
-2. Confirm the newly recovered devices stay stable across a few 10-minute report intervals: `Laundryroom`, `Lightpole`, `MasterBedroom`, `SunroomDoor`, and `Entryway`.
-3. Use `Sunroom Test` (`esp32-9c9c1fda3670`) on `/dev/ttyUSB0` for firmware and feature validation before deploying to other devices.
-4. Replace the approximate dashboard house diagram with an uploaded house image and configurable sensor placement overlays.
-5. Decide whether to add firmware signing now that OTA failure-path tests are documented.
+1. Confirm the newly recovered devices stay stable across a few 10-minute report intervals: `Laundryroom`, `Lightpole`, `MasterBedroom`, `SunroomDoor`, and `Entryway`.
+2. Use `Sunroom Test` (`esp32-9c9c1fda3670`) on `/dev/ttyUSB0` for firmware and feature validation before deploying to other devices.
+3. Replace the approximate dashboard house diagram with an uploaded house image and configurable sensor placement overlays.
+4. Decide whether to add firmware signing now that OTA failure-path tests are documented.
 
 ## Decisions To Revisit Soon
 
@@ -102,6 +101,7 @@ Latest SQLite/API check on 2026-06-27 shows 20 mapped devices on `0.1.2-filtered
 - Draft PR: `https://github.com/luminerdy/IoT/pull/1`
 - GitHub SSH push from the Pi works through `/home/scotty/.ssh/id_ed25519_github`; the working branch is synced to `origin/codex/dashboard-graph-diagram-memory`.
 - Local-only ignored files include runtime data, build output, `config/locations.json`, and `firmware/include/secrets.h`.
+- New ESP32 provisioning is complete for the current batch: `Studio` / `esp32-704bca480220` and `UnderAC` / `esp32-a4f00f75f358`.
 - Dashboard URL on the Pi: `http://127.0.0.1:8000`; LAN URL: `http://piserver.local:8000` or `http://<pi-ip-address>:8000`.
 - Dashboard app: summary metrics, approximate house diagram, device cards, latest readings, and `/api/history` trend data are in `app/iot_home/dashboard.py`. The diagram uses two-line room labels with location/temp above humidity/last-seen, no per-room box outline, treats `BunkHouse` as an interior grandkids room, places `Studio` between `FrontBedroom` and `Entryway`, and places `UnderAC` between `FrontBedroom` and `BunkHouse`. The Temperature Graph selector is grouped into `Inside`, `Outside`, and `Separate`, with both group-level `All` checkboxes and individual device checkboxes. Outdoor DHT22 humidity at or above `99%` is flagged as suspect and excluded from average humidity.
 - Dashboard verification: normal port `8000` serves the suspect humidity flag plus the `Studio` and `UnderAC` floorplan placements. Latest live check showed 20 mapped devices, no `UNMAPPED` rows, and no retired `esp32-94b97ed52a78` row.

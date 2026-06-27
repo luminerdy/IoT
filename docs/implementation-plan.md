@@ -138,7 +138,6 @@ Tasks:
 
 Ready next for 2026-06-27:
 
-- Provision the remaining new ESP32 devices when they arrive: flash firmware one at a time, capture each MAC/device ID, publish retained defaults, and map locations. `Studio` / `esp32-704bca480220` and `UnderAC` / `esp32-a4f00f75f358` are done.
 - Confirm newly recovered devices remain stable across a few 10-minute telemetry intervals: `Laundryroom`, `Lightpole`, `MasterBedroom`, `SunroomDoor`, and `Entryway`.
 - Keep `config/locations.json` and SQLite placeholders clean when devices are removed or renamed.
 - Replace the approximate dashboard house diagram with an uploaded house image and configurable temperature/humidity placement.
@@ -147,6 +146,7 @@ Ready next for 2026-06-27:
 Acceptance criteria:
 
 - All devices can be monitored from the dashboard.
+- Current new ESP32 batch is provisioned: `Studio` / `esp32-704bca480220` and `UnderAC` / `esp32-a4f00f75f358`.
 - Dashboard is reachable from the Pi and LAN and shows current readings, online/stale/offline state, useful recent history, and grouped temperature graph selection.
 - Device mappings can be maintained on the Pi.
 - OTA rollout can be paused and retried.

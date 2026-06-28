@@ -1,6 +1,6 @@
 # Current Status
 
-Last updated: 2026-06-27
+Last updated: 2026-06-28
 
 This is the first file to read after a reboot, context switch, or long pause.
 
@@ -12,7 +12,7 @@ The project is a local-first Raspberry Pi IoT system with MQTT, SQLite, a boot-e
 
 Phase 5: Fleet operations plus daily dashboard improvements
 
-Status: The local OTA firmware is deployed broadly. Signed OTA hardening is validated on the USB-recoverable bench device but has not been rolled out fleet-wide. The dashboard service is enabled at boot and serves live device cards, summary metrics, latest readings, a grouped selectable temperature graph from SQLite, and a house diagram whose sensor placement overlay can now be loaded from local JSON.
+Status: Phases 0 through 4 are complete for the current local-first system. Signed OTA hardening is validated on the USB-recoverable bench device and has started rolling out in small batches. The active work is Phase 5: fleet operations, dashboard maintenance workflows, backups, and staged security hardening.
 
 ## Accomplished
 
@@ -45,6 +45,8 @@ Status: The local OTA firmware is deployed broadly. Signed OTA hardening is vali
 - Added signed OTA verification and tested it on `Bench Device` only. The device reports `0.1.3-signed-ota`; a signed OTA was accepted, and an intentionally bad signature was rejected.
 - Added optional MQTT TLS and ACL scripts for staged migration. They are not yet enabled across the installed fleet.
 - Started the first small indoor signed-OTA soak batch on 2026-06-27: `RoomE`, `RoomF`, and `RoomA` updated to `0.1.3-signed-ota` and came back online/non-stale immediately after OTA.
+- Installed GitHub CLI locally under `/home/scotty/.local/bin/gh`; GitHub CLI API auth still requires `gh auth login` if terminal-based PR/check workflows are needed.
+- Sanitized the tracked public branch tip to remove local private IPs, MAC-shaped addresses, real ESP32 IDs, Pi hostname references, and real room/location labels. Older public git history still contains local identifiers but no passwords or private key material were found by the scan.
 
 ## Live Dashboard State
 
@@ -73,15 +75,15 @@ Latest SQLite/API check on 2026-06-27 after signed OTA testing shows 20 mapped d
 
 ## Active Blockers
 
-- GitHub CLI `gh` is not installed, so GitHub Actions log inspection and some PR workflows still need the connector or local `git`.
 - The actual house image has not been uploaded yet. The dashboard is ready for it through `data/dashboard-assets/` plus `config/floorplan.json`.
+- GitHub CLI is installed but not authenticated. Run `gh auth login` before terminal-based PR/check workflows.
 
 ## Next Actions
 
-1. Confirm the newly recovered devices stay stable across a few 10-minute report intervals: `UtilityF`, `OutdoorB`, `RoomH`, `RoomJ`, and `RoomC`.
-2. Use `Bench Device` (`esp32-device-id`) on `/dev/ttyUSB0` for firmware and feature validation before deploying to other devices.
-3. Upload the actual house image under `data/dashboard-assets/`, set `backgroundImage` in `config/floorplan.json`, and tune the existing sensor placement overlay.
-4. Continue signed OTA rollout in small batches after the first indoor soak remains stable.
+1. Continue signed OTA rollout in small batches until all active fleet devices are on `0.1.3-signed-ota` or newer.
+2. Keep `Bench Device` (`esp32-device-id`) on `/dev/ttyUSB0` for firmware and feature validation before deploying to other devices.
+3. Upload the actual house image under `data/dashboard-assets/`, set `backgroundImage` in local `config/floorplan.json`, and tune the existing sensor placement overlay.
+4. Add the Phase 5 operations basics: SQLite backup/export, a sensor replacement checklist, and a compact service/OTA runbook.
 
 ## Decisions To Revisit Soon
 

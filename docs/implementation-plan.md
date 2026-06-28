@@ -2,19 +2,32 @@
 
 Use this file for planned work, phase status, and acceptance criteria. Move completed work into `docs/progress-log.md`. Record durable architecture choices in `docs/decision-record.md`.
 
+## Current Roadmap
+
+Active phase: Phase 5, fleet operations and daily-use dashboard.
+
+Phases 0 through 4 are complete for the current local-first system. Remaining work is operational maturity: finishing signed OTA rollout, improving dashboard maintenance workflows, backing up data, and hardening MQTT access without disrupting the installed fleet.
+
 ## Phase 0: Project Setup
 
-Status: In progress
+Status: Complete.
 
-- Create local project documentation. Done.
-- Initialize local git tracking. Done.
-- Define MQTT topics and message schema. Draft done.
-- Add quick current-status documentation. Done.
-- Decide install approach for Pi dependencies.
+Goal: Establish the local project, documentation, source tracking, and implementation direction.
 
-Current next step:
+Completed:
 
-- Start Phase 1 with simulated devices, unless ESP32 USB visibility becomes the immediate priority.
+- Created local project documentation.
+- Initialized local git tracking and connected the public GitHub repository.
+- Defined MQTT topic and payload schema.
+- Added `docs/current-status.md` for fast restart/context-switch recovery.
+- Chose a pragmatic Pi dependency approach: system services plus project-local Python/PlatformIO tooling where useful.
+- Sanitized public docs and samples so local secrets and identifiable runtime data stay out of the tracked tree.
+
+Acceptance criteria:
+
+- Repo has enough documentation to resume work after a pause. Done.
+- Public repo excludes local secrets and runtime files. Done.
+- Architecture direction is recorded. Done.
 
 ## Phase 1: Local Data Path MVP
 
@@ -22,15 +35,16 @@ Status: Complete.
 
 Goal: Prove Pi-side broker, collector, database, and dashboard with simulated devices.
 
-Tasks:
+Completed:
 
-- Install/configure Mosquitto on the Pi. Done.
-- Create a simulated ESP32 MQTT publisher. Done.
-- Create SQLite schema. Done.
-- Create collector service to subscribe to MQTT and store readings. Done.
-- Create dashboard showing latest readings per room/device. Done.
-- Add stale/offline detection. Done.
-- Install collector and dashboard as systemd services. Done.
+- Installed/configured Mosquitto on the Pi.
+- Created a simulated ESP32 MQTT publisher.
+- Created SQLite schema and helper code.
+- Created collector service to subscribe to MQTT and store readings.
+- Created dashboard showing latest readings per room/device.
+- Added stale/offline detection.
+- Installed collector and dashboard as systemd services.
+- Verified services are active and enabled.
 
 Acceptance criteria:
 
@@ -38,143 +52,146 @@ Acceptance criteria:
 - Collector persists readings. Done.
 - Dashboard updates without full page reload. Done.
 - Dashboard shows stale/offline state. Done.
-- Collector and dashboard restart after reboot through systemd. Service enablement done; reboot verification pending.
+- Broker, collector, and dashboard start at boot through systemd. Done.
 
 ## Phase 2: ESP32 Firmware MVP
 
-Status: Complete for the first real ESP32; broader fleet hardening pending.
+Status: Complete.
 
-Goal: Replace simulated telemetry with a real ESP32.
+Goal: Replace simulated telemetry with real ESP32 sensor nodes.
 
-Tasks:
+Completed:
 
-- Resolve USB visibility for connected ESP32. Done.
-- Install PlatformIO and `esptool` on the Pi or define another build host. Done.
-- Create PlatformIO firmware project. Done.
-- Implement WiFi connection. Done.
-- Implement local MQTT connection. Done.
-- Implement DHT22 reads and validation. Done.
-- Publish telemetry and status messages. Done.
-- Include firmware version, RSSI, uptime, and error counters. Done.
-- Configure production Mosquitto LAN listener or systemd-managed test broker. Done.
-- Add Pi-side location mapping. Done.
+- Resolved USB visibility and serial access for connected ESP32 devices.
+- Installed PlatformIO and `esptool` on the Pi.
+- Created PlatformIO firmware project.
+- Implemented WiFi connection.
+- Implemented local MQTT connection with username/password support.
+- Implemented DHT22 reads, validation, and filtered telemetry publishing.
+- Published telemetry, retained online/offline status, firmware version, RSSI, uptime, error counters, and restart reason.
+- Configured production Mosquitto LAN listener.
+- Added Pi-side location mapping.
+- Migrated the installed fleet from the legacy OTA firmware where OTA was accepted.
 
 Acceptance criteria:
 
-- ESP32 publishes valid telemetry to production Mosquitto. Done.
-- Dashboard displays the real ESP32 reading. Done.
-- Device reconnects after broker restart or WiFi interruption. Partially verified by reconnecting to restarted test broker.
+- Real ESP32 devices publish valid telemetry to production Mosquitto. Done.
+- Dashboard displays real sensor readings. Done.
+- Devices reconnect after normal service/network interruptions. Done enough for current operations; continue observing as part of Phase 5.
 
-Operational follow-up:
-
-- Clear old retained simulator MQTT messages if the dashboard should only show physical devices.
-
-## Phase 3: Configuration
+## Phase 3: Runtime Configuration
 
 Status: Complete.
 
 Goal: Allow runtime config without reflashing.
 
-Tasks:
+Completed:
 
-- Add retained per-device config topic. Done.
-- ESP32 subscribes to config. Done.
-- Validate and apply report interval. Done.
-- Validate and apply temperature change threshold. Done.
-- Report active config in telemetry or response. Done.
-- Add Pi-side config publisher. Done.
+- Added retained per-device config topic.
+- ESP32 firmware subscribes to config.
+- Validates and applies `reportIntervalSeconds`.
+- Validates and applies `changeThresholdF`.
+- Reports active config in telemetry and config responses.
+- Added Pi-side config publisher.
+- Published retained default runtime config for migrated devices.
 
 Acceptance criteria:
 
 - Report interval can be changed from the Pi. Done.
-- Invalid config is rejected and reported. Done.
+- Temperature change threshold can be changed from the Pi. Done.
+- Invalid config is rejected and reported without changing active config. Done.
 
-## Phase 4: Local OTA
+## Phase 4: Local OTA And Firmware Safety
 
-Status: Signed OTA validated on the bench device; staged fleet rollout in progress.
+Status: Complete for the current system.
 
-Goal: Update ESP32 devices over the air from the Pi.
+Goal: Update ESP32 devices over the local network from the Pi with a tested recovery path.
 
-Tasks:
+Completed:
 
-- Add OTA partitions to firmware build. Done; default ESP32 partition table already has `ota_0` and `ota_1`.
-- Serve firmware binaries and manifest from the Pi. Done.
-- Add MQTT OTA command handling. Done.
-- Download firmware over HTTP from Pi. Done.
-- Verify SHA-256. Done.
-- Verify P-256 ECDSA firmware signature. Done for `0.1.3-signed-ota`.
-- Write OTA partition and reboot. Done.
-- Report OTA status over MQTT. Done.
-- Add dashboard or CLI rollout control. CLI helper started.
+- Confirmed OTA partition support in the default ESP32 partition table.
+- Served firmware binaries and manifests from the Pi.
+- Added MQTT OTA command handling.
+- Downloaded firmware over HTTP from the Pi.
+- Verified SHA-256 before applying firmware.
+- Added P-256 ECDSA signed OTA verification for firmware `0.1.3-signed-ota`.
+- Wrote OTA partition, finalized update, and rebooted successfully.
+- Published OTA status over MQTT.
+- Added CLI rollout helper.
+- Tested successful OTA on the USB-recoverable bench device.
+- Tested successful OTA on canary/fleet devices.
+- Tested bad URL, bad SHA-256, interrupted download, oversized image, and bad signature failure paths on the bench device.
 
 Acceptance criteria:
 
-- USB-connected test ESP32 can be updated OTA. Done.
-- One canary device can be updated OTA. Done.
-- Failed update does not break USB recovery path.
+- USB-connected bench ESP32 can be updated OTA. Done.
+- At least one non-bench device can be updated OTA. Done.
+- Failed update does not break the USB recovery path. Done.
+- Firmware authorization is enforced by signature, not only by checksum. Done.
 
-Hardening follow-up:
+Phase 4 residuals moved to Phase 5/backlog:
 
-- Test bad URL, bad SHA-256, interrupted download, oversized image, and bad signature failure paths. Done on USB-recoverable `Bench Device`.
-- Decide whether firmware version should remain a PlatformIO build flag or move to a single release metadata source.
+- Continue fleet-wide signed OTA rollout in small batches.
+- Add richer rollout controls if manual CLI rollout becomes tedious.
+- Decide whether firmware version should remain a PlatformIO build flag or move to release metadata.
 
-## Phase 5: Fleet Operations
+## Phase 5: Fleet Operations And Daily Dashboard
 
 Status: In progress.
 
-Goal: Make the system reliable for all room sensors.
+Goal: Make the system boring to operate: all sensors visible, recoverable, backed up, and easy to maintain from the Pi.
 
-Tasks:
+Priority 1: Fleet Stability
 
-- Improve the Raspberry Pi-hosted web dashboard as the main IoT data view.
-- Add a dashboard house image upload and sensor placement overlay so readings can be positioned on the actual home image. Configurable overlay support is done; actual image upload/selection is pending.
-- Keep the Temperature Graph useful for daily monitoring with grouped and individual device selection. Initial grouping done.
-- Flag suspect outdoor DHT22 humidity in the dashboard. Initial `>=99%` outdoor DHT22 rule done.
-- Add batch rollout control.
-- Add rollback workflow.
-- Add dashboard admin view for device/location mapping.
-- Add backup/export for SQLite.
-- Add systemd services for broker, collector, dashboard, and OTA coordinator.
-- Add basic operational runbook.
+- Continue signed OTA rollout in small batches until the installed fleet is on `0.1.3-signed-ota` or newer.
+- Keep the USB bench device reserved for firmware and feature validation before fleet rollout.
+- Watch recovered/replaced devices across normal 10-minute report intervals.
+- Keep retained MQTT state, SQLite device rows, and `config/locations.json` clean when devices are removed, replaced, or renamed.
+- Add a simple operator checklist for adding/replacing a sensor.
 
-Ready next for 2026-06-27:
+Priority 2: Dashboard As The Daily Control Surface
 
-- Confirm newly recovered devices remain stable across a few 10-minute telemetry intervals: `UtilityF`, `OutdoorB`, `RoomH`, `RoomJ`, and `RoomC`.
-- Keep `config/locations.json` and SQLite placeholders clean when devices are removed or renamed.
-- Upload the actual house image under `data/dashboard-assets/`, set `backgroundImage` in `config/floorplan.json`, and tune the configurable temperature/humidity placement overlay.
-- Continue signed OTA rollout in small batches after the first indoor soak remains stable.
+- Upload the actual floorplan image under `data/dashboard-assets/`.
+- Set `backgroundImage` in local `config/floorplan.json`.
+- Tune local sensor overlay placement without committing private floorplan data.
+- Add a dashboard admin view for device/location mapping.
+- Make graph grouping configurable if hard-coded groups become limiting.
+- Keep suspect humidity flagging visible but non-disruptive.
+
+Priority 3: Operations And Data Protection
+
+- Add SQLite backup/export workflow.
+- Add restore verification for at least one backup.
+- Add a compact operational runbook covering service status, logs, OTA rollout, config publish, and sensor replacement.
+- Decide how much local runtime state should stay JSON files versus moving to SQLite tables.
+
+Priority 4: Security Hardening Without Fleet Disruption
+
+- Keep signed OTA required for new firmware.
+- Stage MQTT TLS and per-device ACL migration on the bench device first.
+- Add per-device credentials only after bench validation.
+- Decide whether the public GitHub history needs a full rewrite or whether the current sanitized tip is sufficient.
 
 Acceptance criteria:
 
-- All devices can be monitored from the dashboard.
-- Current new ESP32 batch is provisioned: `RoomB` / `esp32-device-id` and `UtilityE` / `esp32-device-id`.
-- Dashboard is reachable from the Pi and LAN and shows current readings, online/stale/offline state, useful recent history, and grouped temperature graph selection.
-- Floorplan sensor placement can be maintained through local JSON without editing dashboard JavaScript.
-- Device mappings can be maintained on the Pi.
-- OTA rollout can be paused and retried.
-- Services restart after reboot.
+- Dashboard shows all expected devices with current readings and clear online/stale/offline state.
+- All active fleet devices are on signed OTA firmware.
+- Device mappings can be maintained on the Pi without source edits.
+- Floorplan placement can be maintained locally without committing private data.
+- OTA rollout can be paused, retried, and verified.
+- SQLite data is backed up and restorable.
+- Services recover after reboot.
 
-## Near-Term Dashboard Work
+## Phase 6: Optional Productization
 
-Target date: 2026-06-21
+Status: Not started.
 
-Goal: turn the current basic table into a useful Raspberry Pi web dashboard for daily IoT monitoring.
+Goal: Only start this if the local system grows beyond personal operations.
 
-Tasks:
+Candidate work:
 
-- Verify the dashboard service is reachable at `http://127.0.0.1:8000` on the Pi and `http://iot-pi.local:8000` on the LAN. Done on the Pi for port `8000`; LAN URL remains available through the same service binding.
-- Keep the current latest-reading table, but improve layout for phone and desktop use.
-- Add at-a-glance cards for temperature, humidity, online/stale/offline state, RSSI, last seen, and firmware version.
-- Add a recent history view or simple chart from SQLite readings. Done; Temperature Graph supports range selection plus grouped and individual device toggles.
-- Add clear empty/error states if MQTT data or SQLite data is missing.
-- Decide whether to keep the current standard-library HTTP server or move the dashboard to a fuller web stack.
-
-## OTA Hardening Backlog
-
-- Test bad OTA URL failure path: publish an OTA command with a reachable rollout ID but an invalid firmware URL; verify `ota/status` reports failure and the device keeps running the current firmware. Done for `Bench Device` with rollout `20260626T153900Z-bad-url-test`.
-- Test bad SHA-256 failure path: publish an OTA command with a valid firmware URL and intentionally wrong SHA-256; verify download completes, validation fails, and no reboot occurs. Done for `Bench Device` with rollout `20260626T190800Z-bad-sha`.
-- Test interrupted download failure path: serve a truncated firmware response or stop the HTTP server during download; verify the device reports failure and keeps running. Done for `Bench Device` with rollout `20260626T191300Z-interrupted`.
-- Test oversized image failure path: publish or serve an image larger than the available OTA partition; verify OTA write fails cleanly and no reboot occurs. Done for `Bench Device` with rollout `20260626T203800Z-oversized`.
-- Record expected `home/sensors/{deviceId}/ota/status` messages for each failure mode in `docs/mqtt-schema.md` or the Phase 4 runbook. Done in the Phase 4 runbook.
-- Decide whether firmware version should remain a PlatformIO build flag or move to a single release metadata source.
-- Continue signed OTA fleet rollout after bench validation and first indoor soak.
+- Replace the dependency-free dashboard server with FastAPI/HTMX or another fuller stack if forms, auth, or admin workflows outgrow the current server.
+- Add dashboard login/auth if exposed beyond the trusted LAN.
+- Add richer OTA rollout UI.
+- Add alerting for stale devices, sensor failures, and suspect humidity.
+- Add automated GitHub CI once the workflow is worth maintaining.

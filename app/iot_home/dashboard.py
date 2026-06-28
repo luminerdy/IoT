@@ -867,6 +867,7 @@ def page() -> bytes:
     ];
     const outsideGraphLocations = new Set(["OutdoorA", "OutdoorB", "OutdoorC"]);
     const separateGraphLocations = new Set(["UtilityA", "UtilityB", "UtilityC", "UtilityD", "UtilityE"]);
+    const insideGraphLocations = new Set(["Laundryroom"]);
     const outdoorHumidityLocations = new Set(["OutdoorA", "OutdoorB", "OutdoorC"]);
     const graphGroups = [
       {
@@ -1163,11 +1164,13 @@ def page() -> bytes:
     }
 
     function isOutsideGraphLocation(location) {
+      if (insideGraphLocations.has(location)) return false;
       const zone = floorplanZoneFor(location);
       return outsideGraphLocations.has(location) || zone?.type === "outdoor";
     }
 
     function isSeparateGraphLocation(location) {
+      if (insideGraphLocations.has(location)) return false;
       const zone = floorplanZoneFor(location);
       return separateGraphLocations.has(location) || zone?.type === "utility";
     }

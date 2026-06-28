@@ -64,7 +64,7 @@ PYTHONPATH=app python3 -m iot_home.dashboard --host <bind-address> --port 8000
 Open:
 
 ```text
-http://piserver.local:8000
+http://iot-pi.local:8000
 ```
 
 or:

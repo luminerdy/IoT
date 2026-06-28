@@ -26,15 +26,15 @@ Stage and publish a signed OTA to the bench device only:
 ```bash
 pw=$(awk -F'"' '/MQTT_PASSWORD/ {print $2; exit}' firmware/include/secrets.h)
 MQTT_USERNAME=iot MQTT_PASSWORD="$pw" PYTHONPATH=app \
-  python3 -m iot_home.publish_ota esp32-9c9c1fda3670 0.1.3-signed-ota \
-  --base-url http://piserver.local:8000
+  python3 -m iot_home.publish_ota esp32-device-id 0.1.3-signed-ota \
+  --base-url http://iot-pi.local:8000
 ```
 
 Watch the OTA status:
 
 ```bash
 mosquitto_sub -h localhost -p 1883 -u iot -P "$pw" \
-  -t 'home/sensors/esp32-9c9c1fda3670/ota/status' -v
+  -t 'home/sensors/esp32-device-id/ota/status' -v
 ```
 
 Expected success status sequence:
@@ -61,15 +61,15 @@ scripts/configure_mosquitto_tls_acl.sh
 This leaves the existing listener alone and adds ACL rules for device-style usernames. Add per-device users before migrating a sensor:
 
 ```bash
-scripts/add_mqtt_device_user.sh esp32-9c9c1fda3670
+scripts/add_mqtt_device_user.sh esp32-device-id
 ```
 
 To test TLS on a bench ESP32, copy the generated CA certificate into `firmware/include/secrets.h`, set:
 
 ```c
 #define MQTT_PORT 8883
-#define MQTT_USER "esp32-9c9c1fda3670"
+#define MQTT_USER "esp32-device-id"
 #define MQTT_USE_TLS 1
 ```
 
-Then USB flash `Sunroom Test` first and verify it reports telemetry before changing any other device.
+Then USB flash `Bench Device` first and verify it reports telemetry before changing any other device.

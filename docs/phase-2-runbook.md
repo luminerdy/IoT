@@ -7,8 +7,8 @@ Goal: build, flash, and verify real ESP32 local MQTT firmware.
 - Serial port: `/dev/ttyUSB0`
 - USB bridge: Silicon Labs CP2102
 - Chip: ESP32-D0WDQ6 revision v1.0
-- MAC: `9c:9c:1f:da:36:70`
-- Local device ID: `esp32-9c9c1fda3670`
+- MAC: `<device-mac>`
+- Local device ID: `esp32-device-id`
 
 ## Firmware Project
 
@@ -35,7 +35,7 @@ Example:
 
 ```json
 {
-  "esp32-9c9c1fda3670": "Sunroom Test"
+  "esp32-device-id": "Bench Device"
 }
 ```
 
@@ -88,7 +88,7 @@ Publish retained per-device config from the Pi:
 
 ```bash
 cd /home/scotty/IoT
-MQTT_USERNAME=iot MQTT_PASSWORD='<password>' PYTHONPATH=app python3 -m iot_home.publish_config esp32-9c9c1fda3670 --report-interval 600 --change-threshold 1.0
+MQTT_USERNAME=iot MQTT_PASSWORD='<password>' PYTHONPATH=app python3 -m iot_home.publish_config esp32-device-id --report-interval 600 --change-threshold 1.0
 ```
 
 Supported fields:
@@ -102,20 +102,20 @@ Publish the firmware defaults as retained config. This is the offline-safe reset
 
 ```bash
 cd /home/scotty/IoT
-MQTT_USERNAME=iot MQTT_PASSWORD='<password>' PYTHONPATH=app python3 -m iot_home.publish_config esp32-9c9c1fda3670 --defaults
+MQTT_USERNAME=iot MQTT_PASSWORD='<password>' PYTHONPATH=app python3 -m iot_home.publish_config esp32-device-id --defaults
 ```
 
 To delete the retained config from the broker, publish an empty retained message. A connected ESP32 will apply firmware defaults when it receives this empty message, but an offline ESP32 will not receive it later because the retained message has been removed:
 
 ```bash
 cd /home/scotty/IoT
-MQTT_USERNAME=iot MQTT_PASSWORD='<password>' PYTHONPATH=app python3 -m iot_home.publish_config esp32-9c9c1fda3670 --clear
+MQTT_USERNAME=iot MQTT_PASSWORD='<password>' PYTHONPATH=app python3 -m iot_home.publish_config esp32-device-id --clear
 ```
 
 The ESP32 publishes config apply/reject messages to:
 
 ```text
-home/sensors/esp32-9c9c1fda3670/response
+home/sensors/esp32-device-id/response
 ```
 
 ### Temporary Test Broker
@@ -139,7 +139,7 @@ PYTHONPATH=app python3 -m iot_home.collector --port 1884
 The flashed ESP32 published telemetry through production Mosquitto to the local collector:
 
 ```text
-device_id: esp32-9c9c1fda3670
+device_id: esp32-device-id
 temperature: 84.4 F
 humidity: 46.6 %
 datetime: 2026-06-16T21:34:05Z

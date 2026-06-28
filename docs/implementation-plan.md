@@ -115,7 +115,7 @@ Acceptance criteria:
 
 Hardening follow-up:
 
-- Test bad URL, bad SHA-256, interrupted download, oversized image, and bad signature failure paths. Done on USB-recoverable `Sunroom Test`.
+- Test bad URL, bad SHA-256, interrupted download, oversized image, and bad signature failure paths. Done on USB-recoverable `Bench Device`.
 - Decide whether firmware version should remain a PlatformIO build flag or move to a single release metadata source.
 
 ## Phase 5: Fleet Operations
@@ -139,7 +139,7 @@ Tasks:
 
 Ready next for 2026-06-27:
 
-- Confirm newly recovered devices remain stable across a few 10-minute telemetry intervals: `Laundryroom`, `Lightpole`, `MasterBedroom`, `SunroomDoor`, and `Entryway`.
+- Confirm newly recovered devices remain stable across a few 10-minute telemetry intervals: `UtilityF`, `OutdoorB`, `RoomH`, `RoomJ`, and `RoomC`.
 - Keep `config/locations.json` and SQLite placeholders clean when devices are removed or renamed.
 - Upload the actual house image under `data/dashboard-assets/`, set `backgroundImage` in `config/floorplan.json`, and tune the configurable temperature/humidity placement overlay.
 - Continue signed OTA rollout in small batches after the first indoor soak remains stable.
@@ -147,7 +147,7 @@ Ready next for 2026-06-27:
 Acceptance criteria:
 
 - All devices can be monitored from the dashboard.
-- Current new ESP32 batch is provisioned: `Studio` / `esp32-704bca480220` and `UnderAC` / `esp32-a4f00f75f358`.
+- Current new ESP32 batch is provisioned: `RoomB` / `esp32-device-id` and `UtilityE` / `esp32-device-id`.
 - Dashboard is reachable from the Pi and LAN and shows current readings, online/stale/offline state, useful recent history, and grouped temperature graph selection.
 - Floorplan sensor placement can be maintained through local JSON without editing dashboard JavaScript.
 - Device mappings can be maintained on the Pi.
@@ -162,7 +162,7 @@ Goal: turn the current basic table into a useful Raspberry Pi web dashboard for 
 
 Tasks:
 
-- Verify the dashboard service is reachable at `http://127.0.0.1:8000` on the Pi and `http://piserver.local:8000` on the LAN. Done on the Pi for port `8000`; LAN URL remains available through the same service binding.
+- Verify the dashboard service is reachable at `http://127.0.0.1:8000` on the Pi and `http://iot-pi.local:8000` on the LAN. Done on the Pi for port `8000`; LAN URL remains available through the same service binding.
 - Keep the current latest-reading table, but improve layout for phone and desktop use.
 - Add at-a-glance cards for temperature, humidity, online/stale/offline state, RSSI, last seen, and firmware version.
 - Add a recent history view or simple chart from SQLite readings. Done; Temperature Graph supports range selection plus grouped and individual device toggles.
@@ -171,10 +171,10 @@ Tasks:
 
 ## OTA Hardening Backlog
 
-- Test bad OTA URL failure path: publish an OTA command with a reachable rollout ID but an invalid firmware URL; verify `ota/status` reports failure and the device keeps running the current firmware. Done for `Sunroom Test` with rollout `20260626T153900Z-bad-url-test`.
-- Test bad SHA-256 failure path: publish an OTA command with a valid firmware URL and intentionally wrong SHA-256; verify download completes, validation fails, and no reboot occurs. Done for `Sunroom Test` with rollout `20260626T190800Z-bad-sha`.
-- Test interrupted download failure path: serve a truncated firmware response or stop the HTTP server during download; verify the device reports failure and keeps running. Done for `Sunroom Test` with rollout `20260626T191300Z-interrupted`.
-- Test oversized image failure path: publish or serve an image larger than the available OTA partition; verify OTA write fails cleanly and no reboot occurs. Done for `Sunroom Test` with rollout `20260626T203800Z-oversized`.
+- Test bad OTA URL failure path: publish an OTA command with a reachable rollout ID but an invalid firmware URL; verify `ota/status` reports failure and the device keeps running the current firmware. Done for `Bench Device` with rollout `20260626T153900Z-bad-url-test`.
+- Test bad SHA-256 failure path: publish an OTA command with a valid firmware URL and intentionally wrong SHA-256; verify download completes, validation fails, and no reboot occurs. Done for `Bench Device` with rollout `20260626T190800Z-bad-sha`.
+- Test interrupted download failure path: serve a truncated firmware response or stop the HTTP server during download; verify the device reports failure and keeps running. Done for `Bench Device` with rollout `20260626T191300Z-interrupted`.
+- Test oversized image failure path: publish or serve an image larger than the available OTA partition; verify OTA write fails cleanly and no reboot occurs. Done for `Bench Device` with rollout `20260626T203800Z-oversized`.
 - Record expected `home/sensors/{deviceId}/ota/status` messages for each failure mode in `docs/mqtt-schema.md` or the Phase 4 runbook. Done in the Phase 4 runbook.
 - Decide whether firmware version should remain a PlatformIO build flag or move to a single release metadata source.
 - Continue signed OTA fleet rollout after bench validation and first indoor soak.

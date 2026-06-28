@@ -39,7 +39,7 @@ subjectAltName=@alt_names
 [alt_names]
 DNS.1=${hostname}
 DNS.2=$(hostname)
-DNS.3=PiServer.local
+DNS.3=iot-pi.local
 CONFIG
 
   sudo openssl ecparam -name prime256v1 -genkey -noout -out "${cert_dir}/server.key"
@@ -59,7 +59,7 @@ fi
 
 tmp_acl="$(mktemp)"
 cat > "${tmp_acl}" <<'ACL'
-# Device users should match their device ID, for example esp32-9c9c1fda3670.
+# Device users should match their device ID, for example esp32-device-id.
 pattern readwrite home/sensors/%u/telemetry
 pattern readwrite home/sensors/%u/status
 pattern readwrite home/sensors/%u/response

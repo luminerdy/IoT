@@ -796,9 +796,9 @@ def page() -> bytes:
       "#b42318", "#1f6feb", "#0f766e", "#7c3aed", "#b7791f", "#0f6b8f",
       "#a21caf", "#2f855a", "#c2410c", "#475569", "#be123c", "#2563eb",
     ];
-    const outsideGraphLocations = new Set(["Porch", "Lightpole", "GarageDriveway"]);
-    const separateGraphLocations = new Set(["Garage", "WaterHeater", "WallBehindWH", "LaundryroomAC", "UnderAC"]);
-    const outdoorHumidityLocations = new Set(["Porch", "Lightpole", "GarageDriveway"]);
+    const outsideGraphLocations = new Set(["OutdoorA", "OutdoorB", "OutdoorC"]);
+    const separateGraphLocations = new Set(["UtilityA", "UtilityB", "UtilityC", "UtilityD", "UtilityE"]);
+    const outdoorHumidityLocations = new Set(["OutdoorA", "OutdoorB", "OutdoorC"]);
     const graphGroups = [
       {
         key: "inside",
@@ -817,26 +817,26 @@ def page() -> bytes:
       },
     ];
     const defaultFloorplanZones = [
-      {location: "Porch", x: 30, y: 4, w: 18, h: 10, type: "outdoor"},
-      {location: "FrontBedroom", x: 19, y: 14, w: 14, h: 18},
-      {location: "Studio", x: 33, y: 14, w: 12, h: 18},
-      {location: "Entryway", x: 45, y: 14, w: 10, h: 18},
-      {location: "Office", x: 52, y: 14, w: 20, h: 18},
-      {location: "Laundryroom", x: 64, y: 14, w: 14, h: 8, type: "utility"},
-      {location: "LaundryroomAC", x: 64, y: 22, w: 14, h: 8, type: "utility"},
-      {location: "UnderAC", x: 22, y: 34, w: 18, h: 10, type: "utility"},
-      {location: "Den", x: 48, y: 30, w: 20, h: 18},
-      {location: "Kitchen", x: 64, y: 30, w: 14, h: 18},
-      {location: "BunkHouse", x: 22, y: 48, w: 18, h: 14},
-      {location: "WallBehindWH", x: 39, y: 59, w: 18, h: 8, type: "utility"},
-      {location: "WaterHeater", x: 39, y: 67, w: 18, h: 8, type: "utility"},
-      {location: "MasterBedroom", x: 22, y: 76, w: 18, h: 8},
-      {location: "Sunroom", x: 58, y: 67, w: 16, h: 8},
-      {location: "Sunroom Test", x: 58, y: 75, w: 16, h: 8, type: "utility"},
-      {location: "SunroomDoor", x: 68, y: 83, w: 10, h: 8},
-      {location: "Garage", x: 78, y: 25, w: 16, h: 22, type: "outdoor"},
-      {location: "GarageDriveway", x: 78, y: 48, w: 16, h: 15, type: "outdoor"},
-      {location: "Lightpole", x: 49, y: 4, w: 13, h: 13, type: "outdoor"},
+      {location: "OutdoorA", x: 30, y: 4, w: 18, h: 10, type: "outdoor"},
+      {location: "RoomA", x: 19, y: 14, w: 14, h: 18},
+      {location: "RoomB", x: 33, y: 14, w: 12, h: 18},
+      {location: "RoomC", x: 45, y: 14, w: 10, h: 18},
+      {location: "RoomD", x: 52, y: 14, w: 20, h: 18},
+      {location: "UtilityF", x: 64, y: 14, w: 14, h: 8, type: "utility"},
+      {location: "UtilityD", x: 64, y: 22, w: 14, h: 8, type: "utility"},
+      {location: "UtilityE", x: 22, y: 34, w: 18, h: 10, type: "utility"},
+      {location: "RoomE", x: 48, y: 30, w: 20, h: 18},
+      {location: "RoomF", x: 64, y: 30, w: 14, h: 18},
+      {location: "RoomG", x: 22, y: 48, w: 18, h: 14},
+      {location: "UtilityC", x: 39, y: 59, w: 18, h: 8, type: "utility"},
+      {location: "UtilityB", x: 39, y: 67, w: 18, h: 8, type: "utility"},
+      {location: "RoomH", x: 22, y: 76, w: 18, h: 8},
+      {location: "RoomI", x: 58, y: 67, w: 16, h: 8},
+      {location: "Bench Device", x: 58, y: 75, w: 16, h: 8, type: "utility"},
+      {location: "RoomJ", x: 68, y: 83, w: 10, h: 8},
+      {location: "UtilityA", x: 78, y: 25, w: 16, h: 22, type: "outdoor"},
+      {location: "OutdoorC", x: 78, y: 48, w: 16, h: 15, type: "outdoor"},
+      {location: "OutdoorB", x: 49, y: 4, w: 13, h: 13, type: "outdoor"},
     ];
 
     function fmt(value, suffix = "") {

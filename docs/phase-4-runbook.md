@@ -11,7 +11,7 @@ Goal: update ESP32 firmware over the local network from the Raspberry Pi.
 
 ## Prerequisites
 
-Use the USB-connected `Sunroom Test` ESP32 (`esp32-9c9c1fda3670`) as the bench target for firmware and feature validation before publishing OTA commands to other devices.
+Use the USB-connected `Bench Device` ESP32 (`esp32-device-id`) as the bench target for firmware and feature validation before publishing OTA commands to other devices.
 
 If the dashboard code or service unit changes, restart the dashboard service:
 
@@ -40,7 +40,7 @@ Stage the built binary and manifest without publishing an OTA command:
 
 ```bash
 cd /home/scotty/IoT
-PYTHONPATH=app python3 -m iot_home.publish_ota esp32-9c9c1fda3670 0.1.1-ota-version --base-url http://piserver.local:8000 --stage-only
+PYTHONPATH=app python3 -m iot_home.publish_ota esp32-device-id 0.1.1-ota-version --base-url http://iot-pi.local:8000 --stage-only
 ```
 
 The helper writes:
@@ -55,7 +55,7 @@ data/firmware/0.1.1-ota-version/manifest.json
 ```bash
 cd /home/scotty/IoT
 pw=$(awk -F'"' '/MQTT_PASSWORD/ {print $2; exit}' firmware/include/secrets.h)
-mosquitto_sub -h localhost -p 1883 -u iot -P "$pw" -t 'home/sensors/esp32-9c9c1fda3670/ota/status' -v
+mosquitto_sub -h localhost -p 1883 -u iot -P "$pw" -t 'home/sensors/esp32-device-id/ota/status' -v
 ```
 
 ## Publish OTA Command
@@ -65,7 +65,7 @@ Only run this after confirming the staged firmware URL is reachable from the ESP
 ```bash
 cd /home/scotty/IoT
 pw=$(awk -F'"' '/MQTT_PASSWORD/ {print $2; exit}' firmware/include/secrets.h)
-MQTT_USERNAME=iot MQTT_PASSWORD="$pw" PYTHONPATH=app python3 -m iot_home.publish_ota esp32-9c9c1fda3670 0.1.1-ota-version --base-url http://piserver.local:8000
+MQTT_USERNAME=iot MQTT_PASSWORD="$pw" PYTHONPATH=app python3 -m iot_home.publish_ota esp32-device-id 0.1.1-ota-version --base-url http://iot-pi.local:8000
 ```
 
 Expected OTA status progression:
@@ -78,7 +78,7 @@ rebooting
 After reboot, verify telemetry:
 
 ```bash
-mosquitto_sub -h localhost -p 1883 -u iot -P "$pw" -t 'home/sensors/esp32-9c9c1fda3670/telemetry' -C 1 -v
+mosquitto_sub -h localhost -p 1883 -u iot -P "$pw" -t 'home/sensors/esp32-device-id/telemetry' -C 1 -v
 ```
 
 ## First Live Result
@@ -86,7 +86,7 @@ mosquitto_sub -h localhost -p 1883 -u iot -P "$pw" -t 'home/sensors/esp32-9c9c1f
 First live rollout succeeded on 2026-06-20:
 
 - Rollout: `20260620T180807Z-0.1.0-ota-mvp`
-- Device: `esp32-9c9c1fda3670`
+- Device: `esp32-device-id`
 - OTA status: `downloading`, then `rebooting`
 - Post-OTA telemetry: received at `2026-06-20T18:08:33Z` with `restartReason` set to `Software`
 - Follow-up: telemetry still reported `firmwareVersion` as `0.1.0-local`; align firmware build/version reporting before using version as the rollout confirmation signal.
@@ -94,7 +94,7 @@ First live rollout succeeded on 2026-06-20:
 Version-reporting rollout also succeeded on 2026-06-20:
 
 - Rollout: `20260620T182134Z-0.1.1-ota-version`
-- Device: `esp32-9c9c1fda3670`
+- Device: `esp32-device-id`
 - Post-OTA retained status: reported `firmwareVersion` as `0.1.1-ota-version` at `2026-06-20T18:22:24Z`
 - Post-OTA telemetry: received at `2026-06-20T18:24:12Z` with `firmwareVersion` set to `0.1.1-ota-version`
 
@@ -102,9 +102,9 @@ Version-reporting rollout also succeeded on 2026-06-20:
 
 Bad URL test on 2026-06-26:
 
-- Device: `Sunroom Test` / `esp32-9c9c1fda3670`
+- Device: `Bench Device` / `esp32-device-id`
 - Rollout: `20260626T153900Z-bad-url-test`
-- Command URL: `http://piserver.local:8000/firmware/bad-url-test/missing.bin`
+- Command URL: `http://iot-pi.local:8000/firmware/bad-url-test/missing.bin`
 - Observed OTA status progression:
 
 ```text
@@ -116,9 +116,9 @@ The retained status still reported firmware `0.1.2-filtered-telemetry`, and its 
 
 Bad SHA-256 test on 2026-06-26:
 
-- Device: `Sunroom Test` / `esp32-9c9c1fda3670`
+- Device: `Bench Device` / `esp32-device-id`
 - Rollout: `20260626T190800Z-bad-sha`
-- Command URL: `http://10.10.10.123:8000/firmware/0.1.2-filtered-telemetry/firmware.bin`
+- Command URL: `http://<private-ip>:8000/firmware/0.1.2-filtered-telemetry/firmware.bin`
 - Command size: `825200`
 - Command SHA-256: intentionally wrong, all `f` characters
 - Observed OTA status progression:
@@ -134,10 +134,10 @@ Note: one earlier bad-SHA command used a version label longer than the firmware'
 
 Interrupted download test on 2026-06-26:
 
-- Device: `Sunroom Test` / `esp32-9c9c1fda3670`
+- Device: `Bench Device` / `esp32-device-id`
 - Rollout: `20260626T191300Z-interrupted`
 - Temporary server: port `8003`
-- Command URL: `http://10.10.10.123:8003/firmware-interrupted.bin`
+- Command URL: `http://<private-ip>:8003/firmware-interrupted.bin`
 - Command size: `825200`
 - Command SHA-256: correct full firmware SHA-256
 - Server behavior: advertised `Content-Length: 825200`, sent `65536` bytes, then closed the connection
@@ -148,14 +148,14 @@ downloading: ota download started
 failed: firmware length mismatch
 ```
 
-Server logs confirmed the ESP32 at `10.10.10.124` requested the interrupted firmware URL. The retained status still reported firmware `0.1.2-filtered-telemetry`, and the dashboard still showed `Sunroom Test` online and not stale.
+Server logs confirmed the ESP32 at `<private-ip>` requested the interrupted firmware URL. The retained status still reported firmware `0.1.2-filtered-telemetry`, and the dashboard still showed `Bench Device` online and not stale.
 
 Oversized image test on 2026-06-26:
 
-- Device: `Sunroom Test` / `esp32-9c9c1fda3670`
+- Device: `Bench Device` / `esp32-device-id`
 - Rollout: `20260626T203800Z-oversized`
 - Temporary server: port `8003`
-- Command URL: `http://10.10.10.123:8003/firmware-oversized.bin`
+- Command URL: `http://<private-ip>:8003/firmware-oversized.bin`
 - Command size: `2000000`
 - Command SHA-256: placeholder; partition size failure occurs before SHA validation
 - Server behavior: advertised `Content-Length: 2000000`, sent a small placeholder body, and kept the connection open briefly
@@ -166,4 +166,4 @@ downloading: ota download started
 failed: ota partition unavailable
 ```
 
-Server logs confirmed the ESP32 at `10.10.10.124` requested the oversized firmware URL. The retained status still reported firmware `0.1.2-filtered-telemetry`, and the dashboard still showed `Sunroom Test` online and not stale.
+Server logs confirmed the ESP32 at `<private-ip>` requested the oversized firmware URL. The retained status still reported firmware `0.1.2-filtered-telemetry`, and the dashboard still showed `Bench Device` online and not stale.

@@ -21,7 +21,7 @@ MAX_CHANGE_THRESHOLD_F = 10.0
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Publish retained runtime config for an ESP32 sensor.")
-    parser.add_argument("device_id", help="Device ID, for example esp32-9c9c1fda3670.")
+    parser.add_argument("device_id", help="Device ID, for example esp32-device-id.")
     parser.add_argument("--broker", default="localhost", help="MQTT broker host.")
     parser.add_argument("--port", type=int, default=1883, help="MQTT broker port.")
     parser.add_argument("--client-id", default="iot-pi-config-publisher", help="MQTT client ID.")

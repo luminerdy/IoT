@@ -7,7 +7,7 @@
 #define WIFI_PASSWORD "your-wifi-password"
 
 // Use the Pi hostname if mDNS works on your network, otherwise use the Pi IP.
-#define MQTT_HOST "PiServer.local"
+#define MQTT_HOST "iot-pi.local"
 #define MQTT_PORT 1883
 #define MQTT_USER "iot"
 #define MQTT_PASSWORD "replace-with-local-password"

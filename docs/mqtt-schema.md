@@ -36,7 +36,7 @@ Example:
 {
   "schemaVersion": "2.0-local",
   "seq": 1,
-  "deviceId": "esp32-aabbccddeeff",
+  "deviceId": "esp32-device-id",
   "location": "UNMAPPED",
   "firmwareVersion": "0.1.0",
   "sensorType": "DHT22",
@@ -67,7 +67,7 @@ Example online payload:
 
 ```json
 {
-  "deviceId": "esp32-aabbccddeeff",
+  "deviceId": "esp32-device-id",
   "status": "online",
   "firmwareVersion": "0.1.0",
   "datetime": "2026-06-16T17:00:00Z"
@@ -78,7 +78,7 @@ Example Last Will payload:
 
 ```json
 {
-  "deviceId": "esp32-aabbccddeeff",
+  "deviceId": "esp32-device-id",
   "status": "offline",
   "reason": "mqtt_lwt"
 }
@@ -126,7 +126,7 @@ Config apply/reject example:
 
 ```json
 {
-  "deviceId": "esp32-aabbccddeeff",
+  "deviceId": "esp32-device-id",
   "type": "config",
   "status": "applied",
   "message": "config applied",
@@ -153,7 +153,7 @@ OTA command example:
   "command": "ota_update",
   "rolloutId": "20260620T182134Z-0.1.1-ota-version",
   "version": "0.1.1-ota-version",
-  "url": "http://piserver.local:8000/firmware/0.1.1-ota-version/firmware.bin",
+  "url": "http://iot-pi.local:8000/firmware/0.1.1-ota-version/firmware.bin",
   "sha256": "hex-encoded-sha256",
   "signature": "hex-encoded-p256-ecdsa-signature",
   "size": 824272
@@ -174,7 +174,7 @@ Example:
 
 ```json
 {
-  "deviceId": "esp32-aabbccddeeff",
+  "deviceId": "esp32-device-id",
   "type": "ota_update",
   "rolloutId": "20260620T182134Z-0.1.1-ota-version",
   "status": "downloading",

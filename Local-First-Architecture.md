@@ -8,7 +8,7 @@ The Raspberry Pi host runs the local message bus, data collector, database, dash
 
 Current target host:
 
-- Hostname: `PiServer`
+- Hostname: `IoT Pi`
 - OS/kernel family: Raspberry Pi Debian, aarch64
 - Role: MQTT broker, collector service, SQLite storage, web dashboard, OTA artifact server
 
@@ -27,7 +27,7 @@ ESP32 + DHT22 sensors
     |
     | MQTT over local WiFi
     v
-Raspberry Pi / PiServer
+Raspberry Pi / IoT Pi
     |
     +-- Mosquitto MQTT broker
     +-- Collector service
@@ -141,7 +141,7 @@ The ESP32 firmware is a modular PlatformIO project.
 Core responsibilities:
 
 - Connect to WiFi.
-- Connect to local MQTT broker on `PiServer`.
+- Connect to local MQTT broker on `IoT Pi`.
 - Read DHT22 sensor.
 - Validate readings.
 - Filter noisy readings and publish telemetry at a configurable interval.
@@ -175,7 +175,7 @@ Use `deviceId` or `thingName`, not room name, in the topic. Room/location names 
 Example device ID:
 
 ```text
-esp32-aabbccddeeff
+esp32-device-id
 ```
 
 ## Telemetry Message
@@ -186,8 +186,8 @@ Example:
 {
   "schemaVersion": "2.0-local",
   "seq": 12345,
-  "deviceId": "esp32-aabbccddeeff",
-  "location": "Kitchen",
+  "deviceId": "esp32-device-id",
+  "location": "RoomF",
   "sensorType": "DHT22",
   "datetime": "2026-06-16T16:30:00Z",
   "temperature": 76.4,
@@ -211,8 +211,8 @@ Recommended first version:
 
 ```json
 {
-  "esp32-aabbccddeeff": "Kitchen",
-  "esp32-112233445566": "Office"
+  "esp32-device-id": "RoomF",
+  "esp32-device-id": "RoomD"
 }
 ```
 
@@ -273,7 +273,7 @@ ESP32 writes OTA partition and reboots.
 Example manifest URL:
 
 ```text
-http://piserver.local:8080/firmware/manifest.json
+http://iot-pi.local:8080/firmware/manifest.json
 ```
 
 ### OTA Control Flow
@@ -311,7 +311,7 @@ Example update command:
   "command": "ota_update",
   "rolloutId": "2026-06-16-v0.2.0",
   "version": "0.2.0",
-  "url": "http://piserver.local:8080/firmware/0.2.0/firmware.bin",
+  "url": "http://iot-pi.local:8080/firmware/0.2.0/firmware.bin",
   "sha256": "replace-with-real-checksum",
   "size": 1048576,
   "reboot": true
@@ -322,7 +322,7 @@ Example OTA status response:
 
 ```json
 {
-  "deviceId": "esp32-aabbccddeeff",
+  "deviceId": "esp32-device-id",
   "rolloutId": "2026-06-16-v0.2.0",
   "version": "0.2.0",
   "status": "downloading",
@@ -407,7 +407,7 @@ Example manifest:
   "currentVersion": "0.2.0",
   "versions": {
     "0.2.0": {
-      "url": "http://piserver.local:8080/firmware/0.2.0/firmware.bin",
+      "url": "http://iot-pi.local:8080/firmware/0.2.0/firmware.bin",
       "sha256": "replace-with-real-checksum",
       "size": 1048576,
       "releasedAt": "2026-06-16T00:00:00Z",

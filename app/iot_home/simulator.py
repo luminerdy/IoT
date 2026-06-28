@@ -17,9 +17,9 @@ from iot_home.mqtt_schema import STATUS_TOPIC, TELEMETRY_TOPIC
 
 
 DEVICES = [
-    {"deviceId": "esp32-sim-kitchen", "location": "Kitchen", "baseTemp": 73.5, "baseHumidity": 42.0},
-    {"deviceId": "esp32-sim-office", "location": "Office", "baseTemp": 75.0, "baseHumidity": 39.0},
-    {"deviceId": "esp32-sim-bedroom", "location": "Bedroom", "baseTemp": 71.8, "baseHumidity": 45.0},
+    {"deviceId": "esp32-sim-kitchen", "location": "RoomF", "baseTemp": 73.5, "baseHumidity": 42.0},
+    {"deviceId": "esp32-sim-office", "location": "RoomD", "baseTemp": 75.0, "baseHumidity": 39.0},
+    {"deviceId": "esp32-sim-bedroom", "location": "Room", "baseTemp": 71.8, "baseHumidity": 45.0},
 ]
 
 

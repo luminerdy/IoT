@@ -4,7 +4,7 @@ Local-first ESP32 temperature and humidity monitoring system.
 
 ## Project Direction
 
-ESP32 devices collect room temperature and humidity readings and publish them over the home network to this Raspberry Pi (`PiServer`). The Pi runs the message bus, collector, database, dashboard, and local OTA update coordinator.
+ESP32 devices collect room temperature and humidity readings and publish them over the home network to this Raspberry Pi (`IoT Pi`). The Pi runs the message bus, collector, database, dashboard, and local OTA update coordinator.
 
 AWS IoT is no longer part of the core architecture.
 
@@ -35,7 +35,7 @@ The original four implementation phases are done. The project is now in Phase 5:
 Current next work is operational rather than MVP build-out:
 
 - Continue watching recovered devices across several 10-minute telemetry intervals.
-- Use `Sunroom Test` as the USB bench device before firmware or feature rollout.
+- Use `Bench Device` as the USB bench device before firmware or feature rollout.
 - Replace the approximate dashboard house diagram with an uploaded house image and configurable sensor placement overlays.
 - Continue signed OTA rollout in small batches before broader unattended fleet updates.
 

@@ -23,11 +23,11 @@ DEFAULT_SIGNING_KEY = Path("data/keys/ota_signing_key.pem")
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Stage and publish a local OTA update command.")
-    parser.add_argument("device_id", help="Device ID, for example esp32-9c9c1fda3670.")
+    parser.add_argument("device_id", help="Device ID, for example esp32-device-id.")
     parser.add_argument("version", help="Firmware version label to stage, for example 0.2.0-local.")
     parser.add_argument("--firmware-bin", type=Path, default=DEFAULT_FIRMWARE_BIN, help="Built firmware.bin path.")
     parser.add_argument("--firmware-dir", type=Path, default=DEFAULT_FIRMWARE_DIR, help="OTA firmware staging directory.")
-    parser.add_argument("--base-url", default="http://piserver.local:8000", help="Base dashboard URL reachable by ESP32.")
+    parser.add_argument("--base-url", default="http://iot-pi.local:8000", help="Base dashboard URL reachable by ESP32.")
     parser.add_argument("--broker", default="localhost", help="MQTT broker host.")
     parser.add_argument("--port", type=int, default=1883, help="MQTT broker port.")
     parser.add_argument("--client-id", default="iot-pi-ota-publisher", help="MQTT client ID.")

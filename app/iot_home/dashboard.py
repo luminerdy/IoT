@@ -202,6 +202,23 @@ def page() -> bytes:
     .view-dot.active {
       background: var(--blue);
     }
+    .toolbar-button {
+      min-height: 34px;
+      padding: 6px 10px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: var(--panel);
+      color: #24313d;
+      font: inherit;
+      font-size: 13px;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .toolbar-button[aria-pressed="true"] {
+      border-color: #9db7d8;
+      background: #eaf2ff;
+      color: #174ea6;
+    }
     .grid {
       display: grid;
       gap: 14px;
@@ -734,6 +751,7 @@ def page() -> bytes:
         <span class="pill" id="connection"><span class="dot"></span> Connecting</span>
         <span class="pill" id="last-refresh">Waiting for data</span>
         <span class="pill view-status" id="view-status"></span>
+        <button class="toolbar-button" id="rotation-toggle" type="button" aria-pressed="false">Pause Views</button>
       </div>
     </header>
     <section class="grid summary" aria-label="Dashboard summary">
@@ -835,6 +853,7 @@ def page() -> bytes:
       floorplanBackgroundImage: null,
       floorplanZones: [],
       activeViewIndex: 0,
+      rotationPaused: false,
     };
     const dashboardViews = [
       {key: "house", label: "House Diagram"},
@@ -853,17 +872,17 @@ def page() -> bytes:
       {
         key: "inside",
         label: "Inside",
-        match: (location) => !outsideGraphLocations.has(location) && !separateGraphLocations.has(location),
+        match: (location) => !isOutsideGraphLocation(location) && !isSeparateGraphLocation(location),
       },
       {
         key: "outside",
         label: "Outside",
-        match: (location) => outsideGraphLocations.has(location),
+        match: isOutsideGraphLocation,
       },
       {
         key: "separate",
         label: "Separate",
-        match: (location) => separateGraphLocations.has(location),
+        match: isSeparateGraphLocation,
       },
     ];
     const defaultFloorplanZones = [
@@ -929,6 +948,17 @@ def page() -> bytes:
         status.appendChild(dot);
       }
       window.scrollTo({top: 0, behavior: "smooth"});
+    }
+
+    function setRotationPaused(paused) {
+      state.rotationPaused = paused;
+      const toggle = document.getElementById("rotation-toggle");
+      toggle.setAttribute("aria-pressed", String(paused));
+      toggle.textContent = paused ? "Resume Views" : "Pause Views";
+    }
+
+    function rotateView() {
+      if (!state.rotationPaused) setActiveView(state.activeViewIndex + 1);
     }
 
     function average(rows, key) {
@@ -1125,6 +1155,21 @@ def page() -> bytes:
 
     function deviceLabel(row) {
       return row.location || row.deviceId;
+    }
+
+    function floorplanZoneFor(location) {
+      const zones = state.floorplanZones.length ? state.floorplanZones : defaultFloorplanZones;
+      return zones.find((zone) => zone.location === location);
+    }
+
+    function isOutsideGraphLocation(location) {
+      const zone = floorplanZoneFor(location);
+      return outsideGraphLocations.has(location) || zone?.type === "outdoor";
+    }
+
+    function isSeparateGraphLocation(location) {
+      const zone = floorplanZoneFor(location);
+      return separateGraphLocations.has(location) || zone?.type === "utility";
     }
 
     function sortedDevices(rows) {
@@ -1337,10 +1382,14 @@ def page() -> bytes:
       state.hours = Number(event.target.value) || 24;
       refresh();
     });
+    document.getElementById("rotation-toggle").addEventListener("click", () => {
+      setRotationPaused(!state.rotationPaused);
+    });
     setActiveView(0);
+    setRotationPaused(false);
     refresh();
     setInterval(refresh, 3000);
-    setInterval(() => setActiveView(state.activeViewIndex + 1), 5000);
+    setInterval(rotateView, 5000);
   </script>
 </body>
 </html>

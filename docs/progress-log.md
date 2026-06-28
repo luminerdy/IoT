@@ -4,6 +4,15 @@ Use this file for dated accomplishments and important observations. Keep future 
 
 ## 2026-06-28
 
+### Dashboard Rotation Fit And Graph Controls
+
+- Tightened the four-view dashboard rotation for a 1920x1080 display: the 20-device Device List Grid and Latest Readings table now fit cleanly without vertical cutoff.
+- Shortened device-card metric labels and firmware labels, and hid the table's device-ID column in the rotated Latest Readings view.
+- Restored populated Temperature Graph selector groups by deriving `Inside`, `Outside`, and `Separate` membership from floorplan zone metadata instead of old placeholder location names.
+- Kept one laundry-room utility location in the `Inside` graph group while leaving the other utility-marked locations in `Separate`.
+- Added a `Pause Views` / `Resume Views` control so the active dashboard view can be inspected without the 5-second rotation advancing; live data refresh continues while paused.
+- Verified with `python3 -m py_compile app/iot_home/dashboard.py`, live port `8000`, and 1920x1080 Chromium screenshots of the Device List Grid, Temperature Graph, and Latest Readings views.
+
 ### Stale Detection And Signed OTA Batch
 
 - Investigated a signed-OTA device that appeared stale while still publishing fresh telemetry. The device had published startup readings with `1970-01-01T00:00:00Z` before NTP was ready, which caused the dashboard to use a bad device timestamp for stale detection.

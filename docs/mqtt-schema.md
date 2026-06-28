@@ -155,9 +155,12 @@ OTA command example:
   "version": "0.1.1-ota-version",
   "url": "http://piserver.local:8000/firmware/0.1.1-ota-version/firmware.bin",
   "sha256": "hex-encoded-sha256",
+  "signature": "hex-encoded-p256-ecdsa-signature",
   "size": 824272
 }
 ```
+
+Firmware `0.1.3-signed-ota` and newer requires the `signature` field. The signature is generated over the firmware binary SHA-256 digest with the local OTA private key, and the ESP32 verifies it with the embedded public key before finalizing the update.
 
 ## OTA Status
 

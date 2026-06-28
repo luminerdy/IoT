@@ -161,3 +161,13 @@ This file records project architecture decisions and the reasoning behind them.
 **Reasoning:** Outdoor DHT22 humidity sensing degrades over time and is not very accurate even when healthy. The Porch sensor is currently pegging near `99.9%`, which is more useful as a sensor-health signal than as an exact humidity measurement. Temperature can still be useful when stable, so the dashboard should flag suspect humidity without discarding the device or hiding its temperature.
 
 **Status:** Accepted for the current dashboard. The rule is intentionally conservative and currently applies to outdoor DHT22 locations: `Porch`, `Lightpole`, and `GarageDriveway`.
+
+## DR-017: Signed OTA Before Fleet-Wide Security Rollout
+
+**Date:** 2026-06-27
+
+**Decision:** Require P-256 ECDSA signatures on OTA firmware commands starting with firmware `0.1.3-signed-ota`, while keeping MQTT TLS and per-device ACL migration opt-in until each device is tested.
+
+**Reasoning:** SHA-256 alone proves a downloaded binary matches the OTA command, but it does not prove the binary was authorized by the local owner. A firmware signature closes that gap. MQTT TLS and ACLs are added as deployable hardening steps, but enabling them across the fleet requires per-device credential provisioning and bench validation first.
+
+**Status:** Accepted after testing on `Sunroom Test` / `esp32-9c9c1fda3670`: USB flash succeeded, signed OTA was accepted and rebooted, and a deliberately altered signature was rejected as `firmware signature invalid`.

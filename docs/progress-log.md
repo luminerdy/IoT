@@ -462,6 +462,16 @@ Use this file for dated accomplishments and important observations. Keep future 
 
 ## 2026-06-27
 
+### First Indoor Signed-OTA Soak Batch
+
+- Published signed OTA `0.1.3-signed-ota` only to three indoor devices: `Den` / `esp32-3c71bf642440`, `Kitchen` / `esp32-9c9c1fdd67ec`, and `FrontBedroom` / `esp32-9c9c1fdd632c`.
+- Observed expected OTA status progression on all three: `downloading` / `ota download started`, then `rebooting` / `firmware update applied`.
+- Verified all three returned online and non-stale through SQLite/dashboard API:
+  - `Den`: `0.1.3-signed-ota`, status `OK`.
+  - `Kitchen`: `0.1.3-signed-ota`, status `OK`.
+  - `FrontBedroom`: `0.1.3-signed-ota`, status `OK`.
+- Hold further fleet rollout for a few hours of soak time.
+
 ### Studio ESP32 Provisioned
 
 - Detected a new ESP32 on `/dev/ttyUSB1`; existing bench `Sunroom Test` remained on `/dev/ttyUSB0`.

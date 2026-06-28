@@ -37,7 +37,7 @@ Current next work is operational rather than MVP build-out:
 - Continue watching recovered devices across several 10-minute telemetry intervals.
 - Use `Sunroom Test` as the USB bench device before firmware or feature rollout.
 - Replace the approximate dashboard house diagram with an uploaded house image and configurable sensor placement overlays.
-- Decide whether to add firmware signing before broader unattended OTA rollout.
+- Continue signed OTA rollout in small batches before broader unattended fleet updates.
 
 ## Documentation
 

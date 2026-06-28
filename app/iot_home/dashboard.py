@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import ipaddress
 import json
 import mimetypes
 from html import escape
@@ -1350,6 +1351,10 @@ class Handler(BaseHTTPRequestHandler):
         self.send_error(404)
 
     def serve_firmware(self, parsed_path: str) -> None:
+        client_ip = ipaddress.ip_address(self.client_address[0])
+        if not (client_ip.is_private or client_ip.is_loopback or client_ip.is_link_local):
+            self.send_error(403)
+            return
         self.serve_static_file(parsed_path, "/firmware/", self.firmware_dir)
 
     def serve_static_file(self, parsed_path: str, prefix: str, root: Path) -> None:

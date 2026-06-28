@@ -5,6 +5,9 @@ import hashlib
 import json
 import os
 import shutil
+import ssl
+import subprocess
+import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -15,6 +18,7 @@ from iot_home.mqtt_schema import COMMAND_TOPIC
 
 DEFAULT_FIRMWARE_BIN = Path("firmware/.pio/build/esp32dev/firmware.bin")
 DEFAULT_FIRMWARE_DIR = Path("data/firmware")
+DEFAULT_SIGNING_KEY = Path("data/keys/ota_signing_key.pem")
 
 
 def parse_args() -> argparse.Namespace:
@@ -29,6 +33,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--client-id", default="iot-pi-ota-publisher", help="MQTT client ID.")
     parser.add_argument("--username", default=os.getenv("MQTT_USERNAME"), help="MQTT username.")
     parser.add_argument("--password", default=os.getenv("MQTT_PASSWORD"), help="MQTT password.")
+    parser.add_argument("--tls", action="store_true", help="Use MQTT over TLS.")
+    parser.add_argument("--ca-cert", type=Path, help="CA certificate for MQTT TLS.")
+    parser.add_argument(
+        "--signing-key",
+        type=Path,
+        default=DEFAULT_SIGNING_KEY,
+        help="P-256 private key used to sign OTA firmware.",
+    )
     parser.add_argument("--rollout-id", help="Rollout ID to include in the OTA command.")
     parser.add_argument("--stage-only", action="store_true", help="Stage firmware and manifest without publishing MQTT.")
     return parser.parse_args()
@@ -47,6 +59,27 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+def sign_firmware(path: Path, signing_key: Path) -> str:
+    if not signing_key.is_file():
+        raise SystemExit(f"OTA signing key not found: {signing_key}")
+
+    with tempfile.NamedTemporaryFile() as signature_file:
+        subprocess.run(
+            [
+                "openssl",
+                "dgst",
+                "-sha256",
+                "-sign",
+                str(signing_key),
+                "-out",
+                signature_file.name,
+                str(path),
+            ],
+            check=True,
+        )
+        return Path(signature_file.name).read_bytes().hex()
+
+
 def stage_firmware(args: argparse.Namespace) -> dict:
     validate_version(args.version)
     source = args.firmware_bin
@@ -60,6 +93,7 @@ def stage_firmware(args: argparse.Namespace) -> dict:
 
     size = staged_bin.stat().st_size
     sha256 = sha256_file(staged_bin)
+    signature = sign_firmware(staged_bin, args.signing_key)
     rollout_id = args.rollout_id or f"{datetime.now(UTC).strftime('%Y%m%dT%H%M%SZ')}-{args.version}"
     firmware_url = f"{args.base_url.rstrip('/')}/firmware/{args.version}/firmware.bin"
 
@@ -69,6 +103,7 @@ def stage_firmware(args: argparse.Namespace) -> dict:
         "version": args.version,
         "url": firmware_url,
         "sha256": sha256,
+        "signature": signature,
         "size": size,
     }
     manifest = {
@@ -87,6 +122,8 @@ def publish_command(args: argparse.Namespace, command: dict) -> None:
     client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=args.client_id)
     if args.username:
         client.username_pw_set(args.username, args.password)
+    if args.tls:
+        client.tls_set(ca_certs=str(args.ca_cert) if args.ca_cert else None, tls_version=ssl.PROTOCOL_TLS_CLIENT)
     client.connect(args.broker, args.port, keepalive=60)
     client.loop_start()
     result = client.publish(topic, payload, qos=1, retain=False)

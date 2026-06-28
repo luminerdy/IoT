@@ -12,7 +12,7 @@ The project is a local-first Raspberry Pi IoT system with MQTT, SQLite, a boot-e
 
 Phase 5: Fleet operations plus daily dashboard improvements
 
-Status: The local OTA firmware is deployed broadly. OTA failure-path hardening is validated on the USB-recoverable bench device. The dashboard service is enabled at boot and serves live device cards, summary metrics, latest readings, a grouped selectable temperature graph from SQLite, and a house diagram whose sensor placement overlay can now be loaded from local JSON.
+Status: The local OTA firmware is deployed broadly. Signed OTA hardening is validated on the USB-recoverable bench device but has not been rolled out fleet-wide. The dashboard service is enabled at boot and serves live device cards, summary metrics, latest readings, a grouped selectable temperature graph from SQLite, and a house diagram whose sensor placement overlay can now be loaded from local JSON.
 
 ## Accomplished
 
@@ -42,10 +42,13 @@ Status: The local OTA firmware is deployed broadly. OTA failure-path hardening i
 - Confirmed on 2026-06-27 that `Sunroom Test` is visible as the USB bench device on `/dev/ttyUSB0`.
 - Added configurable dashboard floorplan support with `/api/floorplan`, ignored local `config/floorplan.json`, tracked `config/floorplan.sample.json`, and optional image assets served from `/dashboard-assets/...`.
 - Restarted the boot-enabled dashboard service on 2026-06-27 with the new floorplan config and asset directory arguments.
+- Added signed OTA verification and tested it on `Sunroom Test` only. The device reports `0.1.3-signed-ota`; a signed OTA was accepted, and an intentionally bad signature was rejected.
+- Added optional MQTT TLS and ACL scripts for staged migration. They are not yet enabled across the installed fleet.
+- Started the first small indoor signed-OTA soak batch on 2026-06-27: `Den`, `Kitchen`, and `FrontBedroom` updated to `0.1.3-signed-ota` and came back online/non-stale immediately after OTA.
 
 ## Live Dashboard State
 
-Latest SQLite/API check on 2026-06-27 after the dashboard restart shows 20 mapped devices on `0.1.2-filtered-telemetry`; all 20 are online and non-stale:
+Latest SQLite/API check on 2026-06-27 after signed OTA testing shows 20 mapped devices online and non-stale. `Sunroom Test` is on `0.1.3-signed-ota`; the installed fleet remains on `0.1.2-filtered-telemetry` unless listed otherwise:
 
 - `BunkHouse` / `esp32-9c9c1fc5ce0c`: online, telemetry OK.
 - `Den` / `esp32-3c71bf642440`: online, telemetry OK.
@@ -78,7 +81,7 @@ Latest SQLite/API check on 2026-06-27 after the dashboard restart shows 20 mappe
 1. Confirm the newly recovered devices stay stable across a few 10-minute report intervals: `Laundryroom`, `Lightpole`, `MasterBedroom`, `SunroomDoor`, and `Entryway`.
 2. Use `Sunroom Test` (`esp32-9c9c1fda3670`) on `/dev/ttyUSB0` for firmware and feature validation before deploying to other devices.
 3. Upload the actual house image under `data/dashboard-assets/`, set `backgroundImage` in `config/floorplan.json`, and tune the existing sensor placement overlay.
-4. Decide whether to add firmware signing now that OTA failure-path tests are documented.
+4. Continue signed OTA rollout in small batches after the first indoor soak remains stable.
 
 ## Decisions To Revisit Soon
 
@@ -86,7 +89,7 @@ Latest SQLite/API check on 2026-06-27 after the dashboard restart shows 20 mappe
 - Location mapping storage: SQLite table vs `locations.json`.
 - Dashboard stack: current dependency-free Python HTTP server is working; FastAPI/HTMX can still be revisited if routes/forms grow.
 - Pi dependency install approach: direct system packages vs isolated app environment.
-- OTA signing: current MVP uses SHA-256 validation only.
+- MQTT TLS and per-device ACL migration: signed OTA is validated, but broker TLS/ACLs are still staged and not enabled fleet-wide.
 - Temperature Graph grouping: current grouping is hard-coded in `app/iot_home/dashboard.py`; revisit if group membership needs to become user-configurable.
 - Outdoor DHT22 humidity flagging: current suspect threshold is `>=99%` for `Porch`, `Lightpole`, and `GarageDriveway`; revisit if other sensor models or outdoor locations are added.
 
@@ -112,4 +115,4 @@ Latest SQLite/API check on 2026-06-27 after the dashboard restart shows 20 mappe
 - Dashboard app: summary metrics, configurable house diagram, device cards, latest readings, and `/api/history` trend data are in `app/iot_home/dashboard.py`. The diagram supports fallback built-in placements plus local `config/floorplan.json`; actual image assets should live under `data/dashboard-assets/` and be referenced as `/dashboard-assets/<file>`. The Temperature Graph selector is grouped into `Inside`, `Outside`, and `Separate`, with both group-level `All` checkboxes and individual device checkboxes. Outdoor DHT22 humidity at or above `99%` is flagged as suspect and excluded from average humidity.
 - Dashboard verification: normal port `8000` serves `/api/floorplan`, the suspect humidity flag, and the `Studio` and `UnderAC` floorplan placements. Latest live check showed 20 mapped devices, all online/non-stale, no `UNMAPPED` rows, and no retired `esp32-94b97ed52a78` row.
 - Telemetry policy memory: ESP32s should read DHT22 frequently, reject impossible values and one-off large jumps, publish median-filtered temp/humidity every 600 seconds, and only publish early when filtered temperature differs by the configured threshold for 3 consecutive valid samples. Humidity is reported but does not trigger early publishes.
-- Latest live-tested OTA artifact: `data/firmware/0.1.2-filtered-telemetry/firmware.bin`; ignored by git because runtime/build artifacts stay local.
+- Latest live-tested OTA artifact: `data/firmware/0.1.3-signed-ota/firmware.bin`; ignored by git because runtime/build artifacts stay local.

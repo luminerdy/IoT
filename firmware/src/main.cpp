@@ -4,10 +4,14 @@
 #include <PubSubClient.h>
 #include <Update.h>
 #include <WiFi.h>
+#include <WiFiClientSecure.h>
+#include <mbedtls/ecdsa.h>
+#include <mbedtls/ecp.h>
 #include <mbedtls/sha256.h>
 #include <strings.h>
 #include <time.h>
 
+#include "ota_public_key.h"
 #include "secrets.h"
 
 #ifndef FIRMWARE_VERSION
@@ -40,7 +44,15 @@ constexpr size_t TOPIC_LEN = 96;
 constexpr size_t PAYLOAD_LEN = 768;
 
 DHT dht(DHT_PIN, DHT_TYPE);
+#ifndef MQTT_USE_TLS
+#define MQTT_USE_TLS 0
+#endif
+
+#if MQTT_USE_TLS
+WiFiClientSecure wifiClient;
+#else
 WiFiClient wifiClient;
+#endif
 PubSubClient mqtt(wifiClient);
 
 char deviceId[32];
@@ -178,6 +190,10 @@ void connectWifi()
   }
   Serial.println();
   Serial.printf("WiFi connected, IP=%s RSSI=%d\n", WiFi.localIP().toString().c_str(), WiFi.RSSI());
+
+#if MQTT_USE_TLS
+  wifiClient.setCACert(MQTT_CA_CERT);
+#endif
 
   configTime(0, 0, "pool.ntp.org", "time.nist.gov");
   waitForTime(15000);
@@ -458,6 +474,37 @@ void publishOtaStatus(const char *status, const char *message, const char *versi
   Serial.printf("Published OTA status: %s\n", payload);
 }
 
+int hexNibble(char c)
+{
+  if (c >= '0' && c <= '9') {
+    return c - '0';
+  }
+  if (c >= 'a' && c <= 'f') {
+    return c - 'a' + 10;
+  }
+  if (c >= 'A' && c <= 'F') {
+    return c - 'A' + 10;
+  }
+  return -1;
+}
+
+bool decodeHex(const char *hex, uint8_t *output, size_t outputLen)
+{
+  if (strlen(hex) != outputLen * 2) {
+    return false;
+  }
+
+  for (size_t i = 0; i < outputLen; i++) {
+    int high = hexNibble(hex[i * 2]);
+    int low = hexNibble(hex[(i * 2) + 1]);
+    if (high < 0 || low < 0) {
+      return false;
+    }
+    output[i] = static_cast<uint8_t>((high << 4) | low);
+  }
+  return true;
+}
+
 bool sha256Matches(const char *expectedSha, const uint8_t digest[32])
 {
   char actualSha[65];
@@ -468,7 +515,46 @@ bool sha256Matches(const char *expectedSha, const uint8_t digest[32])
   return strcasecmp(actualSha, expectedSha) == 0;
 }
 
-bool performOtaUpdate(const char *url, const char *expectedSha, long expectedSize, const char *version, const char *rolloutId)
+bool otaSignatureValid(const char *signatureHex, const uint8_t digest[32])
+{
+  uint8_t signature[80];
+  uint8_t publicX[32];
+  uint8_t publicY[32];
+  size_t signatureLen = strlen(signatureHex) / 2;
+
+  if (signatureLen == 0 || signatureLen > sizeof(signature) || strlen(signatureHex) % 2 != 0) {
+    return false;
+  }
+  if (!decodeHex(signatureHex, signature, signatureLen) ||
+      !decodeHex(OTA_SIGNING_PUBKEY_X_HEX, publicX, sizeof(publicX)) ||
+      !decodeHex(OTA_SIGNING_PUBKEY_Y_HEX, publicY, sizeof(publicY))) {
+    return false;
+  }
+
+  mbedtls_ecdsa_context ctx;
+  mbedtls_ecdsa_init(&ctx);
+
+  bool valid = false;
+  if (mbedtls_ecp_group_load(&ctx.grp, MBEDTLS_ECP_DP_SECP256R1) == 0 &&
+      mbedtls_mpi_read_binary(&ctx.Q.X, publicX, sizeof(publicX)) == 0 &&
+      mbedtls_mpi_read_binary(&ctx.Q.Y, publicY, sizeof(publicY)) == 0 &&
+      mbedtls_mpi_lset(&ctx.Q.Z, 1) == 0 &&
+      mbedtls_ecdsa_read_signature(&ctx, digest, 32, signature, signatureLen) == 0) {
+    valid = true;
+  }
+
+  mbedtls_ecdsa_free(&ctx);
+  return valid;
+}
+
+bool performOtaUpdate(
+  const char *url,
+  const char *expectedSha,
+  const char *signatureHex,
+  long expectedSize,
+  const char *version,
+  const char *rolloutId
+)
 {
   if (WiFi.status() != WL_CONNECTED) {
     publishOtaStatus("rejected", "wifi not connected", version, rolloutId);
@@ -564,6 +650,11 @@ bool performOtaUpdate(const char *url, const char *expectedSha, long expectedSiz
     publishOtaStatus("rejected", "firmware sha256 mismatch", version, rolloutId);
     return false;
   }
+  if (!otaSignatureValid(signatureHex, digest)) {
+    Update.abort();
+    publishOtaStatus("rejected", "firmware signature invalid", version, rolloutId);
+    return false;
+  }
   if (!Update.end(true)) {
     publishOtaStatus("failed", "firmware update finalize failed", version, rolloutId);
     return false;
@@ -590,15 +681,19 @@ void applyCommandPayload(const char *payload)
 
   char url[192];
   char sha256[65];
+  char signature[161];
   char version[32];
   char rolloutId[64];
   float sizeValue = 0.0f;
 
   if (!extractString(payload, "url", url, sizeof(url)) ||
       !extractString(payload, "sha256", sha256, sizeof(sha256)) ||
+      !extractString(payload, "signature", signature, sizeof(signature)) ||
       !extractString(payload, "version", version, sizeof(version)) ||
       !extractString(payload, "rolloutId", rolloutId, sizeof(rolloutId)) ||
-      strlen(sha256) != 64) {
+      strlen(sha256) != 64 ||
+      strlen(signature) == 0 ||
+      strlen(signature) % 2 != 0) {
     publishOtaStatus("rejected", "invalid ota command", "", "");
     return;
   }
@@ -608,7 +703,7 @@ void applyCommandPayload(const char *payload)
     expectedSize = static_cast<long>(sizeValue);
   }
 
-  performOtaUpdate(url, sha256, expectedSize, version, rolloutId);
+  performOtaUpdate(url, sha256, signature, expectedSize, version, rolloutId);
 }
 
 void onMqttMessage(char *topic, uint8_t *payload, unsigned int length)

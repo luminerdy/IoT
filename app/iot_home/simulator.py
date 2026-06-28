@@ -6,8 +6,10 @@ import math
 import os
 import random
 import signal
+import ssl
 import time
 from datetime import UTC, datetime
+from pathlib import Path
 
 import paho.mqtt.client as mqtt
 
@@ -29,6 +31,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--client-id", default="iot-simulated-esp32-fleet", help="MQTT client ID.")
     parser.add_argument("--username", default=os.getenv("MQTT_USERNAME"), help="MQTT username.")
     parser.add_argument("--password", default=os.getenv("MQTT_PASSWORD"), help="MQTT password.")
+    parser.add_argument("--tls", action="store_true", help="Use MQTT over TLS.")
+    parser.add_argument("--ca-cert", type=Path, help="CA certificate for MQTT TLS.")
     return parser.parse_args()
 
 
@@ -88,6 +92,8 @@ def main() -> None:
     client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=args.client_id)
     if args.username:
         client.username_pw_set(args.username, args.password)
+    if args.tls:
+        client.tls_set(ca_certs=str(args.ca_cert) if args.ca_cert else None, tls_version=ssl.PROTOCOL_TLS_CLIENT)
     client.connect(args.broker, args.port, keepalive=60)
     client.loop_start()
 

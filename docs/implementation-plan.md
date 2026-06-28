@@ -91,7 +91,7 @@ Acceptance criteria:
 
 ## Phase 4: Local OTA
 
-Status: MVP validated; hardening pending.
+Status: Signed OTA validated on the bench device; staged fleet rollout in progress.
 
 Goal: Update ESP32 devices over the air from the Pi.
 
@@ -102,6 +102,7 @@ Tasks:
 - Add MQTT OTA command handling. Done.
 - Download firmware over HTTP from Pi. Done.
 - Verify SHA-256. Done.
+- Verify P-256 ECDSA firmware signature. Done for `0.1.3-signed-ota`.
 - Write OTA partition and reboot. Done.
 - Report OTA status over MQTT. Done.
 - Add dashboard or CLI rollout control. CLI helper started.
@@ -114,7 +115,7 @@ Acceptance criteria:
 
 Hardening follow-up:
 
-- Test bad URL, bad SHA-256, interrupted download, and oversized image failure paths. Done on USB-recoverable `Sunroom Test`.
+- Test bad URL, bad SHA-256, interrupted download, oversized image, and bad signature failure paths. Done on USB-recoverable `Sunroom Test`.
 - Decide whether firmware version should remain a PlatformIO build flag or move to a single release metadata source.
 
 ## Phase 5: Fleet Operations
@@ -141,7 +142,7 @@ Ready next for 2026-06-27:
 - Confirm newly recovered devices remain stable across a few 10-minute telemetry intervals: `Laundryroom`, `Lightpole`, `MasterBedroom`, `SunroomDoor`, and `Entryway`.
 - Keep `config/locations.json` and SQLite placeholders clean when devices are removed or renamed.
 - Upload the actual house image under `data/dashboard-assets/`, set `backgroundImage` in `config/floorplan.json`, and tune the configurable temperature/humidity placement overlay.
-- Decide whether firmware signing should be added before broader unattended fleet rollout.
+- Continue signed OTA rollout in small batches after the first indoor soak remains stable.
 
 Acceptance criteria:
 
@@ -176,4 +177,4 @@ Tasks:
 - Test oversized image failure path: publish or serve an image larger than the available OTA partition; verify OTA write fails cleanly and no reboot occurs. Done for `Sunroom Test` with rollout `20260626T203800Z-oversized`.
 - Record expected `home/sensors/{deviceId}/ota/status` messages for each failure mode in `docs/mqtt-schema.md` or the Phase 4 runbook. Done in the Phase 4 runbook.
 - Decide whether firmware version should remain a PlatformIO build flag or move to a single release metadata source.
-- Consider firmware signing after failure-path tests are documented.
+- Continue signed OTA fleet rollout after bench validation and first indoor soak.

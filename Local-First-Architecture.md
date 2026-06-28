@@ -358,7 +358,7 @@ Local OTA should include the following from the first OTA-capable release:
 - Mark the new firmware valid only after it connects to WiFi, connects to MQTT, reads the sensor, and publishes telemetry.
 - Keep USB flashing available as the recovery path.
 
-Firmware signing can be added after basic OTA works. For a home-local system, checksum validation plus controlled local network access is a reasonable first step; signed firmware is better before exposing update controls remotely.
+Firmware signing is now part of the OTA path starting with `0.1.3-signed-ota`. The Pi still serves firmware locally, and devices apply updates only after the downloaded image matches the command SHA-256 and verifies against the embedded P-256 public key.
 
 ### OTA Rollout Strategy
 

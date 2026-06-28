@@ -4,6 +4,24 @@ Use this file for dated accomplishments and important observations. Keep future 
 
 ## 2026-06-28
 
+### Stale Detection And Signed OTA Batch
+
+- Investigated a signed-OTA device that appeared stale while still publishing fresh telemetry. The device had published startup readings with `1970-01-01T00:00:00Z` before NTP was ready, which caused the dashboard to use a bad device timestamp for stale detection.
+- Patched the dashboard API to calculate staleness from the collector receipt timestamp when available while still exposing the device-reported `lastSeen` value for diagnostics.
+- Verified the patched dashboard on temporary port `8002` against the production SQLite database; `/api/latest` reported 20 devices online, 0 stale, and the affected device showed `observedAt` from the collector receipt time.
+- Rebooted the Pi and verified `iot-home-dashboard.service` came back active on normal port `8000`; `/api/latest` reported 20 mapped devices online, 0 stale, and 7 devices on signed OTA with the collector-receipt-time stale calculation loaded.
+- Published signed OTA `0.1.3-signed-ota` to three additional indoor devices. All three reported OTA download start; two reported `rebooting`, and the dashboard API confirmed all three came back online on `0.1.3-signed-ota` with fresh post-reboot telemetry.
+- Signed OTA rollout count is now 7 devices. Watch this expanded batch through the next normal telemetry intervals before continuing.
+
+### Dashboard Four-View Rotation
+
+- Updated the IoT Home Monitor dashboard so the main content rotates every 5 seconds through four views: House Diagram, Device List Grid, Temperature Graph, and Latest Readings.
+- Kept the header and summary metrics visible while the active main view changes.
+- Added a compact active-view status pill with progress dots.
+- Verified the edited dashboard with `python3 -m py_compile app/iot_home/dashboard.py`.
+- Smoke-tested the edited dashboard on temporary port `8002` against `/home/scotty/IoT/data/iot.db`; `/api/latest` reported 20 devices, all online and non-stale, `/api/history` returned rows, and `/api/floorplan` returned 20 zones.
+- Normal dashboard port `8000` was later verified serving the four-view rotation and the collector-receipt-time stale calculation after the Pi reboot.
+
 ### End-Of-Day Stop Point
 
 - Refreshed the project roadmap: Phases 0 through 4 are complete for the current local-first system, and Phase 5 is the active plan for fleet operations, dashboard workflows, backups, and staged security hardening.

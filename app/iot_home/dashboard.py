@@ -69,9 +69,11 @@ def parse_utc(value: str | None) -> datetime | None:
 
 def row_to_dict(row, stale_seconds: int, locations: dict[str, str]) -> dict:
     last_seen = parse_utc(row["last_seen"])
+    updated_at = parse_utc(row["updated_at"])
+    observed_at = updated_at or last_seen
     age_seconds = None
-    if last_seen:
-        age_seconds = int((datetime.now(UTC) - last_seen).total_seconds())
+    if observed_at:
+        age_seconds = int((datetime.now(UTC) - observed_at).total_seconds())
     is_stale = bool(row["online"]) and age_seconds is not None and age_seconds > stale_seconds
 
     device_id = row["device_id"]
@@ -91,6 +93,7 @@ def row_to_dict(row, stale_seconds: int, locations: dict[str, str]) -> dict:
         "sensorType": row["sensor_type"],
         "seq": row["seq"],
         "updatedAt": row["updated_at"],
+        "observedAt": row["updated_at"] or row["last_seen"],
     }
 
 
@@ -186,6 +189,19 @@ def page() -> bytes:
       font-size: 13px;
       white-space: nowrap;
     }
+    .view-status {
+      gap: 8px;
+    }
+    .view-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #9aa7b5;
+      flex: 0 0 auto;
+    }
+    .view-dot.active {
+      background: var(--blue);
+    }
     .grid {
       display: grid;
       gap: 14px;
@@ -271,6 +287,16 @@ def page() -> bytes:
     .panel {
       overflow: hidden;
       margin-top: 18px;
+    }
+    .dashboard-view {
+      display: none;
+      min-height: 580px;
+    }
+    .dashboard-view.active {
+      display: block;
+    }
+    .dashboard-view.grid.active {
+      display: grid;
     }
     .panel-head {
       display: flex;
@@ -691,6 +717,7 @@ def page() -> bytes:
       <div class="toolbar">
         <span class="pill" id="connection"><span class="dot"></span> Connecting</span>
         <span class="pill" id="last-refresh">Waiting for data</span>
+        <span class="pill view-status" id="view-status"></span>
       </div>
     </header>
     <section class="grid summary" aria-label="Dashboard summary">
@@ -716,7 +743,7 @@ def page() -> bytes:
       </div>
     </section>
 
-    <section class="panel" aria-label="House diagram">
+    <section class="panel dashboard-view active" data-dashboard-view="house" aria-label="House diagram">
       <div class="panel-head">
         <h2>House Diagram</h2>
         <span class="muted">Live readings by approximate location</span>
@@ -730,9 +757,9 @@ def page() -> bytes:
       </div>
     </section>
 
-    <section class="grid devices" id="devices" aria-label="Devices"></section>
+    <section class="grid devices dashboard-view" id="devices" data-dashboard-view="devices" aria-label="Devices"></section>
 
-    <section class="panel" aria-label="Temperature graph">
+    <section class="panel dashboard-view" data-dashboard-view="temperature" aria-label="Temperature graph">
       <div class="panel-head">
         <h2>Temperature Graph</h2>
         <div class="chart-controls">
@@ -755,7 +782,7 @@ def page() -> bytes:
       </div>
     </section>
 
-    <section class="panel" aria-label="Latest readings">
+    <section class="panel dashboard-view" data-dashboard-view="readings" aria-label="Latest readings">
       <div class="panel-head">
         <h2>Latest Readings</h2>
         <span class="muted">Current device state</span>
@@ -791,7 +818,14 @@ def page() -> bytes:
       hours: 24,
       floorplanBackgroundImage: null,
       floorplanZones: [],
+      activeViewIndex: 0,
     };
+    const dashboardViews = [
+      {key: "house", label: "House Diagram"},
+      {key: "devices", label: "Device List Grid"},
+      {key: "temperature", label: "Temperature Graph"},
+      {key: "readings", label: "Latest Readings"},
+    ];
     const seriesColors = [
       "#b42318", "#1f6feb", "#0f766e", "#7c3aed", "#b7791f", "#0f6b8f",
       "#a21caf", "#2f855a", "#c2410c", "#475569", "#be123c", "#2563eb",
@@ -860,6 +894,25 @@ def page() -> bytes:
 
     function setText(id, value) {
       document.getElementById(id).textContent = value;
+    }
+
+    function setActiveView(index) {
+      state.activeViewIndex = index % dashboardViews.length;
+      const active = dashboardViews[state.activeViewIndex];
+      for (const view of document.querySelectorAll("[data-dashboard-view]")) {
+        view.classList.toggle("active", view.dataset.dashboardView === active.key);
+      }
+      const status = document.getElementById("view-status");
+      status.replaceChildren();
+      const label = document.createElement("span");
+      label.textContent = active.label;
+      status.appendChild(label);
+      for (const [dotIndex] of dashboardViews.entries()) {
+        const dot = document.createElement("span");
+        dot.className = `view-dot${dotIndex === state.activeViewIndex ? " active" : ""}`;
+        status.appendChild(dot);
+      }
+      window.scrollTo({top: 0, behavior: "smooth"});
     }
 
     function average(rows, key) {
@@ -1263,8 +1316,10 @@ def page() -> bytes:
       state.hours = Number(event.target.value) || 24;
       refresh();
     });
+    setActiveView(0);
     refresh();
     setInterval(refresh, 3000);
+    setInterval(() => setActiveView(state.activeViewIndex + 1), 5000);
   </script>
 </body>
 </html>

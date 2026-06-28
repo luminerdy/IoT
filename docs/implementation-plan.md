@@ -151,6 +151,7 @@ Priority 1: Fleet Stability
 
 Priority 2: Dashboard As The Daily Control Surface
 
+- Rotate the main dashboard content through four operator views every 5 seconds: House Diagram, Device List Grid, Temperature Graph, and Latest Readings. Done; active on normal port `8000`.
 - Upload the actual floorplan image under `data/dashboard-assets/`.
 - Set `backgroundImage` in local `config/floorplan.json`.
 - Tune local sensor overlay placement without committing private floorplan data.

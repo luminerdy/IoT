@@ -238,42 +238,42 @@ def page() -> bytes:
       font-size: 13px;
     }
     .devices {
-      grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
       margin-bottom: 18px;
     }
     .device {
-      padding: 14px;
-      min-height: 130px;
+      padding: 10px;
+      min-height: 92px;
     }
     .device-head {
       display: flex;
       justify-content: space-between;
       align-items: flex-start;
       gap: 10px;
-      margin-bottom: 14px;
+      margin-bottom: 8px;
     }
     .device h2 {
       margin: 0;
-      font-size: 17px;
+      font-size: 15px;
       line-height: 1.2;
       letter-spacing: 0;
     }
     .metrics {
       display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 10px;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 6px;
     }
     .metric {
-      min-height: 58px;
-      padding: 10px;
+      min-height: 44px;
+      padding: 7px;
       border: 1px solid #e5ebf2;
       border-radius: 6px;
       background: #f8fafc;
     }
     .metric strong {
       display: block;
-      margin-top: 4px;
-      font-size: 20px;
+      margin-top: 3px;
+      font-size: 16px;
       line-height: 1.1;
     }
     .metric-note {
@@ -590,16 +590,22 @@ def page() -> bytes:
       border-collapse: collapse;
     }
     th, td {
-      padding: 12px 14px;
+      padding: 6px 10px;
       border-bottom: 1px solid #e7ebf0;
       text-align: left;
       white-space: nowrap;
+      font-size: 13px;
+      line-height: 1.2;
     }
     th {
       background: #f0f4f8;
-      font-size: 13px;
+      font-size: 11px;
       text-transform: uppercase;
       color: #4b5b6b;
+    }
+    th:nth-child(8),
+    td:nth-child(8) {
+      display: none;
     }
     tr:last-child td {
       border-bottom: 0;
@@ -648,6 +654,16 @@ def page() -> bytes:
     .table-wrap {
       overflow-x: auto;
     }
+    .table-wrap table {
+      table-layout: fixed;
+    }
+    .table-wrap th:nth-child(1) { width: 18%; }
+    .table-wrap th:nth-child(2) { width: 11%; }
+    .table-wrap th:nth-child(3) { width: 13%; }
+    .table-wrap th:nth-child(4) { width: 13%; }
+    .table-wrap th:nth-child(5) { width: 11%; }
+    .table-wrap th:nth-child(6) { width: 15%; }
+    .table-wrap th:nth-child(7) { width: 19%; }
     .error {
       border-color: #f0b4ad;
       background: #fff7f5;
@@ -942,6 +958,11 @@ def page() -> bytes:
       return row ? fmt(row.humidity, "%") : "--";
     }
 
+    function firmwareLabel(value) {
+      if (!value) return "--";
+      return value.replace("-filtered-telemetry", " filtered").replace("-signed-ota", " signed");
+    }
+
     function deviceState(row) {
       if (row.stale) return ["stale", "Stale"];
       if (row.online) return ["online", "Online"];
@@ -985,9 +1006,9 @@ def page() -> bytes:
         const metrics = document.createElement("div");
         metrics.className = "metrics";
         for (const [label, value, note] of [
-          ["Temperature", fmt(row.temperature, " F"), ""],
-          ["Humidity", humidityText(row), isHumiditySuspect(row) ? "suspect" : ""],
-          ["Last Seen", relativeTime(row.lastSeen), ""],
+          ["Temp", fmt(row.temperature, " F"), ""],
+          ["Humid", humidityText(row), isHumiditySuspect(row) ? "suspect" : ""],
+          ["Seen", relativeTime(row.lastSeen), ""],
         ]) {
           const metric = document.createElement("div");
           metric.className = "metric";
@@ -1072,7 +1093,7 @@ def page() -> bytes:
           humidityText(row),
           fmt(row.rssi, " dBm"),
           relativeTime(row.lastSeen),
-          row.firmwareVersion || "--",
+          firmwareLabel(row.firmwareVersion),
           row.deviceId,
         ];
         cells.forEach((value, index) => {

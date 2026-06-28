@@ -2,6 +2,19 @@
 
 Use this file for dated accomplishments and important observations. Keep future tasks in `docs/implementation-plan.md` and durable decisions in `docs/decision-record.md`.
 
+## 2026-06-28
+
+### End-Of-Day Stop Point
+
+- Refreshed the project roadmap: Phases 0 through 4 are complete for the current local-first system, and Phase 5 is the active plan for fleet operations, dashboard workflows, backups, and staged security hardening.
+- Verified `mosquitto.service`, `iot-home-collector.service`, and `iot-home-dashboard.service` are active and enabled.
+- Verified the dashboard API on port `8000` reports 20 mapped devices, all online and non-stale.
+- Verified the signed-OTA first indoor soak batch remains healthy: `RoomE`, `RoomF`, and `RoomA` are online, non-stale, status `OK`, and reporting firmware `0.1.3-signed-ota`.
+- Verified `Bench Device` is also online, non-stale, status `OK`, and reporting firmware `0.1.3-signed-ota`.
+- Noted `OutdoorA` humidity remains suspect: it previously pegged high and now reports an implausibly low humidity value, so the dashboard rule should be expanded beyond only `>=99%`.
+- GitHub CLI is installed locally at `/home/scotty/.local/bin/gh`, but terminal-based GitHub API workflows still require `gh auth login`.
+- Stop point: continue signed OTA rollout in small batches, then add Phase 5 operations basics: SQLite backup/export, a sensor replacement checklist, and a compact service/OTA runbook.
+
 ## 2026-06-27
 
 ### Operational Review

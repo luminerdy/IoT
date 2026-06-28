@@ -12,7 +12,7 @@ The project is a local-first Raspberry Pi IoT system with MQTT, SQLite, a boot-e
 
 Phase 5: Fleet operations plus daily dashboard improvements
 
-Status: Phases 0 through 4 are complete for the current local-first system. Signed OTA hardening is validated on the USB-recoverable bench device and has started rolling out in small batches. The active work is Phase 5: fleet operations, dashboard maintenance workflows, backups, and staged security hardening.
+Status: Phases 0 through 4 are complete for the current local-first system. Signed OTA hardening is validated on the USB-recoverable bench device and the first three-device indoor soak batch remains healthy. The active work is Phase 5: fleet operations, dashboard maintenance workflows, backups, and staged security hardening.
 
 ## Accomplished
 
@@ -50,23 +50,23 @@ Status: Phases 0 through 4 are complete for the current local-first system. Sign
 
 ## Live Dashboard State
 
-Latest SQLite/API check on 2026-06-27 after signed OTA testing shows 20 mapped devices online and non-stale. `Bench Device` is on `0.1.3-signed-ota`; the installed fleet remains on `0.1.2-filtered-telemetry` unless listed otherwise:
+Latest SQLite/API check on 2026-06-28 shows 20 mapped devices online and non-stale. `Bench Device`, `RoomE`, `RoomF`, and `RoomA` are on `0.1.3-signed-ota`; the remaining installed fleet is on `0.1.2-filtered-telemetry` unless listed otherwise:
 
 - `RoomG` / `esp32-device-id`: online, telemetry OK.
-- `RoomE` / `esp32-device-id`: online, telemetry OK.
+- `RoomE` / `esp32-device-id`: online, telemetry OK on signed OTA.
 - `RoomC` / `esp32-device-id`: online, telemetry OK. The device reports `UNMAPPED`, but the dashboard maps it through `config/locations.json`.
-- `RoomA` / `esp32-device-id`: online, telemetry OK.
+- `RoomA` / `esp32-device-id`: online, telemetry OK on signed OTA.
 - `UtilityA` / `esp32-device-id`: online, telemetry OK.
 - `OutdoorC` / `esp32-device-id`: online, telemetry OK. It briefly appeared stale during testing, then reported again by the final API check.
-- `RoomF` / `esp32-device-id`: online, telemetry OK.
+- `RoomF` / `esp32-device-id`: online, telemetry OK on signed OTA.
 - `UtilityF` / `esp32-device-id`: online, telemetry OK.
 - `UtilityD` / `esp32-device-id`: online, telemetry OK.
 - `OutdoorB` / `esp32-device-id`: online, telemetry OK.
 - `RoomH` / `esp32-device-id`: online, telemetry OK.
 - `RoomD` / `esp32-device-id`: online, telemetry OK.
-- `OutdoorA` / `esp32-device-id`: online, temperature telemetry OK; humidity is suspect because the outdoor DHT22 is pegging near `99.9%`.
+- `OutdoorA` / `esp32-device-id`: online, temperature telemetry OK; humidity is suspect because the outdoor DHT22 is now reporting implausibly low humidity after previously pegging high.
 - `RoomI` / `esp32-device-id`: online, telemetry OK.
-- `Bench Device` / `esp32-device-id`: online, telemetry OK.
+- `Bench Device` / `esp32-device-id`: online, telemetry OK on signed OTA.
 - `RoomJ` / `esp32-device-id`: online, telemetry OK.
 - `RoomB` / `esp32-device-id`: online, telemetry OK.
 - `UtilityE` / `esp32-device-id`: online, telemetry OK.
@@ -80,7 +80,7 @@ Latest SQLite/API check on 2026-06-27 after signed OTA testing shows 20 mapped d
 
 ## Next Actions
 
-1. Continue signed OTA rollout in small batches until all active fleet devices are on `0.1.3-signed-ota` or newer.
+1. Continue signed OTA rollout in small batches; the first three-device indoor soak remains healthy.
 2. Keep `Bench Device` (`esp32-device-id`) on `/dev/ttyUSB0` for firmware and feature validation before deploying to other devices.
 3. Upload the actual house image under `data/dashboard-assets/`, set `backgroundImage` in local `config/floorplan.json`, and tune the existing sensor placement overlay.
 4. Add the Phase 5 operations basics: SQLite backup/export, a sensor replacement checklist, and a compact service/OTA runbook.
@@ -93,7 +93,7 @@ Latest SQLite/API check on 2026-06-27 after signed OTA testing shows 20 mapped d
 - Pi dependency install approach: direct system packages vs isolated app environment.
 - MQTT TLS and per-device ACL migration: signed OTA is validated, but broker TLS/ACLs are still staged and not enabled fleet-wide.
 - Temperature Graph grouping: current grouping is hard-coded in `app/iot_home/dashboard.py`; revisit if group membership needs to become user-configurable.
-- Outdoor DHT22 humidity flagging: current suspect threshold is `>=99%` for `OutdoorA`, `OutdoorB`, and `OutdoorC`; revisit if other sensor models or outdoor locations are added.
+- Outdoor DHT22 humidity flagging: current rule catches high pegged readings, but `OutdoorA` also produced an implausibly low reading; revisit the rule to flag both high and low outdoor humidity failures.
 
 ## Where Details Live
 
@@ -115,6 +115,6 @@ Latest SQLite/API check on 2026-06-27 after signed OTA testing shows 20 mapped d
 - New ESP32 provisioning is complete for the current batch: `RoomB` / `esp32-device-id` and `UtilityE` / `esp32-device-id`.
 - Dashboard URL on the Pi: `http://127.0.0.1:8000`; LAN URL: `http://iot-pi.local:8000` or `http://<pi-ip-address>:8000`.
 - Dashboard app: summary metrics, configurable house diagram, device cards, latest readings, and `/api/history` trend data are in `app/iot_home/dashboard.py`. The diagram supports fallback built-in placements plus local `config/floorplan.json`; actual image assets should live under `data/dashboard-assets/` and be referenced as `/dashboard-assets/<file>`. The Temperature Graph selector is grouped into `Inside`, `Outside`, and `Separate`, with both group-level `All` checkboxes and individual device checkboxes. Outdoor DHT22 humidity at or above `99%` is flagged as suspect and excluded from average humidity.
-- Dashboard verification: normal port `8000` serves `/api/floorplan`, the suspect humidity flag, and the `RoomB` and `UtilityE` floorplan placements. Latest live check showed 20 mapped devices, all online/non-stale, no `UNMAPPED` rows, and no retired `esp32-device-id` row.
+- Dashboard verification: normal port `8000` serves `/api/floorplan`, the suspect humidity flag, and the `RoomB` and `UtilityE` floorplan placements. Latest live check showed 20 mapped devices, all online/non-stale, no `UNMAPPED` rows, and the signed-OTA soak batch still healthy.
 - Telemetry policy memory: ESP32s should read DHT22 frequently, reject impossible values and one-off large jumps, publish median-filtered temp/humidity every 600 seconds, and only publish early when filtered temperature differs by the configured threshold for 3 consecutive valid samples. Humidity is reported but does not trigger early publishes.
 - Latest live-tested OTA artifact: `data/firmware/0.1.3-signed-ota/firmware.bin`; ignored by git because runtime/build artifacts stay local.

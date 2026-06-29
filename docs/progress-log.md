@@ -4,6 +4,16 @@ Use this file for dated accomplishments and important observations. Keep future 
 
 ## 2026-06-28
 
+### AtticDoor ESP32 Provisioning
+
+- Attached a new ESP32 over USB as the first of two attic sensors and identified it as the new USB serial adapter rather than the existing bench device.
+- Flashed the current signed firmware, `0.1.3-signed-ota`, directly over USB.
+- Added ignored local mappings so the device appears as `AtticDoor` and is included in the `Separate` Temperature Graph group through a `utility` floorplan zone.
+- Initial sensor checks exposed a bad DHT22: first it failed reads and triggered watchdog resets in the DHT read path, then a replacement sensor returned implausible `265.8 F / 99.9%` values that firmware correctly filtered.
+- After swapping to another 3-pin DHT22 module, serial output showed stable valid readings and the dashboard API reported `AtticDoor` as online with status `OK`.
+- Relocated `AtticDoor` to the attic-door location and verified it came back online from the attic with usable RSSI, plausible attic temperature/humidity telemetry, and firmware `0.1.3-signed-ota`.
+- End-of-day live dashboard check showed 21 mapped devices online, 0 stale, and 8 devices on signed OTA.
+
 ### Dashboard Rotation Fit And Graph Controls
 
 - Tightened the four-view dashboard rotation for a 1920x1080 display: the 20-device Device List Grid and Latest Readings table now fit cleanly without vertical cutoff.

@@ -52,10 +52,11 @@ Status: Phases 0 through 4 are complete for the current local-first system. Sign
 - Continued the signed OTA rollout with three additional indoor devices; the signed OTA count is now 7 devices.
 - Tightened the 1080p rotating dashboard views: the 20-device grid and Latest Readings table now fit at 1920x1080, the readings table hides the device-ID column, and firmware labels are shortened.
 - Added a `Pause Views` / `Resume Views` dashboard control so the current rotated view can be held for deeper inspection while live data refresh continues.
+- Provisioned the first attic ESP32 as `AtticDoor`: flashed `0.1.3-signed-ota` over USB, added ignored local location/floorplan mappings, grouped it with `Separate` through a `utility` floorplan zone, replaced a bad DHT22 sensor, and verified valid attic telemetry.
 
 ## Live Dashboard State
 
-Latest SQLite/API check on 2026-06-28 shows 20 mapped devices online and 0 stale on normal dashboard port `8000`. Seven devices are now on `0.1.3-signed-ota`; the remaining installed fleet is on `0.1.2-filtered-telemetry` unless listed otherwise. One signed-OTA device briefly reported telemetry with `1970-01-01T00:00:00Z` after startup/NTP delay; the dashboard stale calculation now uses collector receipt time when available and was verified live on port `8000` after the Pi reboot. The live dashboard also has the 1080p-fit rotation views, floorplan-derived graph groups, the laundry-room Inside override, and the rotation pause/resume control loaded.
+Latest SQLite/API check on 2026-06-28 shows 21 mapped devices online and 0 stale on normal dashboard port `8000`. Eight devices are now on `0.1.3-signed-ota`; the remaining installed fleet is on `0.1.2-filtered-telemetry` unless listed otherwise. One signed-OTA device briefly reported telemetry with `1970-01-01T00:00:00Z` after startup/NTP delay; the dashboard stale calculation now uses collector receipt time when available and was verified live on port `8000` after the Pi reboot. The live dashboard also has the 1080p-fit rotation views, floorplan-derived graph groups, the laundry-room Inside override, and the rotation pause/resume control loaded.
 
 - `RoomG` / `esp32-device-id`: online, telemetry OK.
 - `RoomE` / `esp32-device-id`: online, telemetry OK on signed OTA.
@@ -77,6 +78,7 @@ Latest SQLite/API check on 2026-06-28 shows 20 mapped devices online and 0 stale
 - `UtilityE` / `esp32-device-id`: online, telemetry OK.
 - `UtilityC` / `esp32-device-id`: online, telemetry OK.
 - `UtilityB` / `esp32-device-id`: online, telemetry OK.
+- `AtticDoor` / `esp32-device-id`: online, telemetry OK on signed OTA. It is locally mapped in ignored config and grouped with `Separate` through a `utility` floorplan zone.
 
 ## Active Blockers
 
@@ -86,10 +88,11 @@ Latest SQLite/API check on 2026-06-28 shows 20 mapped devices online and 0 stale
 
 ## Next Actions
 
-1. Watch the seven signed-OTA devices through the next normal telemetry intervals, then continue rollout in small batches.
+1. Watch the eight signed-OTA devices through the next normal telemetry intervals, then continue rollout in small batches.
 2. Keep `Bench Device` (`esp32-device-id`) on `/dev/ttyUSB0` for firmware and feature validation before deploying to other devices.
-3. Upload the actual house image under `data/dashboard-assets/`, set `backgroundImage` in local `config/floorplan.json`, and tune the existing sensor placement overlay.
-4. Add the Phase 5 operations basics: SQLite backup/export, a sensor replacement checklist, and a compact service/OTA runbook.
+3. Provision the second attic ESP32 when available and place it in the intended graph group.
+4. Upload the actual house image under `data/dashboard-assets/`, set `backgroundImage` in local `config/floorplan.json`, and tune the existing sensor placement overlay.
+5. Add the Phase 5 operations basics: SQLite backup/export, a sensor replacement checklist, and a compact service/OTA runbook.
 
 ## Decisions To Revisit Soon
 
@@ -117,11 +120,11 @@ Latest SQLite/API check on 2026-06-28 shows 20 mapped devices online and 0 stale
 - Public GitHub repo: `luminerdy/IoT`
 - Draft PR: `https://github.com/luminerdy/IoT/pull/1`
 - GitHub SSH push from the Pi works through `/home/scotty/.ssh/id_ed25519_github`; sync the working branch to `origin/codex/dashboard-graph-diagram-memory` after local dashboard/doc updates.
-- Local-only ignored files include runtime data, build output, `config/locations.json`, and `firmware/include/secrets.h`.
-- New ESP32 provisioning is complete for the current batch: `RoomB` / `esp32-device-id` and `UtilityE` / `esp32-device-id`.
+- Local-only ignored files include runtime data, build output, `config/locations.json`, `config/floorplan.json`, and `firmware/include/secrets.h`.
+- New ESP32 provisioning is complete for the current batch: `RoomB` / `esp32-device-id`, `UtilityE` / `esp32-device-id`, and `AtticDoor` / `esp32-device-id`.
 - Dashboard URL on the Pi: `http://127.0.0.1:8000`; LAN URL: `http://iot-pi.local:8000` or `http://<pi-ip-address>:8000`.
 - Dashboard app: summary metrics, configurable house diagram, device cards, latest readings, and `/api/history` trend data are in `app/iot_home/dashboard.py`. The diagram supports fallback built-in placements plus local `config/floorplan.json`; actual image assets should live under `data/dashboard-assets/` and be referenced as `/dashboard-assets/<file>`. The Temperature Graph selector is grouped into `Inside`, `Outside`, and `Separate`, with both group-level `All` checkboxes and individual device checkboxes. Grouping follows floorplan zone metadata where available, with a small Inside override for the laundry-room utility location. Outdoor DHT22 humidity at or above `99%` is flagged as suspect and excluded from average humidity.
 - Dashboard rotation: the main dashboard content now rotates every 5 seconds through House Diagram, Device List Grid, Temperature Graph, and Latest Readings. Normal port `8000` serves this rotating view. Use the `Pause Views` button to hold the current view for inspection; data refresh continues while rotation is paused.
-- Dashboard verification: normal port `8000` serves `/api/floorplan`, the suspect humidity flag, and the current floorplan placements. Latest live check showed 20 mapped devices online, 0 stale, no `UNMAPPED` rows, and 7 devices on signed OTA. The stale-calculation fix for bad startup/NTP timestamps, 1080p-fit rotated views, floorplan-derived graph groups, laundry-room Inside override, and pause/resume control are loaded on normal port `8000`.
+- Dashboard verification: normal port `8000` serves `/api/floorplan`, the suspect humidity flag, and the current floorplan placements. Latest live check showed 21 mapped devices online, 0 stale, no `UNMAPPED` rows, and 8 devices on signed OTA. The stale-calculation fix for bad startup/NTP timestamps, 1080p-fit rotated views, floorplan-derived graph groups, laundry-room Inside override, AtticDoor Separate grouping, and pause/resume control are loaded on normal port `8000`.
 - Telemetry policy memory: ESP32s should read DHT22 frequently, reject impossible values and one-off large jumps, publish median-filtered temp/humidity every 600 seconds, and only publish early when filtered temperature differs by the configured threshold for 3 consecutive valid samples. Humidity is reported but does not trigger early publishes.
 - Latest live-tested OTA artifact: `data/firmware/0.1.3-signed-ota/firmware.bin`; ignored by git because runtime/build artifacts stay local.

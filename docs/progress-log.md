@@ -574,3 +574,67 @@ Use this file for dated accomplishments and important observations. Keep future 
 - New ESP32 provisioning is complete for the current batch: `RoomB` and `UtilityE`.
 - Continue watching recovered devices across a few 10-minute telemetry intervals.
 - Start the next dashboard improvement: replace the approximate house diagram with an uploaded house image and configurable sensor placement overlays.
+
+## 2026-06-30
+
+### Project Hardening Review Follow-Up
+
+- Added Python project metadata in `pyproject.toml` so the Pi-side app can be installed/tested consistently.
+- Added focused pytest coverage for:
+  - SQLite telemetry/status recording and history bounds.
+  - Location mapping behavior.
+  - Floorplan config validation and normalization.
+  - Retained config payload generation.
+- Added `.github/workflows/ci.yml` to run Python compile/tests and PlatformIO firmware checking on GitHub pushes/PRs.
+- Updated the CI firmware job to copy `firmware/include/secrets.sample.h` to ignored `secrets.h` so clean GitHub runners can run PlatformIO checks without local secrets.
+- Added `.gitignore` entries for `.pytest_cache/` and `*.egg-info/`.
+- Ran validation locally:
+  - `python3 -m compileall app scripts`: passed.
+  - `./.venv/bin/python -m pytest`: 17 tests passed.
+  - `./.venv/bin/platformio check -d firmware`: passed with only low/style warnings.
+  - Re-ran firmware check with sample `secrets.h` to confirm the GitHub Actions clean-runner path works.
+- Fixed the prior medium firmware static-analysis warning by adding an explicit invalid-count guard in `medianOf`.
+
+### Backup Prep
+
+- Added `scripts/backup_sqlite.sh` for verified SQLite backups using SQLite `.backup`, `PRAGMA integrity_check`, and gzip compression.
+- Ran the backup script successfully against `data/iot.db`; it created an ignored local backup under `data/backups/`.
+- Added `docs/backup-runbook.md` with local backup, restore-check, and future AWS S3 copy instructions through `S3_URI=s3://...`.
+- Updated `README.md` and `docs/implementation-plan.md` to point at the backup runbook and note that the initial backup workflow is in place.
+
+### Sunroom Recovery
+
+- Investigated `Sunroom` / `esp32-device-id` after it stopped reporting and showed repeated low sequence numbers.
+- Confirmed the device had disappeared from the LAN neighbor table while nearby Sunroom devices continued reporting.
+- After the Sunroom wire was replaced, the device returned to the LAN and began reporting again.
+- Follow-up check showed `Sunroom` online, last sequence `27`, RSSI around `-67`, and steady roughly 10-minute telemetry intervals.
+- Decision: continue watching `Sunroom` before including it in a signed OTA batch.
+
+### Fleet State At Stop
+
+- Latest live SQLite check around 22:45 CDT showed 21 devices online and 0 offline.
+- Firmware counts:
+  - `0.1.3-signed-ota`: 8 devices.
+  - `0.1.2-filtered-telemetry`: 13 devices.
+- One online signed-OTA device is currently `UNMAPPED` and needs local mapping cleanup.
+- Worktree intentionally remains uncommitted with the June 30 hardening changes pending review/commit.
+
+### Ready Next
+
+- Review, commit, and push the hardening changes.
+- Watch `Sunroom` through more normal telemetry intervals before OTA.
+- Clean up the current `UNMAPPED` device mapping.
+- Continue signed OTA rollout in small batches after the fleet is stable.
+- Finish AWS S3 backup setup later this week: bucket/prefix, IAM credentials, and a restore drill.
+
+## 2026-07-01
+
+### Hardening Commit Prep
+
+- Rechecked the live dashboard API on normal port `8000` before committing the June 30 hardening changes.
+- `/api/latest` reported 21 mapped devices online, 0 stale, and no `UNMAPPED` rows.
+- Firmware counts remained:
+  - `0.1.3-signed-ota`: 8 devices.
+  - `0.1.2-filtered-telemetry`: 13 devices.
+- `Sunroom` remained online after the wire replacement and had advanced to sequence 145.
+- `/api/floorplan` loaded the local configured zones; `backgroundImage` is still unset until the actual house image is uploaded.

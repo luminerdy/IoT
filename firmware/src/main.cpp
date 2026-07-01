@@ -218,6 +218,10 @@ void publishStatus(const char *status, bool retained)
 
 float medianOf(const float *values, size_t count)
 {
+  if (count == 0 || count > FILTER_WINDOW_SIZE) {
+    return NAN;
+  }
+
   float sorted[FILTER_WINDOW_SIZE];
   for (size_t i = 0; i < count; i++) {
     sorted[i] = values[i];

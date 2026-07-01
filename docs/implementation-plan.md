@@ -161,7 +161,7 @@ Priority 2: Dashboard As The Daily Control Surface
 
 Priority 3: Operations And Data Protection
 
-- Add SQLite backup/export workflow.
+- Add SQLite backup/export workflow. Initial local backup script and S3-ready runbook are in place.
 - Add restore verification for at least one backup.
 - Add a compact operational runbook covering service status, logs, OTA rollout, config publish, and sensor replacement.
 - Decide how much local runtime state should stay JSON files versus moving to SQLite tables.

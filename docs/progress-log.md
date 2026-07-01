@@ -2,6 +2,19 @@
 
 Use this file for dated accomplishments and important observations. Keep future tasks in `docs/implementation-plan.md` and durable decisions in `docs/decision-record.md`.
 
+## 2026-07-01
+
+### Signed OTA Batch
+
+- Verified the live dashboard API before rollout: 21 mapped devices online, 0 stale, 8 devices on `0.1.3-signed-ota`, and 13 devices still on `0.1.2-filtered-telemetry`.
+- Verified `http://<pi-ip-address>:8000/firmware/0.1.3-signed-ota/firmware.bin` returned HTTP 200 and matched the staged firmware SHA-256.
+- Published signed OTA rollout `20260701T171632Z-0.1.3-small-batch-2` to three indoor devices.
+- Observed OTA download start on all three devices. Two also published `rebooting` / `firmware update applied`; the dashboard API confirmed all three returned online, non-stale, status `OK`, and reporting `0.1.3-signed-ota`.
+- Signed OTA rollout count is now 11 devices. Ten devices remain on `0.1.2-filtered-telemetry`.
+- Published signed OTA rollout `20260701T181636Z-0.1.3-small-batch-3` to three utility-area devices.
+- Observed OTA download start and `rebooting` / `firmware update applied` on all three devices. The dashboard API confirmed all three returned online, non-stale, status `OK`, and reporting `0.1.3-signed-ota`.
+- Signed OTA rollout count is now 14 devices. Seven devices remain on `0.1.2-filtered-telemetry`.
+
 ## 2026-06-28
 
 ### AtticDoor ESP32 Provisioning

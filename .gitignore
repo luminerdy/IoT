@@ -6,6 +6,9 @@ __pycache__/
 .venv/
 venv/
 .env
+*.env
+backup.env
+*.env.save
 
 # PlatformIO / ESP32
 .pio/
@@ -30,6 +33,9 @@ config/floorplan.json
 *.sqlite
 *.sqlite3
 logs/
+restore-test/
+restic-password*
+iot-password*
 
 # OS/editor
 .DS_Store

@@ -12,7 +12,7 @@ The project is a local-first Raspberry Pi IoT system with MQTT, SQLite, a boot-e
 
 Phase 5: Fleet operations plus daily dashboard improvements
 
-Status: Phases 0 through 4 are complete for the current local-first system. Signed OTA hardening is validated on the USB-recoverable bench device and 14 devices are on `0.1.3-signed-ota`. The active work is Phase 5: fleet operations, dashboard maintenance workflows, backups, tests/CI, and staged security hardening.
+Status: Phases 0 through 4 are complete for the current local-first system. Signed OTA hardening is validated on the USB-recoverable bench device and all 21 mapped devices are on `0.1.3-signed-ota`. The active work is Phase 5: fleet operations, dashboard maintenance workflows, backups, tests/CI, and staged security hardening.
 
 ## Accomplished
 
@@ -58,14 +58,15 @@ Status: Phases 0 through 4 are complete for the current local-first system. Sign
 - Cleared the medium firmware static-analysis warning by guarding the median helper against invalid counts.
 - Investigated `Sunroom` after it went offline; replacing the wire brought it back, and it is now reporting steadily again with increasing sequence numbers.
 - Continued the signed OTA rollout on 2026-07-01 with two three-device batches; all six came back online/non-stale on `0.1.3-signed-ota`.
+- Completed the signed OTA rollout on 2026-07-01 with one two-device batch and one final five-device batch; all seven remaining devices came back online/non-stale on `0.1.3-signed-ota`.
 
 ## Live Dashboard State
 
-Latest SQLite/API check on 2026-07-01 at about 13:18 CDT shows 21 mapped devices online and 0 stale. Fourteen devices are on `0.1.3-signed-ota`; 7 devices remain on `0.1.2-filtered-telemetry`. The latest signed OTA batch updated three utility-area devices; all three returned online/non-stale with status `OK`. `Sunroom` is still online after the wire replacement and has advanced beyond sequence 150. The live dashboard also has the 1080p-fit rotation views, floorplan-derived graph groups, the laundry-room Inside override, and the rotation pause/resume control loaded.
+Latest SQLite/API check on 2026-07-01 at about 19:21 CDT shows 21 mapped devices online and 0 stale. All 21 mapped devices are on `0.1.3-signed-ota`; 0 devices remain on `0.1.2-filtered-telemetry`. The final signed OTA batches reported expected download and reboot/apply statuses, and every mapped device returned online/non-stale with status `OK`. The live dashboard also has the 1080p-fit rotation views, floorplan-derived graph groups, the laundry-room Inside override, and the rotation pause/resume control loaded.
 
 - Live fleet count: 21 online, 0 offline.
-- Signed OTA count: 14 devices on `0.1.3-signed-ota`.
-- Remaining old firmware count: 7 devices on `0.1.2-filtered-telemetry`.
+- Signed OTA count: 21 devices on `0.1.3-signed-ota`.
+- Remaining old firmware count: 0 devices on `0.1.2-filtered-telemetry`.
 - `Sunroom` / `esp32-device-id`: online again after wire replacement; current sequence is increasing normally.
 - `UNMAPPED` count: 0.
 
@@ -78,7 +79,7 @@ Latest SQLite/API check on 2026-07-01 at about 13:18 CDT shows 21 mapped devices
 ## Next Actions
 
 1. Keep `Bench Device` (`esp32-device-id`) on `/dev/ttyUSB0` for firmware and feature validation before deploying to other devices.
-2. Continue signed OTA rollout in small batches; 7 devices still need `0.1.3-signed-ota`.
+2. Watch the completed signed OTA rollout through the next normal telemetry interval, then update any runbooks/checklists that still describe the old firmware split.
 3. Provision the second attic ESP32 when available and place it in the intended graph group.
 4. Upload the actual house image under `data/dashboard-assets/`, set `backgroundImage` in local `config/floorplan.json`, and tune the existing sensor placement overlay.
 5. Add the remaining Phase 5 operations basics: sensor replacement checklist, compact service/OTA runbook, S3 backup credential/bucket setup, and a restore drill.
@@ -114,6 +115,6 @@ Latest SQLite/API check on 2026-07-01 at about 13:18 CDT shows 21 mapped devices
 - Dashboard URL on the Pi: `http://127.0.0.1:8000`; LAN URL: `http://iot-pi.local:8000` or `http://<pi-ip-address>:8000`.
 - Dashboard app: summary metrics, configurable house diagram, device cards, latest readings, and `/api/history` trend data are in `app/iot_home/dashboard.py`. The diagram supports fallback built-in placements plus local `config/floorplan.json`; actual image assets should live under `data/dashboard-assets/` and be referenced as `/dashboard-assets/<file>`. The Temperature Graph selector is grouped into `Inside`, `Outside`, and `Separate`, with both group-level `All` checkboxes and individual device checkboxes. Grouping follows floorplan zone metadata where available, with a small Inside override for the laundry-room utility location. Outdoor DHT22 humidity at or above `99%` is flagged as suspect and excluded from average humidity.
 - Dashboard rotation: the main dashboard content now rotates every 5 seconds through House Diagram, Device List Grid, Temperature Graph, and Latest Readings. Normal port `8000` serves this rotating view. Use the `Pause Views` button to hold the current view for inspection; data refresh continues while rotation is paused.
-- Dashboard verification: normal port `8000` serves `/api/floorplan`, the suspect humidity flag, and the current floorplan placements. Latest live check on 2026-07-01 showed 21 mapped devices online, 0 stale, no `UNMAPPED` rows, and 14 devices on signed OTA. The stale-calculation fix for bad startup/NTP timestamps, 1080p-fit rotated views, floorplan-derived graph groups, laundry-room Inside override, AtticDoor Separate grouping, and pause/resume control are loaded on normal port `8000`.
+- Dashboard verification: normal port `8000` serves `/api/floorplan`, the suspect humidity flag, and the current floorplan placements. Latest live check on 2026-07-01 showed 21 mapped devices online, 0 stale, no `UNMAPPED` rows, and 21 devices on signed OTA. The stale-calculation fix for bad startup/NTP timestamps, 1080p-fit rotated views, floorplan-derived graph groups, laundry-room Inside override, AtticDoor Separate grouping, and pause/resume control are loaded on normal port `8000`.
 - Telemetry policy memory: ESP32s should read DHT22 frequently, reject impossible values and one-off large jumps, publish median-filtered temp/humidity every 600 seconds, and only publish early when filtered temperature differs by the configured threshold for 3 consecutive valid samples. Humidity is reported but does not trigger early publishes.
 - Latest live-tested OTA artifact: `data/firmware/0.1.3-signed-ota/firmware.bin`; ignored by git because runtime/build artifacts stay local.

@@ -14,6 +14,10 @@ Use this file for dated accomplishments and important observations. Keep future 
 - Published signed OTA rollout `20260701T181636Z-0.1.3-small-batch-3` to three utility-area devices.
 - Observed OTA download start and `rebooting` / `firmware update applied` on all three devices. The dashboard API confirmed all three returned online, non-stale, status `OK`, and reporting `0.1.3-signed-ota`.
 - Signed OTA rollout count is now 14 devices. Seven devices remain on `0.1.2-filtered-telemetry`.
+- Published signed OTA rollout `20260702T001656Z-0.1.3-small-batch-4` to two remaining devices.
+- Published signed OTA rollout `20260702T001833Z-0.1.3-final-batch` to the final five devices.
+- Observed OTA download start on all seven remaining devices and `rebooting` / `firmware update applied` on all final-batch devices. The dashboard API confirmed all 21 mapped devices are online, non-stale, status `OK`, and reporting `0.1.3-signed-ota`.
+- Signed OTA rollout is complete for the mapped fleet. Zero mapped devices remain on `0.1.2-filtered-telemetry`.
 
 ## 2026-06-28
 

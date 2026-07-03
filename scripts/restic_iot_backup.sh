@@ -4,6 +4,7 @@ set -euo pipefail
 LOG_FILE="${LOG_FILE:-$HOME/logs/restic-iot-backup.log}"
 BACKUP_ENV="${BACKUP_ENV:-$HOME/config/backup.env}"
 EXCLUDE_FILE="${EXCLUDE_FILE:-$HOME/config/restic-excludes.txt}"
+export PATH="$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin"
 
 {
   echo "[$(date --iso-8601=seconds)] starting restic IoT backup"

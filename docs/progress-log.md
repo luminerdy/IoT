@@ -19,6 +19,25 @@ Use this file for dated accomplishments and important observations. Keep future 
 - Observed OTA download start on all seven remaining devices and `rebooting` / `firmware update applied` on all final-batch devices. The dashboard API confirmed all 21 mapped devices are online, non-stale, status `OK`, and reporting `0.1.3-signed-ota`.
 - Signed OTA rollout is complete for the mapped fleet. Zero mapped devices remain on `0.1.2-filtered-telemetry`.
 
+## 2026-07-02
+
+### Backup Verification
+
+- Created a fresh local SQLite backup: `data/backups/iot-20260702T214335Z.sqlite.gz`.
+- Restore-checked the local SQLite backup through `/tmp/iot-restore-check.sqlite`; `PRAGMA integrity_check` returned `ok`, and the restored database contained 53,261 readings.
+- Found the scheduled restic backup failed at `2026-07-02T02:15:01-05:00` because cron could not find `restic` in its default `PATH`.
+- Added an explicit cron-safe `PATH` to both `scripts/restic_iot_backup.sh` and the live cron copy at `~/scripts/restic-iot-backup.sh`.
+- Re-ran the live cron script under a minimal cron-like environment; it completed successfully and created restic snapshot `d5802848`.
+- Restored the latest restic snapshot into `~/restore-test`; the expected `IoT`, `config`, and `.config/restic` roots were present. Removed the scratch restore tree after verification.
+- Ran `restic check`; it completed with no repository errors.
+
+### Architecture And Security Review
+
+- Reviewed an external architecture/security assessment against the local codebase.
+- Confirmed the most actionable findings: unauthenticated dashboard on `0.0.0.0:8000`, plaintext/shared-credential MQTT as the current fleet path, no ACL on the port `1883` broker config, retained telemetry inserts on collector restart, no OTA anti-rollback, unpinned PlatformIO platform, and CI static-checking firmware without compiling it.
+- Agreed on the practical priority order for the next hardening pass: retained telemetry fix, firmware CI compile plus platform pin, MQTT ACL protection, dashboard access control, then OTA anti-rollback.
+- Noted that extracting the dashboard HTML/CSS/JS from the Python monolith is valid maintainability work, but lower priority than the safety and data-integrity fixes above.
+
 ## 2026-06-28
 
 ### AtticDoor ESP32 Provisioning

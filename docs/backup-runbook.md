@@ -73,11 +73,12 @@ source ~/config/backup.env
 restic snapshots
 ```
 
-Known successful snapshots from initial setup:
+Known successful snapshots:
 
 ```text
 c0a264e6
 7ef0b89d
+d5802848
 ```
 
 ### Restore Test

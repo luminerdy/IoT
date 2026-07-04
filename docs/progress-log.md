@@ -4,6 +4,15 @@ Use this file for dated accomplishments and important observations. Keep future 
 
 ## 2026-07-04
 
+### CI And GitHub Access
+
+- Confirmed `gh` is authenticated as `luminerdy` with `repo` and `workflow` scopes.
+- Investigated the failing PR #3 GitHub Actions `firmware-check` job. Root cause was that the new clean-runner `platformio run -d firmware` step copied `firmware/include/secrets.sample.h` to `secrets.h`, but the sample MQTT CA certificate macro used a multiline raw string inside `#define`, which did not compile.
+- Updated `firmware/include/secrets.sample.h` to use an escaped certificate placeholder string.
+- Reproduced the clean CI path in a scratch checkout with sample secrets copied to `secrets.h`; both `platformio check -d firmware` and `platformio run -d firmware` passed.
+- Verified `.venv/bin/python -m pytest` still passes with 27 tests.
+- Pushed commit `2fefa22` to PR #3; both Python and firmware GitHub Actions checks now pass on the branch.
+
 ### Version Mismatch OTA Trigger
 
 - Added optional collector-side desired firmware version checking. When a device reports a different `firmwareVersion`, the collector records a `deployment_attempts` row with the stable device ID, current version, target version, and optional reported `localIp`.

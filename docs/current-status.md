@@ -45,7 +45,7 @@ Status: Phases 0 through 4 are complete for the current local-first system. Sign
 - Added signed OTA verification and tested it on `Bench Device` only. The device reports `0.1.3-signed-ota`; a signed OTA was accepted, and an intentionally bad signature was rejected.
 - Added optional MQTT TLS and ACL scripts for staged migration. They are not yet enabled across the installed fleet.
 - Started the first small indoor signed-OTA soak batch on 2026-06-27: `RoomE`, `RoomF`, and `RoomA` updated to `0.1.3-signed-ota` and came back online/non-stale immediately after OTA.
-- Installed GitHub CLI locally under `/home/scotty/.local/bin/gh`; GitHub CLI API auth still requires `gh auth login` if terminal-based PR/check workflows are needed.
+- Installed and authenticated GitHub CLI locally for terminal-based PR/check workflows.
 - Sanitized the tracked public branch tip to remove local private IPs, MAC-shaped addresses, real ESP32 IDs, Pi hostname references, and real room/location labels. Older public git history still contains local identifiers but no passwords or private key material were found by the scan.
 - Updated the dashboard to rotate through four full-screen-style views every 5 seconds: House Diagram, Device List Grid, Temperature Graph, and Latest Readings. The summary/header remain visible, while the main content switches views.
 - Hardened dashboard stale detection so the API can use collector receipt time when a device publishes telemetry with a bad startup/NTP timestamp.
@@ -71,6 +71,7 @@ Status: Phases 0 through 4 are complete for the current local-first system. Sign
 - Tested the staged MQTT ACL rules on a temporary local Mosquitto listener; fleet-user telemetry was delivered, fleet-user command publishing was denied, and admin command publishing was delivered.
 - Added optional dashboard Basic auth through `DASHBOARD_USERNAME` and `DASHBOARD_PASSWORD`; tested on temporary port `8002` but not yet enabled on the live service.
 - Recorded the standing release gate that no firmware build goes to fleet devices until the exact build is fully tested on the local USB-connected bench ESP32.
+- Fixed the CI firmware build failure on PR #3 by making `firmware/include/secrets.sample.h` valid for clean-runner compilation; both Python and firmware checks now pass on the PR.
 
 ## Live Dashboard State
 
@@ -85,7 +86,6 @@ Latest SQLite/API check on 2026-07-02 at about 20:30 CDT shows 21 mapped devices
 ## Active Blockers
 
 - The actual house image has not been uploaded yet. The dashboard is ready for it through `data/dashboard-assets/` plus `config/floorplan.json`.
-- GitHub CLI is installed but not authenticated. Run `gh auth login` before terminal-based PR/check workflows.
 - The four-view rotating dashboard is active on normal port `8000`, including the pause/resume control, floorplan-derived Temperature Graph groups, 1080p-fit Device List Grid and Latest Readings views, and collector-receipt-time stale calculation.
 - MQTT ACL protection and dashboard auth are implemented in repo but not yet activated on the live services.
 

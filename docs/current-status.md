@@ -123,11 +123,11 @@ Latest SQLite/API check on 2026-07-04 at about 14:27 CDT shows 21 mapped devices
 
 ## Stop Point
 
-- Local branch: `codex/phase5-hardening-ota-tracking`
+- Local branch: `main`
 - Latest local commit: run `git log -1 --oneline`.
 - Public GitHub repo: `luminerdy/IoT`
-- PR: `https://github.com/luminerdy/IoT/pull/3` (ready for review)
-- GitHub CLI is authenticated for PR/check workflows; sync the working branch to `origin/codex/phase5-hardening-ota-tracking` after local dashboard/doc updates.
+- Merged PR: `https://github.com/luminerdy/IoT/pull/3`
+- GitHub CLI is authenticated for PR/check workflows; push future changes from a new branch or directly to `main` only when intentional.
 - Local-only ignored files include runtime data, build output, `config/locations.json`, `config/floorplan.json`, and `firmware/include/secrets.h`.
 - New ESP32 provisioning is complete for the current batch: `RoomB` / `esp32-device-id`, `UtilityE` / `esp32-device-id`, and `AtticDoor` / `esp32-device-id`.
 - Dashboard URL on the Pi: `http://127.0.0.1:8000`; LAN URL: `http://iot-pi.local:8000` or `http://<pi-ip-address>:8000`.

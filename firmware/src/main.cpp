@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include <DHT.h>
 #include <HTTPClient.h>
+#include <Preferences.h>
 #include <PubSubClient.h>
 #include <Update.h>
 #include <WiFi.h>
@@ -16,6 +17,10 @@
 
 #ifndef FIRMWARE_VERSION
 #define FIRMWARE_VERSION "0.1.0-local"
+#endif
+
+#ifndef OTA_BUILD_NUMBER
+#define OTA_BUILD_NUMBER 0
 #endif
 
 namespace {
@@ -42,6 +47,8 @@ constexpr uint8_t OUTLIER_CONFIRMATION_SAMPLES = 3;
 constexpr unsigned long OTA_NO_PROGRESS_TIMEOUT_MS = 15000;
 constexpr size_t TOPIC_LEN = 96;
 constexpr size_t PAYLOAD_LEN = 768;
+constexpr const char *ROLLBACK_PREF_NAMESPACE = "iot-ota";
+constexpr const char *ROLLBACK_PREF_KEY = "build";
 
 DHT dht(DHT_PIN, DHT_TYPE);
 #ifndef MQTT_USE_TLS
@@ -78,6 +85,40 @@ size_t sampleIndex = 0;
 uint8_t consecutiveTempChangeSamples = 0;
 float candidateOutlierTemperatureF = NAN;
 uint8_t candidateOutlierSamples = 0;
+
+uint32_t storedBuildNumber()
+{
+  Preferences prefs;
+  if (!prefs.begin(ROLLBACK_PREF_NAMESPACE, true)) {
+    return 0;
+  }
+  uint32_t buildNumber = prefs.getUInt(ROLLBACK_PREF_KEY, 0);
+  prefs.end();
+  return buildNumber;
+}
+
+void rememberCurrentBuildNumber()
+{
+  if (OTA_BUILD_NUMBER <= 0) {
+    Serial.println("OTA anti-rollback build number is not configured");
+    return;
+  }
+
+  Preferences prefs;
+  if (!prefs.begin(ROLLBACK_PREF_NAMESPACE, false)) {
+    Serial.println("Failed to open OTA anti-rollback preferences");
+    return;
+  }
+
+  uint32_t stored = prefs.getUInt(ROLLBACK_PREF_KEY, 0);
+  if (OTA_BUILD_NUMBER > stored) {
+    prefs.putUInt(ROLLBACK_PREF_KEY, OTA_BUILD_NUMBER);
+    Serial.printf("Stored OTA anti-rollback build number %lu\n", static_cast<unsigned long>(OTA_BUILD_NUMBER));
+  } else {
+    Serial.printf("OTA anti-rollback build number already at %lu\n", static_cast<unsigned long>(stored));
+  }
+  prefs.end();
+}
 
 String isoTimestamp()
 {
@@ -206,10 +247,11 @@ void publishStatus(const char *status, bool retained)
   snprintf(
     payload,
     sizeof(payload),
-    "{\"deviceId\":\"%s\",\"status\":\"%s\",\"firmwareVersion\":\"%s\",\"datetime\":\"%s\",\"localIp\":\"%s\"}",
+    "{\"deviceId\":\"%s\",\"status\":\"%s\",\"firmwareVersion\":\"%s\",\"buildNumber\":%lu,\"datetime\":\"%s\",\"localIp\":\"%s\"}",
     deviceId,
     status,
     FIRMWARE_VERSION,
+    static_cast<unsigned long>(OTA_BUILD_NUMBER),
     now.c_str(),
     WiFi.localIP().toString().c_str()
   );
@@ -341,6 +383,31 @@ bool extractNumber(const char *payload, const char *key, float *value)
   }
 
   *value = parsed;
+  return true;
+}
+
+bool extractUnsignedLong(const char *payload, const char *key, uint32_t *value)
+{
+  char quotedKey[48];
+  snprintf(quotedKey, sizeof(quotedKey), "\"%s\"", key);
+
+  const char *keyPos = strstr(payload, quotedKey);
+  if (keyPos == nullptr) {
+    return false;
+  }
+
+  const char *colon = strchr(keyPos, ':');
+  if (colon == nullptr) {
+    return false;
+  }
+
+  char *end = nullptr;
+  unsigned long parsed = strtoul(colon + 1, &end, 10);
+  if (end == colon + 1 || parsed == 0 || parsed > 0xFFFFFFFFUL) {
+    return false;
+  }
+
+  *value = static_cast<uint32_t>(parsed);
   return true;
 }
 
@@ -552,15 +619,68 @@ bool otaSignatureValid(const char *signatureHex, const uint8_t digest[32])
   return valid;
 }
 
+bool otaMetadataSignatureValid(
+  const char *metadataSignatureHex,
+  const char *expectedSha,
+  uint32_t buildNumber,
+  const char *version,
+  long expectedSize
+)
+{
+  char metadata[256];
+  snprintf(
+    metadata,
+    sizeof(metadata),
+    "iot-home-ota-v2\n%s\n%lu\n%s\n%ld\n",
+    expectedSha,
+    static_cast<unsigned long>(buildNumber),
+    version,
+    expectedSize
+  );
+
+  uint8_t digest[32];
+  mbedtls_sha256_context shaCtx;
+  mbedtls_sha256_init(&shaCtx);
+  mbedtls_sha256_starts_ret(&shaCtx, 0);
+  mbedtls_sha256_update_ret(&shaCtx, reinterpret_cast<const uint8_t *>(metadata), strlen(metadata));
+  mbedtls_sha256_finish_ret(&shaCtx, digest);
+  mbedtls_sha256_free(&shaCtx);
+
+  return otaSignatureValid(metadataSignatureHex, digest);
+}
+
 bool performOtaUpdate(
   const char *url,
   const char *expectedSha,
   const char *signatureHex,
+  const char *metadataSignatureHex,
   long expectedSize,
+  uint32_t buildNumber,
   const char *version,
   const char *rolloutId
 )
 {
+  if (OTA_BUILD_NUMBER <= 0) {
+    publishOtaStatus("rejected", "ota build number not configured", version, rolloutId);
+    return false;
+  }
+  if (expectedSize <= 0) {
+    publishOtaStatus("rejected", "missing firmware size", version, rolloutId);
+    return false;
+  }
+  uint32_t highestBuildNumber = storedBuildNumber();
+  if (highestBuildNumber < static_cast<uint32_t>(OTA_BUILD_NUMBER)) {
+    highestBuildNumber = static_cast<uint32_t>(OTA_BUILD_NUMBER);
+  }
+  if (buildNumber <= highestBuildNumber) {
+    publishOtaStatus("rejected", "firmware rollback rejected", version, rolloutId);
+    return false;
+  }
+  if (!otaMetadataSignatureValid(metadataSignatureHex, expectedSha, buildNumber, version, expectedSize)) {
+    publishOtaStatus("rejected", "ota metadata signature invalid", version, rolloutId);
+    return false;
+  }
+
   if (WiFi.status() != WL_CONNECTED) {
     publishOtaStatus("rejected", "wifi not connected", version, rolloutId);
     return false;
@@ -687,18 +807,24 @@ void applyCommandPayload(const char *payload)
   char url[192];
   char sha256[65];
   char signature[161];
+  char metadataSignature[161];
   char version[32];
   char rolloutId[64];
   float sizeValue = 0.0f;
+  uint32_t buildNumber = 0;
 
   if (!extractString(payload, "url", url, sizeof(url)) ||
       !extractString(payload, "sha256", sha256, sizeof(sha256)) ||
       !extractString(payload, "signature", signature, sizeof(signature)) ||
+      !extractString(payload, "metadataSignature", metadataSignature, sizeof(metadataSignature)) ||
       !extractString(payload, "version", version, sizeof(version)) ||
       !extractString(payload, "rolloutId", rolloutId, sizeof(rolloutId)) ||
+      !extractUnsignedLong(payload, "buildNumber", &buildNumber) ||
       strlen(sha256) != 64 ||
       strlen(signature) == 0 ||
-      strlen(signature) % 2 != 0) {
+      strlen(signature) % 2 != 0 ||
+      strlen(metadataSignature) == 0 ||
+      strlen(metadataSignature) % 2 != 0) {
     publishOtaStatus("rejected", "invalid ota command", "", "");
     return;
   }
@@ -708,7 +834,7 @@ void applyCommandPayload(const char *payload)
     expectedSize = static_cast<long>(sizeValue);
   }
 
-  performOtaUpdate(url, sha256, signature, expectedSize, version, rolloutId);
+  performOtaUpdate(url, sha256, signature, metadataSignature, expectedSize, buildNumber, version, rolloutId);
 }
 
 void onMqttMessage(char *topic, uint8_t *payload, unsigned int length)
@@ -822,6 +948,7 @@ void publishTelemetry(float temperatureF, float humidity)
     "\"deviceId\":\"%s\","
     "\"location\":\"UNMAPPED\","
     "\"firmwareVersion\":\"%s\","
+    "\"buildNumber\":%lu,"
     "\"sensorType\":\"DHT22\","
     "\"datetime\":\"%s\","
     "\"temperature\":%.1f,"
@@ -838,6 +965,7 @@ void publishTelemetry(float temperatureF, float humidity)
     static_cast<unsigned long>(seq),
     deviceId,
     FIRMWARE_VERSION,
+    static_cast<unsigned long>(OTA_BUILD_NUMBER),
     now.c_str(),
     temperatureF,
     humidity,
@@ -870,6 +998,7 @@ void setup()
   dht.begin();
 
   Serial.printf("Starting firmware %s\n", FIRMWARE_VERSION);
+  rememberCurrentBuildNumber();
   connectWifi();
   buildDeviceIdentity();
 

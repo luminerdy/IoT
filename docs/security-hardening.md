@@ -3,7 +3,7 @@
 ## Current Security Model
 
 - ESP32 telemetry uses MQTT username/password authentication.
-- Firmware `0.1.3-signed-ota` requires OTA commands to include both a SHA-256 checksum and a P-256 ECDSA signature.
+- Firmware `0.1.4-antirollback` requires OTA commands to include a SHA-256 checksum, a P-256 ECDSA firmware signature, a monotonic `buildNumber`, and a P-256 ECDSA metadata signature over the checksum/build/version/size tuple.
 - The OTA private signing key is local-only at `data/keys/ota_signing_key.pem`.
 - Firmware downloads may still use local HTTP because the device verifies the downloaded image hash and signature before applying it.
 - Dashboard `/firmware/...` responses are restricted to private, loopback, and link-local client addresses.
@@ -25,8 +25,9 @@ Stage and publish a signed OTA to the bench device only:
 
 ```bash
 MQTT_USERNAME=iot-admin MQTT_PASSWORD='<admin-password>' PYTHONPATH=app \
-  python3 -m iot_home.publish_ota esp32-device-id 0.1.3-signed-ota \
-  --base-url http://iot-pi.local:8000
+  python3 -m iot_home.publish_ota esp32-device-id 0.1.4-antirollback \
+  --base-url http://iot-pi.local:8000 \
+  --build-number 2026070401
 ```
 
 Watch the OTA status:
@@ -48,6 +49,12 @@ Expected bad-signature rejection:
 
 ```text
 rejected: firmware signature invalid
+```
+
+Expected rollback rejection from `0.1.4-antirollback` and newer:
+
+```text
+rejected: firmware rollback rejected
 ```
 
 ## MQTT TLS And ACLs

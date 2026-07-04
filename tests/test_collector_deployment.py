@@ -41,6 +41,8 @@ def write_manifest(tmp_path):
         "sha256": "a" * 64,
         "signature": "b" * 128,
         "size": 123,
+        "buildNumber": 2026070401,
+        "metadataSignature": "c" * 128,
     }
     (release_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
 

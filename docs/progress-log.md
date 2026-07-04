@@ -23,6 +23,18 @@ Use this file for dated accomplishments and important observations. Keep future 
 - Confirmed `deployment_attempts` remains empty because desired-version/auto-OTA is not enabled in the live service yet.
 - Could not activate MQTT ACLs or dashboard Basic auth from this session because the required `/etc/mosquitto` and `/etc/iot-home` changes are root-owned and non-interactive `sudo` is unavailable.
 
+### Anti-Rollback Firmware Rollout
+
+- Added signed OTA anti-rollback: firmware now reports `buildNumber`, stores the highest booted build number in ESP32 NVS, and rejects OTA commands whose signed `buildNumber` is less than or equal to the highest booted build.
+- Extended OTA manifests and commands with `buildNumber` and `metadataSignature`. The existing firmware signature remains over the binary digest for compatibility with `0.1.3-signed-ota`; the new metadata signature covers the canonical checksum/build/version/size tuple.
+- Bumped firmware to `0.1.4-antirollback` with build number `2026070401`.
+- Verified `.venv/bin/python -m pytest` with 30 tests, `.venv/bin/platformio run -d firmware`, and `.venv/bin/platformio check -d firmware`.
+- Staged signed artifact `data/firmware/0.1.4-antirollback/firmware.bin`; HTTP checks on loopback and LAN returned `200` and matched SHA-256 `f90de1498aab21b65ace4af7700494b68b88f1f3c58d92a6ed99c1e853c130d3`.
+- OTA-updated the USB bench device `Sunroom Test` / `esp32-9c9c1fda3670`; it reported `downloading`, then `rebooting`, then returned online on `0.1.4-antirollback` with build number `2026070401`.
+- Published a bench-only lower-build rollback test with signed build number `2026070400`; the device rejected it as `firmware rollback rejected` and stayed on `0.1.4-antirollback`.
+- Rolled `0.1.4-antirollback` to the remaining mapped fleet in small batches. Each batch reported `downloading` then `rebooting`, and final live checks showed 21 devices online, 0 stale, 0 unmapped, and all 21 on `0.1.4-antirollback`.
+- Retained MQTT status for all 21 devices reports `buildNumber` `2026070401`.
+
 ### Version Mismatch OTA Trigger
 
 - Added optional collector-side desired firmware version checking. When a device reports a different `firmwareVersion`, the collector records a `deployment_attempts` row with the stable device ID, current version, target version, and optional reported `localIp`.

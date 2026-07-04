@@ -158,11 +158,25 @@ OTA command example:
   "url": "http://iot-pi.local:8000/firmware/0.1.1-ota-version/firmware.bin",
   "sha256": "hex-encoded-sha256",
   "signature": "hex-encoded-p256-ecdsa-signature",
-  "size": 824272
+  "size": 824272,
+  "buildNumber": 2026070401,
+  "metadataSignature": "hex-encoded-p256-ecdsa-signature"
 }
 ```
 
 Firmware `0.1.3-signed-ota` and newer requires the `signature` field. The signature is generated over the firmware binary SHA-256 digest with the local OTA private key, and the ESP32 verifies it with the embedded public key before finalizing the update.
+
+Firmware `0.1.4-antirollback` and newer also requires `buildNumber` and `metadataSignature`. `buildNumber` is a monotonic unsigned integer compiled into the firmware, and `metadataSignature` signs the canonical metadata payload:
+
+```text
+iot-home-ota-v2
+{sha256}
+{buildNumber}
+{version}
+{size}
+```
+
+The device rejects OTA commands whose signed `buildNumber` is less than or equal to the highest build number it has booted.
 
 ## OTA Status
 

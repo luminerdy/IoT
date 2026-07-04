@@ -12,7 +12,7 @@ The project is a local-first Raspberry Pi IoT system with MQTT, SQLite, a boot-e
 
 Phase 5: Fleet operations plus daily dashboard improvements
 
-Status: Phases 0 through 4 are complete for the current local-first system. Signed OTA hardening is validated on the USB-recoverable bench device and all 21 mapped devices are on `0.1.3-signed-ota`. The active work is Phase 5: fleet operations, dashboard maintenance workflows, backups, tests/CI, and staged security hardening.
+Status: Phases 0 through 4 are complete for the current local-first system. Signed OTA hardening and signed build-number anti-rollback are validated on the USB-recoverable bench device, and all 21 mapped devices are on `0.1.4-antirollback`. The active work is Phase 5: fleet operations, dashboard maintenance workflows, backups, tests/CI, and staged security hardening.
 
 ## Accomplished
 
@@ -73,14 +73,15 @@ Status: Phases 0 through 4 are complete for the current local-first system. Sign
 - Recorded the standing release gate that no firmware build goes to fleet devices until the exact build is fully tested on the local USB-connected bench ESP32.
 - Fixed the CI firmware build failure on PR #3 by making `firmware/include/secrets.sample.h` valid for clean-runner compilation; both Python and firmware checks now pass on the PR.
 - Deployed the Pi-side collector/database changes on 2026-07-04: created backup `data/backups/iot-20260704T180617Z.sqlite.gz`, restarted `iot-home-collector.service`, verified collector logs, verified 21 devices online / 0 stale / 0 unmapped, and confirmed retained-message replay created 0 restart-window duplicate readings.
+- Added signed OTA anti-rollback with monotonic build number `2026070401` in firmware `0.1.4-antirollback`; the bench device accepted the upgrade, rejected a signed lower-build rollback test as `firmware rollback rejected`, and the 21 mapped devices were rolled out in small batches.
 
 ## Live Dashboard State
 
-Latest SQLite/API check on 2026-07-04 at about 13:08 CDT shows 21 mapped devices online, 0 stale, and 0 unmapped after the live collector restart. All 21 mapped devices are on `0.1.3-signed-ota`; 0 devices remain on `0.1.2-filtered-telemetry`. The restart-window duplicate check returned 0 duplicate `(device_id, seq, datetime)` groups, confirming the deployed collector/database dedupe handled retained-message replay. The live dashboard also has the 1080p-fit rotation views, floorplan-derived graph groups, the laundry-room Inside override, and the rotation pause/resume control loaded.
+Latest SQLite/API check on 2026-07-04 at about 14:27 CDT shows 21 mapped devices online, 0 stale, and 0 unmapped after the `0.1.4-antirollback` rollout. All 21 mapped devices are on `0.1.4-antirollback`; 0 devices remain on `0.1.3-signed-ota`. Retained MQTT status for all 21 devices reports build number `2026070401`. The live dashboard also has the 1080p-fit rotation views, floorplan-derived graph groups, the laundry-room Inside override, and the rotation pause/resume control loaded.
 
 - Live fleet count: 21 online, 0 offline.
-- Signed OTA count: 21 devices on `0.1.3-signed-ota`.
-- Remaining old firmware count: 0 devices on `0.1.2-filtered-telemetry`.
+- Anti-rollback firmware count: 21 devices on `0.1.4-antirollback`.
+- Remaining old firmware count: 0 devices on `0.1.3-signed-ota`.
 - `Sunroom` / `esp32-device-id`: online again after wire replacement; current sequence is increasing normally.
 - `UNMAPPED` count: 0.
 
@@ -92,16 +93,14 @@ Latest SQLite/API check on 2026-07-04 at about 13:08 CDT shows 21 mapped devices
 
 ## Next Actions
 
-1. Keep watching the restarted collector through a normal telemetry interval and recheck `/api/latest` plus collector logs if device status looks odd.
+1. Keep watching the `0.1.4-antirollback` fleet through a normal telemetry interval and recheck `/api/latest` plus collector logs if device status looks odd.
 2. Keep `Bench Device` (`esp32-device-id`) on `/dev/ttyUSB0` for firmware and feature validation before deploying to other devices; never push firmware to the fleet until the exact build has passed bench ESP32 testing.
-3. Decide whether to bump `FIRMWARE_VERSION` and stage a signed OTA artifact for the bench-tested non-retained telemetry plus `localIp` build; if yes, use the bench ESP32 for OTA validation before any fleet batch.
-4. Use collector desired-version mismatch detection for deployment records; only enable `--auto-ota` after the exact staged firmware build has passed bench ESP32 validation.
-5. With an interactive/root shell, activate current-listener MQTT ACLs with `scripts/configure_mosquitto_lan.sh iot iot-admin`, then update Pi-side publisher credentials to use `iot-admin`.
-6. With an interactive/root shell, enable dashboard Basic auth by setting `DASHBOARD_USERNAME` and `DASHBOARD_PASSWORD` in `/etc/iot-home/iot-home.env` or rerunning the service installer with those variables exported.
-7. Add OTA anti-rollback using a signed monotonic build number before the next fleet firmware feature rollout.
-8. Provision the second attic ESP32 when available and place it in the intended graph group.
-9. Upload the actual house image under `data/dashboard-assets/`, set `backgroundImage` in local `config/floorplan.json`, and tune the existing sensor placement overlay.
-10. Add the remaining Phase 5 operations basics: sensor replacement checklist and compact service/OTA runbook.
+3. Use collector desired-version mismatch detection for deployment records; only enable `--auto-ota` after the exact staged firmware build has passed bench ESP32 validation.
+4. With an interactive/root shell, activate current-listener MQTT ACLs with `scripts/configure_mosquitto_lan.sh iot iot-admin`, then update Pi-side publisher credentials to use `iot-admin`.
+5. With an interactive/root shell, enable dashboard Basic auth by setting `DASHBOARD_USERNAME` and `DASHBOARD_PASSWORD` in `/etc/iot-home/iot-home.env` or rerunning the service installer with those variables exported.
+6. Provision the second attic ESP32 when available and place it in the intended graph group.
+7. Upload the actual house image under `data/dashboard-assets/`, set `backgroundImage` in local `config/floorplan.json`, and tune the existing sensor placement overlay.
+8. Add the remaining Phase 5 operations basics: sensor replacement checklist and compact service/OTA runbook.
 
 ## Decisions To Revisit Soon
 
@@ -127,7 +126,7 @@ Latest SQLite/API check on 2026-07-04 at about 13:08 CDT shows 21 mapped devices
 - Local branch: `codex/phase5-hardening-ota-tracking`
 - Latest local commit: run `git log -1 --oneline`.
 - Public GitHub repo: `luminerdy/IoT`
-- Draft PR: `https://github.com/luminerdy/IoT/pull/3`
+- PR: `https://github.com/luminerdy/IoT/pull/3` (ready for review)
 - GitHub CLI is authenticated for PR/check workflows; sync the working branch to `origin/codex/phase5-hardening-ota-tracking` after local dashboard/doc updates.
 - Local-only ignored files include runtime data, build output, `config/locations.json`, `config/floorplan.json`, and `firmware/include/secrets.h`.
 - New ESP32 provisioning is complete for the current batch: `RoomB` / `esp32-device-id`, `UtilityE` / `esp32-device-id`, and `AtticDoor` / `esp32-device-id`.
@@ -136,5 +135,5 @@ Latest SQLite/API check on 2026-07-04 at about 13:08 CDT shows 21 mapped devices
 - Dashboard rotation: the main dashboard content now rotates every 5 seconds through House Diagram, Device List Grid, Temperature Graph, and Latest Readings. Normal port `8000` serves this rotating view. Use the `Pause Views` button to hold the current view for inspection; data refresh continues while rotation is paused.
 - Dashboard verification: normal port `8000` serves `/api/floorplan`, the suspect humidity flag, and the current floorplan placements. Latest live check on 2026-07-01 showed 21 mapped devices online, 0 stale, no `UNMAPPED` rows, and 21 devices on signed OTA. The stale-calculation fix for bad startup/NTP timestamps, 1080p-fit rotated views, floorplan-derived graph groups, laundry-room Inside override, AtticDoor Separate grouping, and pause/resume control are loaded on normal port `8000`.
 - Telemetry policy memory: ESP32s should read DHT22 frequently, reject impossible values and one-off large jumps, publish median-filtered temp/humidity every 600 seconds, and only publish early when filtered temperature differs by the configured threshold for 3 consecutive valid samples. Humidity is reported but does not trigger early publishes.
-- Latest live-tested OTA artifact: `data/firmware/0.1.3-signed-ota/firmware.bin`; ignored by git because runtime/build artifacts stay local.
-- Current local hardening edits are tested but not fleet/live-deployed: retained telemetry dedupe is code-verified against a temp DB, non-retained firmware telemetry publish behavior is bench-tested over USB, optional dashboard Basic auth is temp-port tested, and staged port `1883` MQTT ACLs are temp-broker tested.
+- Latest live-tested OTA artifact: `data/firmware/0.1.4-antirollback/firmware.bin`; ignored by git because runtime/build artifacts stay local.
+- Current local hardening edits still not live-activated: optional dashboard Basic auth is temp-port tested, and staged port `1883` MQTT ACLs are temp-broker tested, but both need interactive/root access for `/etc` changes.

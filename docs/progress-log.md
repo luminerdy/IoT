@@ -13,6 +13,16 @@ Use this file for dated accomplishments and important observations. Keep future 
 - Verified `.venv/bin/python -m pytest` still passes with 27 tests.
 - Pushed commit `2fefa22` to PR #3; both Python and firmware GitHub Actions checks now pass on the branch.
 
+### Collector Deployment
+
+- Created a verified SQLite backup before live deployment: `data/backups/iot-20260704T180617Z.sqlite.gz`.
+- Restarted the live `iot-home-collector.service` on 2026-07-04 at 13:06 CDT. Non-interactive `sudo systemctl restart` was unavailable, so the collector process was killed under the service's `Restart=on-failure` policy; systemd restarted it as PID `10202`.
+- Verified collector startup logs: 21 location mappings loaded, MQTT connected to `localhost:1883`, and telemetry/status subscriptions restored.
+- Verified live dashboard API after restart: 21 devices, 21 online, 0 stale, 0 unmapped, and all 21 on `0.1.3-signed-ota`.
+- Verified the retained-message replay did not create new duplicate readings: restart-window duplicate groups were `0`.
+- Confirmed `deployment_attempts` remains empty because desired-version/auto-OTA is not enabled in the live service yet.
+- Could not activate MQTT ACLs or dashboard Basic auth from this session because the required `/etc/mosquitto` and `/etc/iot-home` changes are root-owned and non-interactive `sudo` is unavailable.
+
 ### Version Mismatch OTA Trigger
 
 - Added optional collector-side desired firmware version checking. When a device reports a different `firmwareVersion`, the collector records a `deployment_attempts` row with the stable device ID, current version, target version, and optional reported `localIp`.

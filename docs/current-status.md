@@ -72,10 +72,11 @@ Status: Phases 0 through 4 are complete for the current local-first system. Sign
 - Added optional dashboard Basic auth through `DASHBOARD_USERNAME` and `DASHBOARD_PASSWORD`; tested on temporary port `8002` but not yet enabled on the live service.
 - Recorded the standing release gate that no firmware build goes to fleet devices until the exact build is fully tested on the local USB-connected bench ESP32.
 - Fixed the CI firmware build failure on PR #3 by making `firmware/include/secrets.sample.h` valid for clean-runner compilation; both Python and firmware checks now pass on the PR.
+- Deployed the Pi-side collector/database changes on 2026-07-04: created backup `data/backups/iot-20260704T180617Z.sqlite.gz`, restarted `iot-home-collector.service`, verified collector logs, verified 21 devices online / 0 stale / 0 unmapped, and confirmed retained-message replay created 0 restart-window duplicate readings.
 
 ## Live Dashboard State
 
-Latest SQLite/API check on 2026-07-02 at about 20:30 CDT shows 21 mapped devices online and 0 stale. All 21 mapped devices are on `0.1.3-signed-ota`; 0 devices remain on `0.1.2-filtered-telemetry`. The final signed OTA batches reported expected download and reboot/apply statuses, and every mapped device returned online/non-stale with status `OK`. The live dashboard also has the 1080p-fit rotation views, floorplan-derived graph groups, the laundry-room Inside override, and the rotation pause/resume control loaded.
+Latest SQLite/API check on 2026-07-04 at about 13:08 CDT shows 21 mapped devices online, 0 stale, and 0 unmapped after the live collector restart. All 21 mapped devices are on `0.1.3-signed-ota`; 0 devices remain on `0.1.2-filtered-telemetry`. The restart-window duplicate check returned 0 duplicate `(device_id, seq, datetime)` groups, confirming the deployed collector/database dedupe handled retained-message replay. The live dashboard also has the 1080p-fit rotation views, floorplan-derived graph groups, the laundry-room Inside override, and the rotation pause/resume control loaded.
 
 - Live fleet count: 21 online, 0 offline.
 - Signed OTA count: 21 devices on `0.1.3-signed-ota`.
@@ -87,16 +88,16 @@ Latest SQLite/API check on 2026-07-02 at about 20:30 CDT shows 21 mapped devices
 
 - The actual house image has not been uploaded yet. The dashboard is ready for it through `data/dashboard-assets/` plus `config/floorplan.json`.
 - The four-view rotating dashboard is active on normal port `8000`, including the pause/resume control, floorplan-derived Temperature Graph groups, 1080p-fit Device List Grid and Latest Readings views, and collector-receipt-time stale calculation.
-- MQTT ACL protection and dashboard auth are implemented in repo but not yet activated on the live services.
+- MQTT ACL protection and dashboard auth are implemented in repo but not yet activated on the live services. Activation is currently blocked in this session by root-owned `/etc/mosquitto` and `/etc/iot-home` files plus unavailable non-interactive `sudo`.
 
 ## Next Actions
 
-1. Tomorrow, 2026-07-05, deploy the Pi-side collector/database changes first by restarting `iot-home-collector.service` and checking its logs.
+1. Keep watching the restarted collector through a normal telemetry interval and recheck `/api/latest` plus collector logs if device status looks odd.
 2. Keep `Bench Device` (`esp32-device-id`) on `/dev/ttyUSB0` for firmware and feature validation before deploying to other devices; never push firmware to the fleet until the exact build has passed bench ESP32 testing.
 3. Decide whether to bump `FIRMWARE_VERSION` and stage a signed OTA artifact for the bench-tested non-retained telemetry plus `localIp` build; if yes, use the bench ESP32 for OTA validation before any fleet batch.
 4. Use collector desired-version mismatch detection for deployment records; only enable `--auto-ota` after the exact staged firmware build has passed bench ESP32 validation.
-5. Activate current-listener MQTT ACLs with `scripts/configure_mosquitto_lan.sh iot iot-admin`, then update Pi-side publisher credentials to use `iot-admin`.
-6. Enable dashboard Basic auth by setting `DASHBOARD_USERNAME` and `DASHBOARD_PASSWORD` in `/etc/iot-home/iot-home.env` or rerunning the service installer with those variables exported.
+5. With an interactive/root shell, activate current-listener MQTT ACLs with `scripts/configure_mosquitto_lan.sh iot iot-admin`, then update Pi-side publisher credentials to use `iot-admin`.
+6. With an interactive/root shell, enable dashboard Basic auth by setting `DASHBOARD_USERNAME` and `DASHBOARD_PASSWORD` in `/etc/iot-home/iot-home.env` or rerunning the service installer with those variables exported.
 7. Add OTA anti-rollback using a signed monotonic build number before the next fleet firmware feature rollout.
 8. Provision the second attic ESP32 when available and place it in the intended graph group.
 9. Upload the actual house image under `data/dashboard-assets/`, set `backgroundImage` in local `config/floorplan.json`, and tune the existing sensor placement overlay.
@@ -123,11 +124,11 @@ Latest SQLite/API check on 2026-07-02 at about 20:30 CDT shows 21 mapped devices
 
 ## Stop Point
 
-- Local branch: `codex/dashboard-graph-diagram-memory`
+- Local branch: `codex/phase5-hardening-ota-tracking`
 - Latest local commit: run `git log -1 --oneline`.
 - Public GitHub repo: `luminerdy/IoT`
-- Draft PR: `https://github.com/luminerdy/IoT/pull/1`
-- GitHub SSH push from the Pi works through `/home/scotty/.ssh/id_ed25519_github`; sync the working branch to `origin/codex/dashboard-graph-diagram-memory` after local dashboard/doc updates.
+- Draft PR: `https://github.com/luminerdy/IoT/pull/3`
+- GitHub CLI is authenticated for PR/check workflows; sync the working branch to `origin/codex/phase5-hardening-ota-tracking` after local dashboard/doc updates.
 - Local-only ignored files include runtime data, build output, `config/locations.json`, `config/floorplan.json`, and `firmware/include/secrets.h`.
 - New ESP32 provisioning is complete for the current batch: `RoomB` / `esp32-device-id`, `UtilityE` / `esp32-device-id`, and `AtticDoor` / `esp32-device-id`.
 - Dashboard URL on the Pi: `http://127.0.0.1:8000`; LAN URL: `http://iot-pi.local:8000` or `http://<pi-ip-address>:8000`.

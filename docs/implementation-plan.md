@@ -174,8 +174,8 @@ Priority 4: Security Hardening Without Fleet Disruption
 
 - Keep signed OTA required for new firmware.
 - Pin the PlatformIO `espressif32` platform and add `platformio run` to CI so firmware compilation is checked, not only static analysis. Done on 2026-07-03.
-- Add MQTT ACL protection to the current port `1883` listener so shared credentials cannot publish fleet OTA/config commands. Script/runbook done on 2026-07-03; live activation still pending.
-- Add a first dashboard access-control layer before treating the LAN as a trusted boundary. Optional Basic auth done on 2026-07-03; live activation still pending.
+- Add MQTT ACL protection to the current port `1883` listener so shared credentials cannot publish fleet OTA/config commands. Done and live-activated on 2026-07-04.
+- Add a first dashboard access-control layer before treating the LAN as a trusted boundary. Basic auth done and live-activated on 2026-07-04.
 - Add signed OTA anti-rollback with a monotonic build number before the next feature firmware rollout. Done and rolled out to the 21 mapped devices on 2026-07-04.
 - Stage MQTT TLS and per-device ACL migration on the bench device first.
 - Add per-device credentials only after bench validation.

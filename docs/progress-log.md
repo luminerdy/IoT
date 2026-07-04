@@ -35,6 +35,16 @@ Use this file for dated accomplishments and important observations. Keep future 
 - Rolled `0.1.4-antirollback` to the remaining mapped fleet in small batches. Each batch reported `downloading` then `rebooting`, and final live checks showed 21 devices online, 0 stale, 0 unmapped, and all 21 on `0.1.4-antirollback`.
 - Retained MQTT status for all 21 devices reports `buildNumber` `2026070401`.
 
+### Live ACL And Dashboard Auth Activation
+
+- Activated Mosquitto ACL protection on the current port `1883` listener with fleet user `iot` and admin publisher user `iot-admin`.
+- Stored generated local operator credentials for `iot-admin` and dashboard Basic auth in `/home/scotty/.config/iot-home/operator-credentials.env` with mode `0600`.
+- Reinstalled the systemd service units and `/etc/iot-home/iot-home.env`, then explicitly restarted `iot-home-collector.service` and `iot-home-dashboard.service` so both loaded the new environment.
+- Verified dashboard auth: unauthenticated `/api/latest` returned `401`, authenticated `/api/latest` returned `200`, and private-network `/firmware/0.1.4-antirollback/firmware.bin` still returned `200` for ESP32 OTA downloads.
+- Verified live MQTT ACL behavior: fleet-user command delivery was blocked, admin command delivery worked, and fleet-user telemetry delivery still worked.
+- Confirmed after activation that `mosquitto.service`, `iot-home-collector.service`, and `iot-home-dashboard.service` are active, and the dashboard API reports 21 devices online, 0 stale, 0 unmapped, all on `0.1.4-antirollback`.
+- Updated `scripts/configure_mosquitto_lan.sh` to skip `mosquitto -t` when the installed Mosquitto build does not support config-test mode.
+
 ### Version Mismatch OTA Trigger
 
 - Added optional collector-side desired firmware version checking. When a device reports a different `firmwareVersion`, the collector records a `deployment_attempts` row with the stable device ID, current version, target version, and optional reported `localIp`.

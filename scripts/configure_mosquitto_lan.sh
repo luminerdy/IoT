@@ -49,7 +49,11 @@ sudo mosquitto_passwd -b /etc/mosquitto/passwd "${admin_user}" "${admin_password
 sudo chown root:mosquitto /etc/mosquitto/passwd
 sudo chmod 0640 /etc/mosquitto/passwd
 
-sudo mosquitto -c /etc/mosquitto/mosquitto.conf -t
+if mosquitto -h 2>&1 | grep -q -- ' -t '; then
+  sudo mosquitto -c /etc/mosquitto/mosquitto.conf -t
+else
+  echo "Mosquitto on this system does not support config-test mode; skipping mosquitto -t."
+fi
 sudo systemctl restart mosquitto
 sudo systemctl --no-pager status mosquitto
 

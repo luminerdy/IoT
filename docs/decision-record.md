@@ -171,3 +171,15 @@ This file records project architecture decisions and the reasoning behind them.
 **Reasoning:** SHA-256 alone proves a downloaded binary matches the OTA command, but it does not prove the binary was authorized by the local owner. A firmware signature closes that gap. MQTT TLS and ACLs are added as deployable hardening steps, but enabling them across the fleet requires per-device credential provisioning and bench validation first.
 
 **Status:** Accepted after testing on `Bench Device` / `esp32-device-id`: USB flash succeeded, signed OTA was accepted and rebooted, and a deliberately altered signature was rejected as `firmware signature invalid`.
+
+## DR-018: Bench ESP32 Gate Before Fleet Firmware Rollout
+
+**Date:** 2026-07-03
+
+**Decision:** Never push firmware changes to the installed fleet until the exact firmware build has been fully tested on the local USB-connected bench ESP32.
+
+**Reasoning:** The bench ESP32 provides serial logs, direct USB recovery, and a low-risk target for validating boot, WiFi, MQTT, telemetry, runtime config, OTA status, and rollback/failure behavior. Fleet devices are harder to physically recover, so code-level checks and successful builds are necessary but not sufficient for deployment.
+
+**Required validation before fleet rollout:** Build the firmware, flash or OTA it to `Bench Device`, verify it boots and reports fresh telemetry through the dashboard/API, verify expected MQTT behavior for the changed feature, and keep the bench device observable across at least one normal telemetry interval unless the change is clearly unrelated to runtime behavior.
+
+**Status:** Accepted as a standing release gate for all future firmware changes.

@@ -206,11 +206,12 @@ void publishStatus(const char *status, bool retained)
   snprintf(
     payload,
     sizeof(payload),
-    "{\"deviceId\":\"%s\",\"status\":\"%s\",\"firmwareVersion\":\"%s\",\"datetime\":\"%s\"}",
+    "{\"deviceId\":\"%s\",\"status\":\"%s\",\"firmwareVersion\":\"%s\",\"datetime\":\"%s\",\"localIp\":\"%s\"}",
     deviceId,
     status,
     FIRMWARE_VERSION,
-    now.c_str()
+    now.c_str(),
+    WiFi.localIP().toString().c_str()
   );
   mqtt.publish(statusTopic, payload, retained);
   Serial.printf("Published status: %s\n", payload);
@@ -827,6 +828,7 @@ void publishTelemetry(float temperatureF, float humidity)
     "\"humidity\":%.1f,"
     "\"units\":{\"temperature\":\"F\"},"
     "\"rssi\":%d,"
+    "\"localIp\":\"%s\","
     "\"uptimeSeconds\":%lu,"
     "\"numReadErrors\":%lu,"
     "\"numFilteredReadings\":%lu,"
@@ -840,6 +842,7 @@ void publishTelemetry(float temperatureF, float humidity)
     temperatureF,
     humidity,
     WiFi.RSSI(),
+    WiFi.localIP().toString().c_str(),
     static_cast<unsigned long>(millis() / 1000),
     static_cast<unsigned long>(readErrors),
     static_cast<unsigned long>(filteredReadings),
@@ -848,7 +851,7 @@ void publishTelemetry(float temperatureF, float humidity)
     changeThresholdF
   );
 
-  bool ok = mqtt.publish(telemetryTopic, payload, true);
+  bool ok = mqtt.publish(telemetryTopic, payload, false);
   Serial.printf("Published telemetry ok=%d: %s\n", ok, payload);
   if (ok) {
     lastTemperatureF = temperatureF;

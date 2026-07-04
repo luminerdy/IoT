@@ -88,7 +88,7 @@ Publish retained per-device config from the Pi:
 
 ```bash
 cd /home/scotty/IoT
-MQTT_USERNAME=iot MQTT_PASSWORD='<password>' PYTHONPATH=app python3 -m iot_home.publish_config esp32-device-id --report-interval 600 --change-threshold 1.0
+MQTT_USERNAME=iot-admin MQTT_PASSWORD='<admin-password>' PYTHONPATH=app python3 -m iot_home.publish_config esp32-device-id --report-interval 600 --change-threshold 1.0
 ```
 
 Supported fields:
@@ -102,14 +102,14 @@ Publish the firmware defaults as retained config. This is the offline-safe reset
 
 ```bash
 cd /home/scotty/IoT
-MQTT_USERNAME=iot MQTT_PASSWORD='<password>' PYTHONPATH=app python3 -m iot_home.publish_config esp32-device-id --defaults
+MQTT_USERNAME=iot-admin MQTT_PASSWORD='<admin-password>' PYTHONPATH=app python3 -m iot_home.publish_config esp32-device-id --defaults
 ```
 
 To delete the retained config from the broker, publish an empty retained message. A connected ESP32 will apply firmware defaults when it receives this empty message, but an offline ESP32 will not receive it later because the retained message has been removed:
 
 ```bash
 cd /home/scotty/IoT
-MQTT_USERNAME=iot MQTT_PASSWORD='<password>' PYTHONPATH=app python3 -m iot_home.publish_config esp32-device-id --clear
+MQTT_USERNAME=iot-admin MQTT_PASSWORD='<admin-password>' PYTHONPATH=app python3 -m iot_home.publish_config esp32-device-id --clear
 ```
 
 The ESP32 publishes config apply/reject messages to:

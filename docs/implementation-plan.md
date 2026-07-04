@@ -144,9 +144,10 @@ Goal: Make the system boring to operate: all sensors visible, recoverable, backe
 Priority 1: Fleet Stability
 
 - Continue signed OTA rollout in small batches until the installed fleet is on `0.1.3-signed-ota` or newer. Done for the 21 mapped devices on 2026-07-01.
-- Keep the USB bench device reserved for firmware and feature validation before fleet rollout.
+- Keep the USB bench device reserved for firmware and feature validation before fleet rollout. No firmware build may go to fleet devices until the exact build has passed bench ESP32 testing.
 - Watch recovered/replaced devices across normal 10-minute report intervals.
-- Fix retained telemetry pollution by stopping retained telemetry publishes and/or deduping collector inserts on `(device_id, seq, datetime)`.
+- Fix retained telemetry pollution by stopping retained telemetry publishes and/or deduping collector inserts on `(device_id, seq, datetime)`. Code and USB bench validation done on 2026-07-03; fleet deployment still pending.
+- Use collector-side desired firmware version checking to record deployment attempts on version mismatch; enable `--auto-ota` only after the exact staged firmware build has passed bench ESP32 validation.
 - Keep retained MQTT config/status state, SQLite device rows, and `config/locations.json` clean when devices are removed, replaced, or renamed.
 - Add a simple operator checklist for adding/replacing a sensor.
 
@@ -170,9 +171,9 @@ Priority 3: Operations And Data Protection
 Priority 4: Security Hardening Without Fleet Disruption
 
 - Keep signed OTA required for new firmware.
-- Pin the PlatformIO `espressif32` platform and add `platformio run` to CI so firmware compilation is checked, not only static analysis.
-- Add MQTT ACL protection to the current port `1883` listener so shared credentials cannot publish fleet OTA/config commands.
-- Add a first dashboard access-control layer before treating the LAN as a trusted boundary.
+- Pin the PlatformIO `espressif32` platform and add `platformio run` to CI so firmware compilation is checked, not only static analysis. Done on 2026-07-03.
+- Add MQTT ACL protection to the current port `1883` listener so shared credentials cannot publish fleet OTA/config commands. Script/runbook done on 2026-07-03; live activation still pending.
+- Add a first dashboard access-control layer before treating the LAN as a trusted boundary. Optional Basic auth done on 2026-07-03; live activation still pending.
 - Add signed OTA anti-rollback with a monotonic build number before the next feature firmware rollout.
 - Stage MQTT TLS and per-device ACL migration on the bench device first.
 - Add per-device credentials only after bench validation.

@@ -47,6 +47,7 @@ Example:
     "temperature": "F"
   },
   "rssi": -58,
+  "localIp": "192.168.1.25",
   "uptimeSeconds": 3600,
   "numReadErrors": 0,
   "numFilteredReadings": 0,
@@ -70,7 +71,8 @@ Example online payload:
   "deviceId": "esp32-device-id",
   "status": "online",
   "firmwareVersion": "0.1.0",
-  "datetime": "2026-06-16T17:00:00Z"
+  "datetime": "2026-06-16T17:00:00Z",
+  "localIp": "192.168.1.25"
 }
 ```
 
@@ -184,3 +186,9 @@ Example:
 ```
 
 Observed successful OTA progression is `downloading`, then `rebooting`, followed by normal retained status and telemetry with the new firmware version.
+
+## Deployment Attempts
+
+The collector can compare reported `firmwareVersion` values against a configured desired version. When a mismatch is detected, it records a deployment attempt with the stable `deviceId`, current version, target version, and optional `localIp` metadata from the MQTT payload. IP addresses are diagnostic only and are not used as device identity.
+
+Automatic OTA publish is opt-in with the collector `--auto-ota` flag and requires a staged manifest under `data/firmware/{version}/manifest.json`.

@@ -9,9 +9,20 @@ from pathlib import Path
 
 import paho.mqtt.client as mqtt
 
-from iot_home.db import DEFAULT_DB_PATH, connect, init_db, record_status, record_telemetry
+from iot_home.db import (
+    DEFAULT_DB_PATH,
+    connect,
+    init_db,
+    observed_ip,
+    recent_deployment_attempt_exists,
+    record_deployment_attempt,
+    record_status,
+    record_telemetry,
+    update_deployment_attempt,
+)
 from iot_home.locations import DEFAULT_LOCATIONS_PATH, load_locations, mapped_location
-from iot_home.mqtt_schema import STATUS_SUBSCRIPTION, TELEMETRY_SUBSCRIPTION
+from iot_home.mqtt_schema import COMMAND_TOPIC, STATUS_SUBSCRIPTION, TELEMETRY_SUBSCRIPTION
+from iot_home.publish_ota import DEFAULT_FIRMWARE_DIR, command_from_manifest
 
 
 LOG = logging.getLogger("iot_home.collector")
@@ -32,6 +43,28 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=DEFAULT_LOCATIONS_PATH,
         help="JSON file mapping device IDs to display locations.",
+    )
+    parser.add_argument(
+        "--desired-firmware-version",
+        help="Desired firmware version. Mismatched device reports create deployment attempt records.",
+    )
+    parser.add_argument(
+        "--auto-ota",
+        action="store_true",
+        help="Publish a staged OTA command when a firmware version mismatch is detected.",
+    )
+    parser.add_argument(
+        "--firmware-dir",
+        type=Path,
+        default=DEFAULT_FIRMWARE_DIR,
+        help="Directory containing staged OTA manifests.",
+    )
+    parser.add_argument("--base-url", default="http://iot-pi.local:8000", help="Base dashboard URL reachable by ESP32.")
+    parser.add_argument(
+        "--ota-cooldown-seconds",
+        type=int,
+        default=86400,
+        help="Minimum seconds between deployment attempts for the same device and target version.",
     )
     return parser.parse_args()
 
@@ -57,6 +90,72 @@ def validate_status(payload: dict) -> None:
         raise ValueError(f"invalid device status: {payload.get('status')}")
 
 
+def maybe_trigger_deployment(
+    client: mqtt.Client,
+    conn,
+    args: argparse.Namespace,
+    payload: dict,
+) -> None:
+    desired_version = args.desired_firmware_version
+    if not desired_version:
+        return
+
+    device_id = str(payload["deviceId"])
+    current_version = payload.get("firmwareVersion")
+    if not current_version or current_version == desired_version:
+        return
+    if recent_deployment_attempt_exists(conn, device_id, desired_version, args.ota_cooldown_seconds):
+        LOG.info("Skipping OTA mismatch for %s; deployment attempt is inside cooldown", device_id)
+        return
+
+    ip = observed_ip(payload)
+    attempt_id = record_deployment_attempt(
+        conn,
+        device_id=device_id,
+        from_version=str(current_version),
+        to_version=desired_version,
+        observed_ip=ip,
+        status="detected",
+        message="firmware version mismatch detected",
+    )
+    LOG.info(
+        "Firmware mismatch for %s: current=%s desired=%s ip=%s attempt=%s",
+        device_id,
+        current_version,
+        desired_version,
+        ip or "unknown",
+        attempt_id,
+    )
+
+    if not args.auto_ota:
+        return
+
+    try:
+        command = command_from_manifest(args.firmware_dir, desired_version, args.base_url)
+    except Exception as exc:
+        update_deployment_attempt(conn, attempt_id, status="failed", message=str(exc))
+        LOG.exception("Cannot publish OTA for %s", device_id)
+        return
+
+    topic = COMMAND_TOPIC.format(device_id=device_id)
+    mqtt_payload = json.dumps(command, separators=(",", ":")).encode("utf-8")
+    result = client.publish(topic, mqtt_payload, qos=1, retain=False)
+    if result.rc != mqtt.MQTT_ERR_SUCCESS:
+        message = f"MQTT publish failed with result code {result.rc}"
+        update_deployment_attempt(conn, attempt_id, status="failed", rollout_id=command["rolloutId"], message=message)
+        LOG.error("%s for %s on %s", message, device_id, topic)
+        return
+
+    update_deployment_attempt(
+        conn,
+        attempt_id,
+        status="published",
+        rollout_id=command["rolloutId"],
+        message=f"published OTA command to {topic}",
+    )
+    LOG.info("Published OTA command for %s rollout=%s target=%s", device_id, command["rolloutId"], desired_version)
+
+
 def main() -> None:
     args = parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -77,6 +176,9 @@ def main() -> None:
 
     def on_message(client: mqtt.Client, userdata, message: mqtt.MQTTMessage) -> None:
         try:
+            if not message.payload:
+                LOG.info("Ignoring empty MQTT message on %s", message.topic)
+                return
             payload = json.loads(message.payload.decode("utf-8"))
             if message.topic.endswith("/telemetry"):
                 validate_telemetry(payload)
@@ -86,6 +188,7 @@ def main() -> None:
                     locations,
                 )
                 record_telemetry(conn, payload)
+                maybe_trigger_deployment(client, conn, args, payload)
                 LOG.info(
                     "Telemetry %s location=%s temp=%.1f humidity=%.1f",
                     payload["deviceId"],
@@ -96,6 +199,7 @@ def main() -> None:
             elif message.topic.endswith("/status"):
                 validate_status(payload)
                 record_status(conn, payload)
+                maybe_trigger_deployment(client, conn, args, payload)
                 LOG.info("Status %s %s", payload["deviceId"], payload["status"])
         except Exception:
             LOG.exception("Failed to process MQTT message on %s", message.topic)

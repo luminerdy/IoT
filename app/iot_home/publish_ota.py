@@ -19,6 +19,7 @@ from iot_home.mqtt_schema import COMMAND_TOPIC
 DEFAULT_FIRMWARE_BIN = Path("firmware/.pio/build/esp32dev/firmware.bin")
 DEFAULT_FIRMWARE_DIR = Path("data/firmware")
 DEFAULT_SIGNING_KEY = Path("data/keys/ota_signing_key.pem")
+OTA_COMMAND_FIELDS = ("command", "rolloutId", "version", "url", "sha256", "signature", "size")
 
 
 def parse_args() -> argparse.Namespace:
@@ -112,6 +113,27 @@ def stage_firmware(args: argparse.Namespace) -> dict:
         "createdAt": datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
     }
     (release_dir / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+    return command
+
+
+def command_from_manifest(firmware_dir: Path, version: str, base_url: str | None = None) -> dict:
+    validate_version(version)
+    manifest_path = firmware_dir / version / "manifest.json"
+    if not manifest_path.is_file():
+        raise FileNotFoundError(f"staged OTA manifest not found: {manifest_path}")
+
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    missing = [field for field in OTA_COMMAND_FIELDS if field not in manifest]
+    if missing:
+        raise ValueError(f"staged OTA manifest is missing: {', '.join(missing)}")
+
+    command = {field: manifest[field] for field in OTA_COMMAND_FIELDS}
+    if command["command"] != "ota_update":
+        raise ValueError(f"unsupported OTA command in manifest: {command['command']}")
+    if command["version"] != version:
+        raise ValueError(f"manifest version {command['version']} does not match requested version {version}")
+    if base_url:
+        command["url"] = f"{base_url.rstrip('/')}/firmware/{version}/firmware.bin"
     return command
 
 

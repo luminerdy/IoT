@@ -2,6 +2,38 @@
 
 Use this file for dated accomplishments and important observations. Keep future tasks in `docs/implementation-plan.md` and durable decisions in `docs/decision-record.md`.
 
+## 2026-07-04
+
+### Version Mismatch OTA Trigger
+
+- Added optional collector-side desired firmware version checking. When a device reports a different `firmwareVersion`, the collector records a `deployment_attempts` row with the stable device ID, current version, target version, and optional reported `localIp`.
+- Added opt-in collector `--auto-ota` publishing from an already staged `data/firmware/{version}/manifest.json`, with a cooldown to avoid repeated commands for the same device/version.
+- Updated ESP32 status and telemetry payloads to include `localIp` as diagnostic metadata.
+- Verified the code path with `.venv/bin/python -m pytest` and confirmed the firmware still builds with `.venv/bin/pio run -d firmware`.
+- USB-flashed the exact build to the local `Bench Device` ESP32 first and verified it came back online over MQTT with `firmwareVersion` and `localIp` in the status payload.
+- Fleet rollout remains gated on testing the exact firmware build on the USB-connected `Bench Device` first.
+
+## 2026-07-03
+
+### Phase 5 Hardening Pass
+
+- Confirmed the unattended restic cron backup succeeded at `2026-07-03T02:15:01-05:00` and saved snapshot `0043918c`.
+- Stopped new firmware telemetry publishes from using the MQTT retain flag.
+- Added collector/database dedupe for repeated `(device_id, seq, datetime)` telemetry so retained or replayed messages do not create duplicate reading rows.
+- Tested the non-retained telemetry firmware change on the USB bench ESP32 only. USB flash succeeded, the device booted, connected to WiFi/MQTT, applied retained config, and reported fresh dashboard telemetry. A bench-only config reapply produced fresh telemetry with MQTT retain flag `0`.
+- Temporarily set the bench ESP32 report interval to 30 seconds, observed periodic telemetry publishes with retain flag `0`, then restored the retained bench config to `reportIntervalSeconds=600` and `changeThresholdF=1.0`.
+- Cleared the old retained bench telemetry message from Mosquitto after validating the new non-retained publishes.
+- Pinned the firmware PlatformIO `espressif32` platform to `6.10.0` and added `platformio run -d firmware` to GitHub Actions CI.
+- Smoke-tested collector dedupe against the real local broker using a temporary SQLite database and separate MQTT client IDs: first retained delivery inserted 20 readings; the second retained delivery against the same DB kept the reading count at 20.
+- Added collector handling for empty MQTT payloads so retained-message deletes are ignored instead of logged as JSON parse errors.
+- Added optional dashboard Basic auth, controlled by `DASHBOARD_USERNAME` and `DASHBOARD_PASSWORD`; `/firmware/...` remains restricted by private/link-local source IP rather than dashboard auth so ESP32 OTA downloads still work.
+- Smoke-tested dashboard Basic auth on temporary port `8002`: unauthenticated and wrong-password `/api/latest` requests returned `401`, and correct credentials returned `200`.
+- Updated the systemd dashboard unit to read `/etc/iot-home/iot-home.env`, and updated the service installer to write optional dashboard credentials when provided.
+- Updated the port `1883` Mosquitto LAN configuration script to install ACL protection: the current shared `iot` user can keep telemetry/status flow, while OTA/config publishing moves to `iot-admin`.
+- Smoke-tested the MQTT ACL rules on a temporary local Mosquitto listener: `iot` telemetry publish was delivered, `iot` command publish was denied, and `iot-admin` command publish was delivered.
+- Updated runbooks so config and OTA publisher commands use `iot-admin` after ACLs are enabled.
+- Verified with `.venv/bin/python -m pytest`, `.venv/bin/python -m compileall app scripts`, `bash -n` on shell scripts, `platformio run -d firmware`, and `platformio check -d firmware`.
+
 ## 2026-07-01
 
 ### Signed OTA Batch

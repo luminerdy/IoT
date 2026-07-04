@@ -1,6 +1,6 @@
 # Current Status
 
-Last updated: 2026-07-02
+Last updated: 2026-07-04
 
 This is the first file to read after a reboot, context switch, or long pause.
 
@@ -61,6 +61,16 @@ Status: Phases 0 through 4 are complete for the current local-first system. Sign
 - Completed the signed OTA rollout on 2026-07-01 with one two-device batch and one final five-device batch; all seven remaining devices came back online/non-stale on `0.1.3-signed-ota`.
 - Checked backups on 2026-07-02: created and restore-verified a fresh local SQLite backup, fixed the cron restic PATH issue, created restic snapshot `d5802848`, restored the latest S3 backup into a scratch directory, and verified the restic repository with no errors.
 - Reviewed an architecture/security assessment on 2026-07-02 and accepted the main follow-up priorities: stop retained telemetry pollution, pin/compile firmware in CI, add MQTT ACL protection, add dashboard access control, and add OTA anti-rollback.
+- Checked the unattended restic cron backup on 2026-07-03; the 02:15 run succeeded and saved snapshot `0043918c`.
+- Added code-side retained telemetry protection: firmware no longer retains telemetry publishes, and the collector/database path dedupes repeated `(device_id, seq, datetime)` readings.
+- Tested the non-retained telemetry firmware change on the USB bench ESP32 only: USB flash succeeded, MQTT/dashboard telemetry returned, fresh config-triggered and periodic telemetry publishes had MQTT retain flag `0`, and the bench config was restored to `reportIntervalSeconds=600`.
+- Smoke-tested collector dedupe against the real local broker with a temporary SQLite database; repeated retained delivery did not duplicate reading rows.
+- Added collector handling for empty MQTT payloads so retained-message deletes are ignored cleanly.
+- Pinned PlatformIO `espressif32` to `6.10.0` and added a real firmware build to CI.
+- Staged current-listener MQTT ACL protection in `scripts/configure_mosquitto_lan.sh`; after activation, the shared `iot` user keeps telemetry/status flow while `iot-admin` owns config and OTA command publishing.
+- Tested the staged MQTT ACL rules on a temporary local Mosquitto listener; fleet-user telemetry was delivered, fleet-user command publishing was denied, and admin command publishing was delivered.
+- Added optional dashboard Basic auth through `DASHBOARD_USERNAME` and `DASHBOARD_PASSWORD`; tested on temporary port `8002` but not yet enabled on the live service.
+- Recorded the standing release gate that no firmware build goes to fleet devices until the exact build is fully tested on the local USB-connected bench ESP32.
 
 ## Live Dashboard State
 
@@ -77,15 +87,16 @@ Latest SQLite/API check on 2026-07-02 at about 20:30 CDT shows 21 mapped devices
 - The actual house image has not been uploaded yet. The dashboard is ready for it through `data/dashboard-assets/` plus `config/floorplan.json`.
 - GitHub CLI is installed but not authenticated. Run `gh auth login` before terminal-based PR/check workflows.
 - The four-view rotating dashboard is active on normal port `8000`, including the pause/resume control, floorplan-derived Temperature Graph groups, 1080p-fit Device List Grid and Latest Readings views, and collector-receipt-time stale calculation.
+- MQTT ACL protection and dashboard auth are implemented in repo but not yet activated on the live services.
 
 ## Next Actions
 
-1. Keep `Bench Device` (`esp32-device-id`) on `/dev/ttyUSB0` for firmware and feature validation before deploying to other devices.
-2. Tomorrow, 2026-07-03, check `~/logs/restic-iot-backup.log` after the scheduled 02:15 cron run and confirm the restic PATH fix worked unattended.
-3. Fix retained telemetry pollution: stop retaining firmware telemetry and/or add collector/database dedupe for `(device_id, seq, datetime)`.
-4. Pin the PlatformIO `espressif32` platform and add `platformio run` to CI so firmware compilation is verified.
-5. Add MQTT ACL protection to the current broker path before deeper TLS/per-device credential migration.
-6. Decide and implement the first dashboard access-control layer: firewall/VLAN, reverse-proxy auth, or a simple dashboard token.
+1. Tomorrow, 2026-07-05, deploy the Pi-side collector/database changes first by restarting `iot-home-collector.service` and checking its logs.
+2. Keep `Bench Device` (`esp32-device-id`) on `/dev/ttyUSB0` for firmware and feature validation before deploying to other devices; never push firmware to the fleet until the exact build has passed bench ESP32 testing.
+3. Decide whether to bump `FIRMWARE_VERSION` and stage a signed OTA artifact for the bench-tested non-retained telemetry plus `localIp` build; if yes, use the bench ESP32 for OTA validation before any fleet batch.
+4. Use collector desired-version mismatch detection for deployment records; only enable `--auto-ota` after the exact staged firmware build has passed bench ESP32 validation.
+5. Activate current-listener MQTT ACLs with `scripts/configure_mosquitto_lan.sh iot iot-admin`, then update Pi-side publisher credentials to use `iot-admin`.
+6. Enable dashboard Basic auth by setting `DASHBOARD_USERNAME` and `DASHBOARD_PASSWORD` in `/etc/iot-home/iot-home.env` or rerunning the service installer with those variables exported.
 7. Add OTA anti-rollback using a signed monotonic build number before the next fleet firmware feature rollout.
 8. Provision the second attic ESP32 when available and place it in the intended graph group.
 9. Upload the actual house image under `data/dashboard-assets/`, set `backgroundImage` in local `config/floorplan.json`, and tune the existing sensor placement overlay.
@@ -125,3 +136,4 @@ Latest SQLite/API check on 2026-07-02 at about 20:30 CDT shows 21 mapped devices
 - Dashboard verification: normal port `8000` serves `/api/floorplan`, the suspect humidity flag, and the current floorplan placements. Latest live check on 2026-07-01 showed 21 mapped devices online, 0 stale, no `UNMAPPED` rows, and 21 devices on signed OTA. The stale-calculation fix for bad startup/NTP timestamps, 1080p-fit rotated views, floorplan-derived graph groups, laundry-room Inside override, AtticDoor Separate grouping, and pause/resume control are loaded on normal port `8000`.
 - Telemetry policy memory: ESP32s should read DHT22 frequently, reject impossible values and one-off large jumps, publish median-filtered temp/humidity every 600 seconds, and only publish early when filtered temperature differs by the configured threshold for 3 consecutive valid samples. Humidity is reported but does not trigger early publishes.
 - Latest live-tested OTA artifact: `data/firmware/0.1.3-signed-ota/firmware.bin`; ignored by git because runtime/build artifacts stay local.
+- Current local hardening edits are tested but not fleet/live-deployed: retained telemetry dedupe is code-verified against a temp DB, non-retained firmware telemetry publish behavior is bench-tested over USB, optional dashboard Basic auth is temp-port tested, and staged port `1883` MQTT ACLs are temp-broker tested.

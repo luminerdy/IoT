@@ -24,8 +24,7 @@ Copy the public key coordinates into `firmware/include/ota_public_key.h`. Keep t
 Stage and publish a signed OTA to the bench device only:
 
 ```bash
-pw=$(awk -F'"' '/MQTT_PASSWORD/ {print $2; exit}' firmware/include/secrets.h)
-MQTT_USERNAME=iot MQTT_PASSWORD="$pw" PYTHONPATH=app \
+MQTT_USERNAME=iot-admin MQTT_PASSWORD='<admin-password>' PYTHONPATH=app \
   python3 -m iot_home.publish_ota esp32-device-id 0.1.3-signed-ota \
   --base-url http://iot-pi.local:8000
 ```
@@ -33,6 +32,7 @@ MQTT_USERNAME=iot MQTT_PASSWORD="$pw" PYTHONPATH=app \
 Watch the OTA status:
 
 ```bash
+pw=$(awk -F'"' '/MQTT_PASSWORD/ {print $2; exit}' firmware/include/secrets.h)
 mosquitto_sub -h localhost -p 1883 -u iot -P "$pw" \
   -t 'home/sensors/esp32-device-id/ota/status' -v
 ```
@@ -51,6 +51,19 @@ rejected: firmware signature invalid
 ```
 
 ## MQTT TLS And ACLs
+
+Protect the current LAN listener on port `1883` with ACLs before the TLS/per-device migration:
+
+```bash
+scripts/configure_mosquitto_lan.sh iot iot-admin
+```
+
+The `iot` user remains compatible with the current shared-credential fleet and collector for telemetry/status flow, but cannot publish retained runtime config or OTA commands. Use `iot-admin` for Pi-side config and OTA publisher commands:
+
+```bash
+MQTT_USERNAME=iot-admin MQTT_PASSWORD='<admin-password>' PYTHONPATH=app \
+  python3 -m iot_home.publish_config esp32-device-id --report-interval 600 --change-threshold 1.0
+```
 
 Configure a parallel TLS listener on port `8883`:
 

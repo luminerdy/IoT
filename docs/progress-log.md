@@ -2,6 +2,69 @@
 
 Use this file for dated accomplishments and important observations. Keep future tasks in `docs/implementation-plan.md` and durable decisions in `docs/decision-record.md`.
 
+## 2026-07-04
+
+### CI And GitHub Access
+
+- Confirmed `gh` is authenticated as `luminerdy` with `repo` and `workflow` scopes.
+- Investigated the failing PR #3 GitHub Actions `firmware-check` job. Root cause was that the new clean-runner `platformio run -d firmware` step copied `firmware/include/secrets.sample.h` to `secrets.h`, but the sample MQTT CA certificate macro used a multiline raw string inside `#define`, which did not compile.
+- Updated `firmware/include/secrets.sample.h` to use an escaped certificate placeholder string.
+- Reproduced the clean CI path in a scratch checkout with sample secrets copied to `secrets.h`; both `platformio check -d firmware` and `platformio run -d firmware` passed.
+- Verified `.venv/bin/python -m pytest` still passes with 27 tests.
+- Pushed commit `2fefa22` to PR #3; both Python and firmware GitHub Actions checks now pass on the branch.
+
+### Collector Deployment
+
+- Created a verified SQLite backup before live deployment: `data/backups/iot-20260704T180617Z.sqlite.gz`.
+- Restarted the live `iot-home-collector.service` on 2026-07-04 at 13:06 CDT. Non-interactive `sudo systemctl restart` was unavailable, so the collector process was killed under the service's `Restart=on-failure` policy; systemd restarted it as PID `10202`.
+- Verified collector startup logs: 21 location mappings loaded, MQTT connected to `localhost:1883`, and telemetry/status subscriptions restored.
+- Verified live dashboard API after restart: 21 devices, 21 online, 0 stale, 0 unmapped, and all 21 on `0.1.3-signed-ota`.
+- Verified the retained-message replay did not create new duplicate readings: restart-window duplicate groups were `0`.
+- Confirmed `deployment_attempts` remains empty because desired-version/auto-OTA is not enabled in the live service yet.
+- Could not activate MQTT ACLs or dashboard Basic auth from this session because the required `/etc/mosquitto` and `/etc/iot-home` changes are root-owned and non-interactive `sudo` is unavailable.
+
+### Anti-Rollback Firmware Rollout
+
+- Added signed OTA anti-rollback: firmware now reports `buildNumber`, stores the highest booted build number in ESP32 NVS, and rejects OTA commands whose signed `buildNumber` is less than or equal to the highest booted build.
+- Extended OTA manifests and commands with `buildNumber` and `metadataSignature`. The existing firmware signature remains over the binary digest for compatibility with `0.1.3-signed-ota`; the new metadata signature covers the canonical checksum/build/version/size tuple.
+- Bumped firmware to `0.1.4-antirollback` with build number `2026070401`.
+- Verified `.venv/bin/python -m pytest` with 30 tests, `.venv/bin/platformio run -d firmware`, and `.venv/bin/platformio check -d firmware`.
+- Staged signed artifact `data/firmware/0.1.4-antirollback/firmware.bin`; HTTP checks on loopback and LAN returned `200` and matched SHA-256 `f90de1498aab21b65ace4af7700494b68b88f1f3c58d92a6ed99c1e853c130d3`.
+- OTA-updated the USB bench device `Sunroom Test` / `esp32-9c9c1fda3670`; it reported `downloading`, then `rebooting`, then returned online on `0.1.4-antirollback` with build number `2026070401`.
+- Published a bench-only lower-build rollback test with signed build number `2026070400`; the device rejected it as `firmware rollback rejected` and stayed on `0.1.4-antirollback`.
+- Rolled `0.1.4-antirollback` to the remaining mapped fleet in small batches. Each batch reported `downloading` then `rebooting`, and final live checks showed 21 devices online, 0 stale, 0 unmapped, and all 21 on `0.1.4-antirollback`.
+- Retained MQTT status for all 21 devices reports `buildNumber` `2026070401`.
+
+### Version Mismatch OTA Trigger
+
+- Added optional collector-side desired firmware version checking. When a device reports a different `firmwareVersion`, the collector records a `deployment_attempts` row with the stable device ID, current version, target version, and optional reported `localIp`.
+- Added opt-in collector `--auto-ota` publishing from an already staged `data/firmware/{version}/manifest.json`, with a cooldown to avoid repeated commands for the same device/version.
+- Updated ESP32 status and telemetry payloads to include `localIp` as diagnostic metadata.
+- Verified the code path with `.venv/bin/python -m pytest` and confirmed the firmware still builds with `.venv/bin/pio run -d firmware`.
+- USB-flashed the exact build to the local `Bench Device` ESP32 first and verified it came back online over MQTT with `firmwareVersion` and `localIp` in the status payload.
+- Fleet rollout remains gated on testing the exact firmware build on the USB-connected `Bench Device` first.
+
+## 2026-07-03
+
+### Phase 5 Hardening Pass
+
+- Confirmed the unattended restic cron backup succeeded at `2026-07-03T02:15:01-05:00` and saved snapshot `0043918c`.
+- Stopped new firmware telemetry publishes from using the MQTT retain flag.
+- Added collector/database dedupe for repeated `(device_id, seq, datetime)` telemetry so retained or replayed messages do not create duplicate reading rows.
+- Tested the non-retained telemetry firmware change on the USB bench ESP32 only. USB flash succeeded, the device booted, connected to WiFi/MQTT, applied retained config, and reported fresh dashboard telemetry. A bench-only config reapply produced fresh telemetry with MQTT retain flag `0`.
+- Temporarily set the bench ESP32 report interval to 30 seconds, observed periodic telemetry publishes with retain flag `0`, then restored the retained bench config to `reportIntervalSeconds=600` and `changeThresholdF=1.0`.
+- Cleared the old retained bench telemetry message from Mosquitto after validating the new non-retained publishes.
+- Pinned the firmware PlatformIO `espressif32` platform to `6.10.0` and added `platformio run -d firmware` to GitHub Actions CI.
+- Smoke-tested collector dedupe against the real local broker using a temporary SQLite database and separate MQTT client IDs: first retained delivery inserted 20 readings; the second retained delivery against the same DB kept the reading count at 20.
+- Added collector handling for empty MQTT payloads so retained-message deletes are ignored instead of logged as JSON parse errors.
+- Added optional dashboard Basic auth, controlled by `DASHBOARD_USERNAME` and `DASHBOARD_PASSWORD`; `/firmware/...` remains restricted by private/link-local source IP rather than dashboard auth so ESP32 OTA downloads still work.
+- Smoke-tested dashboard Basic auth on temporary port `8002`: unauthenticated and wrong-password `/api/latest` requests returned `401`, and correct credentials returned `200`.
+- Updated the systemd dashboard unit to read `/etc/iot-home/iot-home.env`, and updated the service installer to write optional dashboard credentials when provided.
+- Updated the port `1883` Mosquitto LAN configuration script to install ACL protection: the current shared `iot` user can keep telemetry/status flow, while OTA/config publishing moves to `iot-admin`.
+- Smoke-tested the MQTT ACL rules on a temporary local Mosquitto listener: `iot` telemetry publish was delivered, `iot` command publish was denied, and `iot-admin` command publish was delivered.
+- Updated runbooks so config and OTA publisher commands use `iot-admin` after ACLs are enabled.
+- Verified with `.venv/bin/python -m pytest`, `.venv/bin/python -m compileall app scripts`, `bash -n` on shell scripts, `platformio run -d firmware`, and `platformio check -d firmware`.
+
 ## 2026-07-01
 
 ### Signed OTA Batch
@@ -18,6 +81,25 @@ Use this file for dated accomplishments and important observations. Keep future 
 - Published signed OTA rollout `20260702T001833Z-0.1.3-final-batch` to the final five devices.
 - Observed OTA download start on all seven remaining devices and `rebooting` / `firmware update applied` on all final-batch devices. The dashboard API confirmed all 21 mapped devices are online, non-stale, status `OK`, and reporting `0.1.3-signed-ota`.
 - Signed OTA rollout is complete for the mapped fleet. Zero mapped devices remain on `0.1.2-filtered-telemetry`.
+
+## 2026-07-02
+
+### Backup Verification
+
+- Created a fresh local SQLite backup: `data/backups/iot-20260702T214335Z.sqlite.gz`.
+- Restore-checked the local SQLite backup through `/tmp/iot-restore-check.sqlite`; `PRAGMA integrity_check` returned `ok`, and the restored database contained 53,261 readings.
+- Found the scheduled restic backup failed at `2026-07-02T02:15:01-05:00` because cron could not find `restic` in its default `PATH`.
+- Added an explicit cron-safe `PATH` to both `scripts/restic_iot_backup.sh` and the live cron copy at `~/scripts/restic-iot-backup.sh`.
+- Re-ran the live cron script under a minimal cron-like environment; it completed successfully and created restic snapshot `d5802848`.
+- Restored the latest restic snapshot into `~/restore-test`; the expected `IoT`, `config`, and `.config/restic` roots were present. Removed the scratch restore tree after verification.
+- Ran `restic check`; it completed with no repository errors.
+
+### Architecture And Security Review
+
+- Reviewed an external architecture/security assessment against the local codebase.
+- Confirmed the most actionable findings: unauthenticated dashboard on `0.0.0.0:8000`, plaintext/shared-credential MQTT as the current fleet path, no ACL on the port `1883` broker config, retained telemetry inserts on collector restart, no OTA anti-rollback, unpinned PlatformIO platform, and CI static-checking firmware without compiling it.
+- Agreed on the practical priority order for the next hardening pass: retained telemetry fix, firmware CI compile plus platform pin, MQTT ACL protection, dashboard access control, then OTA anti-rollback.
+- Noted that extracting the dashboard HTML/CSS/JS from the Python monolith is valid maintainability work, but lower priority than the safety and data-integrity fixes above.
 
 ## 2026-06-28
 

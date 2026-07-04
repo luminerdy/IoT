@@ -40,15 +40,39 @@ Stage the built binary and manifest without publishing an OTA command:
 
 ```bash
 cd /home/scotty/IoT
-PYTHONPATH=app python3 -m iot_home.publish_ota esp32-device-id 0.1.1-ota-version --base-url http://iot-pi.local:8000 --stage-only
+PYTHONPATH=app python3 -m iot_home.publish_ota esp32-device-id 0.1.4-antirollback --base-url http://iot-pi.local:8000 --build-number 2026070401 --stage-only
 ```
 
 The helper writes:
 
 ```text
-data/firmware/0.1.1-ota-version/firmware.bin
-data/firmware/0.1.1-ota-version/manifest.json
+data/firmware/0.1.4-antirollback/firmware.bin
+data/firmware/0.1.4-antirollback/manifest.json
 ```
+
+## Version Mismatch Trigger
+
+The collector can record deployment attempts when an ESP32 reports a firmware version that differs from the desired version:
+
+```bash
+cd /home/scotty/IoT
+PYTHONPATH=app python3 -m iot_home.collector \
+  --desired-firmware-version 0.1.4-antirollback
+```
+
+With only `--desired-firmware-version`, the collector records the mismatch and optional `localIp` metadata but does not publish an OTA command.
+
+After the exact firmware build has passed the USB-connected `Bench Device` validation, automatic OTA publish can be enabled for a staged manifest:
+
+```bash
+cd /home/scotty/IoT
+MQTT_USERNAME=iot-admin MQTT_PASSWORD='<admin-password>' PYTHONPATH=app python3 -m iot_home.collector \
+  --desired-firmware-version 0.1.4-antirollback \
+  --auto-ota \
+  --base-url http://iot-pi.local:8000
+```
+
+The collector uses `data/firmware/{version}/manifest.json`, publishes to `home/sensors/{deviceId}/command`, and suppresses repeat attempts for the same device/version during the cooldown window.
 
 ## Watch OTA Status
 
@@ -64,8 +88,7 @@ Only run this after confirming the staged firmware URL is reachable from the ESP
 
 ```bash
 cd /home/scotty/IoT
-pw=$(awk -F'"' '/MQTT_PASSWORD/ {print $2; exit}' firmware/include/secrets.h)
-MQTT_USERNAME=iot MQTT_PASSWORD="$pw" PYTHONPATH=app python3 -m iot_home.publish_ota esp32-device-id 0.1.1-ota-version --base-url http://iot-pi.local:8000
+MQTT_USERNAME=iot-admin MQTT_PASSWORD='<admin-password>' PYTHONPATH=app python3 -m iot_home.publish_ota esp32-device-id 0.1.4-antirollback --base-url http://iot-pi.local:8000 --build-number 2026070401
 ```
 
 Expected OTA status progression:

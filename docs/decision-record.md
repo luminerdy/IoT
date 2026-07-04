@@ -171,3 +171,25 @@ This file records project architecture decisions and the reasoning behind them.
 **Reasoning:** SHA-256 alone proves a downloaded binary matches the OTA command, but it does not prove the binary was authorized by the local owner. A firmware signature closes that gap. MQTT TLS and ACLs are added as deployable hardening steps, but enabling them across the fleet requires per-device credential provisioning and bench validation first.
 
 **Status:** Accepted after testing on `Bench Device` / `esp32-device-id`: USB flash succeeded, signed OTA was accepted and rebooted, and a deliberately altered signature was rejected as `firmware signature invalid`.
+
+## DR-018: Bench ESP32 Gate Before Fleet Firmware Rollout
+
+**Date:** 2026-07-03
+
+**Decision:** Never push firmware changes to the installed fleet until the exact firmware build has been fully tested on the local USB-connected bench ESP32.
+
+**Reasoning:** The bench ESP32 provides serial logs, direct USB recovery, and a low-risk target for validating boot, WiFi, MQTT, telemetry, runtime config, OTA status, and rollback/failure behavior. Fleet devices are harder to physically recover, so code-level checks and successful builds are necessary but not sufficient for deployment.
+
+**Required validation before fleet rollout:** Build the firmware, flash or OTA it to `Bench Device`, verify it boots and reports fresh telemetry through the dashboard/API, verify expected MQTT behavior for the changed feature, and keep the bench device observable across at least one normal telemetry interval unless the change is clearly unrelated to runtime behavior.
+
+**Status:** Accepted as a standing release gate for all future firmware changes.
+
+## DR-019: Signed Build-Number OTA Anti-Rollback
+
+**Date:** 2026-07-04
+
+**Decision:** Require OTA commands for firmware `0.1.4-antirollback` and newer to include a monotonic unsigned `buildNumber` plus a P-256 ECDSA `metadataSignature` over the canonical checksum/build/version/size tuple. Keep the existing firmware binary signature for compatibility with devices upgrading from `0.1.3-signed-ota`.
+
+**Reasoning:** The existing firmware signature authorizes the binary bytes, but does not prevent an old signed binary from being replayed later. The first anti-rollback rollout must still be accepted by `0.1.3-signed-ota`, so the binary signature remains unchanged. New firmware stores the highest booted build number in ESP32 NVS and rejects future OTA commands whose signed build number is less than or equal to that value.
+
+**Status:** Accepted and live-validated on 2026-07-04. `Sunroom Test` accepted `0.1.4-antirollback` build `2026070401`, rejected a signed lower-build rollback command with `firmware rollback rejected`, and the 21 mapped devices were rolled out in small batches.

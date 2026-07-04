@@ -6,7 +6,7 @@ Use this file for planned work, phase status, and acceptance criteria. Move comp
 
 Active phase: Phase 5, fleet operations and daily-use dashboard.
 
-Phases 0 through 4 are complete for the current local-first system. Remaining work is operational maturity: finishing signed OTA rollout, improving dashboard maintenance workflows, backing up data, and hardening MQTT access without disrupting the installed fleet.
+Phases 0 through 4 are complete for the current local-first system. Remaining work is operational maturity: improving dashboard maintenance workflows, backing up data, and hardening MQTT access without disrupting the installed fleet.
 
 ## Phase 0: Project Setup
 
@@ -115,12 +115,14 @@ Completed:
 - Downloaded firmware over HTTP from the Pi.
 - Verified SHA-256 before applying firmware.
 - Added P-256 ECDSA signed OTA verification for firmware `0.1.3-signed-ota`.
+- Added signed OTA anti-rollback with a monotonic build number for firmware `0.1.4-antirollback`.
 - Wrote OTA partition, finalized update, and rebooted successfully.
 - Published OTA status over MQTT.
 - Added CLI rollout helper.
 - Tested successful OTA on the USB-recoverable bench device.
 - Tested successful OTA on canary/fleet devices.
 - Tested bad URL, bad SHA-256, interrupted download, oversized image, and bad signature failure paths on the bench device.
+- Tested signed build-number rollback rejection on the bench device.
 
 Acceptance criteria:
 
@@ -131,7 +133,7 @@ Acceptance criteria:
 
 Phase 4 residuals moved to Phase 5/backlog:
 
-- Continue fleet-wide signed OTA rollout in small batches.
+- Continue future firmware rollouts in small batches.
 - Add richer rollout controls if manual CLI rollout becomes tedious.
 - Decide whether firmware version should remain a PlatformIO build flag or move to release metadata.
 
@@ -143,10 +145,12 @@ Goal: Make the system boring to operate: all sensors visible, recoverable, backe
 
 Priority 1: Fleet Stability
 
-- Continue signed OTA rollout in small batches until the installed fleet is on `0.1.3-signed-ota` or newer.
-- Keep the USB bench device reserved for firmware and feature validation before fleet rollout.
+- Continue signed OTA rollout in small batches until the installed fleet is on `0.1.3-signed-ota` or newer. Done for the 21 mapped devices on 2026-07-01.
+- Keep the USB bench device reserved for firmware and feature validation before fleet rollout. No firmware build may go to fleet devices until the exact build has passed bench ESP32 testing.
 - Watch recovered/replaced devices across normal 10-minute report intervals.
-- Keep retained MQTT state, SQLite device rows, and `config/locations.json` clean when devices are removed, replaced, or renamed.
+- Fix retained telemetry pollution by stopping retained telemetry publishes and/or deduping collector inserts on `(device_id, seq, datetime)`. Done for the 21 mapped devices with firmware `0.1.4-antirollback` and the live collector/database deployment on 2026-07-04.
+- Use collector-side desired firmware version checking to record deployment attempts on version mismatch; enable `--auto-ota` only after the exact staged firmware build has passed bench ESP32 validation.
+- Keep retained MQTT config/status state, SQLite device rows, and `config/locations.json` clean when devices are removed, replaced, or renamed.
 - Add a simple operator checklist for adding/replacing a sensor.
 
 Priority 2: Dashboard As The Daily Control Surface
@@ -161,14 +165,18 @@ Priority 2: Dashboard As The Daily Control Surface
 
 Priority 3: Operations And Data Protection
 
-- Add SQLite backup/export workflow. Initial local backup script and S3-ready runbook are in place.
-- Add restore verification for at least one backup.
+- Add SQLite backup/export workflow. Initial local backup script and S3-ready runbook are in place; a fresh local backup was restore-verified on 2026-07-02.
+- Add restore verification for at least one backup. Done for both local SQLite backup and latest restic S3 snapshot on 2026-07-02.
 - Add a compact operational runbook covering service status, logs, OTA rollout, config publish, and sensor replacement.
 - Decide how much local runtime state should stay JSON files versus moving to SQLite tables.
 
 Priority 4: Security Hardening Without Fleet Disruption
 
 - Keep signed OTA required for new firmware.
+- Pin the PlatformIO `espressif32` platform and add `platformio run` to CI so firmware compilation is checked, not only static analysis. Done on 2026-07-03.
+- Add MQTT ACL protection to the current port `1883` listener so shared credentials cannot publish fleet OTA/config commands. Script/runbook done on 2026-07-03; live activation still pending.
+- Add a first dashboard access-control layer before treating the LAN as a trusted boundary. Optional Basic auth done on 2026-07-03; live activation still pending.
+- Add signed OTA anti-rollback with a monotonic build number before the next feature firmware rollout. Done and rolled out to the 21 mapped devices on 2026-07-04.
 - Stage MQTT TLS and per-device ACL migration on the bench device first.
 - Add per-device credentials only after bench validation.
 - Decide whether the public GitHub history needs a full rewrite or whether the current sanitized tip is sufficient.

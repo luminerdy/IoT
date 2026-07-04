@@ -19,6 +19,17 @@ from iot_home.mqtt_schema import COMMAND_TOPIC
 DEFAULT_FIRMWARE_BIN = Path("firmware/.pio/build/esp32dev/firmware.bin")
 DEFAULT_FIRMWARE_DIR = Path("data/firmware")
 DEFAULT_SIGNING_KEY = Path("data/keys/ota_signing_key.pem")
+OTA_COMMAND_FIELDS = (
+    "command",
+    "rolloutId",
+    "version",
+    "url",
+    "sha256",
+    "signature",
+    "size",
+    "buildNumber",
+    "metadataSignature",
+)
 
 
 def parse_args() -> argparse.Namespace:
@@ -42,6 +53,12 @@ def parse_args() -> argparse.Namespace:
         help="P-256 private key used to sign OTA firmware.",
     )
     parser.add_argument("--rollout-id", help="Rollout ID to include in the OTA command.")
+    parser.add_argument(
+        "--build-number",
+        type=int,
+        required=True,
+        help="Monotonic unsigned OTA build number compiled into this firmware.",
+    )
     parser.add_argument("--stage-only", action="store_true", help="Stage firmware and manifest without publishing MQTT.")
     return parser.parse_args()
 
@@ -80,6 +97,35 @@ def sign_firmware(path: Path, signing_key: Path) -> str:
         return Path(signature_file.name).read_bytes().hex()
 
 
+def metadata_payload(*, sha256: str, build_number: int, version: str, size: int) -> bytes:
+    return f"iot-home-ota-v2\n{sha256}\n{build_number}\n{version}\n{size}\n".encode("utf-8")
+
+
+def sign_metadata(*, sha256: str, build_number: int, version: str, size: int, signing_key: Path) -> str:
+    if build_number <= 0 or build_number > 0xFFFFFFFF:
+        raise SystemExit("build number must be between 1 and 4294967295")
+    if not signing_key.is_file():
+        raise SystemExit(f"OTA signing key not found: {signing_key}")
+
+    with tempfile.NamedTemporaryFile() as payload_file, tempfile.NamedTemporaryFile() as signature_file:
+        payload_file.write(metadata_payload(sha256=sha256, build_number=build_number, version=version, size=size))
+        payload_file.flush()
+        subprocess.run(
+            [
+                "openssl",
+                "dgst",
+                "-sha256",
+                "-sign",
+                str(signing_key),
+                "-out",
+                signature_file.name,
+                payload_file.name,
+            ],
+            check=True,
+        )
+        return Path(signature_file.name).read_bytes().hex()
+
+
 def stage_firmware(args: argparse.Namespace) -> dict:
     validate_version(args.version)
     source = args.firmware_bin
@@ -94,6 +140,13 @@ def stage_firmware(args: argparse.Namespace) -> dict:
     size = staged_bin.stat().st_size
     sha256 = sha256_file(staged_bin)
     signature = sign_firmware(staged_bin, args.signing_key)
+    metadata_signature = sign_metadata(
+        sha256=sha256,
+        build_number=args.build_number,
+        version=args.version,
+        size=size,
+        signing_key=args.signing_key,
+    )
     rollout_id = args.rollout_id or f"{datetime.now(UTC).strftime('%Y%m%dT%H%M%SZ')}-{args.version}"
     firmware_url = f"{args.base_url.rstrip('/')}/firmware/{args.version}/firmware.bin"
 
@@ -105,6 +158,8 @@ def stage_firmware(args: argparse.Namespace) -> dict:
         "sha256": sha256,
         "signature": signature,
         "size": size,
+        "buildNumber": args.build_number,
+        "metadataSignature": metadata_signature,
     }
     manifest = {
         **command,
@@ -112,6 +167,27 @@ def stage_firmware(args: argparse.Namespace) -> dict:
         "createdAt": datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
     }
     (release_dir / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+    return command
+
+
+def command_from_manifest(firmware_dir: Path, version: str, base_url: str | None = None) -> dict:
+    validate_version(version)
+    manifest_path = firmware_dir / version / "manifest.json"
+    if not manifest_path.is_file():
+        raise FileNotFoundError(f"staged OTA manifest not found: {manifest_path}")
+
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    missing = [field for field in OTA_COMMAND_FIELDS if field not in manifest]
+    if missing:
+        raise ValueError(f"staged OTA manifest is missing: {', '.join(missing)}")
+
+    command = {field: manifest[field] for field in OTA_COMMAND_FIELDS}
+    if command["command"] != "ota_update":
+        raise ValueError(f"unsupported OTA command in manifest: {command['command']}")
+    if command["version"] != version:
+        raise ValueError(f"manifest version {command['version']} does not match requested version {version}")
+    if base_url:
+        command["url"] = f"{base_url.rstrip('/')}/firmware/{version}/firmware.bin"
     return command
 
 

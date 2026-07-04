@@ -15,8 +15,4 @@
 // Set to 1 after Mosquitto TLS is configured and this certificate matches
 // the local CA that signed the broker certificate.
 #define MQTT_USE_TLS 0
-#define MQTT_CA_CERT R"EOF(
------BEGIN CERTIFICATE-----
-replace-with-local-ca-certificate
------END CERTIFICATE-----
-)EOF"
+#define MQTT_CA_CERT "-----BEGIN CERTIFICATE-----\nreplace-with-local-ca-certificate\n-----END CERTIFICATE-----\n"

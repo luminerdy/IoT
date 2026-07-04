@@ -47,6 +47,7 @@ Example:
     "temperature": "F"
   },
   "rssi": -58,
+  "localIp": "192.168.1.25",
   "uptimeSeconds": 3600,
   "numReadErrors": 0,
   "numFilteredReadings": 0,
@@ -70,7 +71,8 @@ Example online payload:
   "deviceId": "esp32-device-id",
   "status": "online",
   "firmwareVersion": "0.1.0",
-  "datetime": "2026-06-16T17:00:00Z"
+  "datetime": "2026-06-16T17:00:00Z",
+  "localIp": "192.168.1.25"
 }
 ```
 
@@ -156,11 +158,25 @@ OTA command example:
   "url": "http://iot-pi.local:8000/firmware/0.1.1-ota-version/firmware.bin",
   "sha256": "hex-encoded-sha256",
   "signature": "hex-encoded-p256-ecdsa-signature",
-  "size": 824272
+  "size": 824272,
+  "buildNumber": 2026070401,
+  "metadataSignature": "hex-encoded-p256-ecdsa-signature"
 }
 ```
 
 Firmware `0.1.3-signed-ota` and newer requires the `signature` field. The signature is generated over the firmware binary SHA-256 digest with the local OTA private key, and the ESP32 verifies it with the embedded public key before finalizing the update.
+
+Firmware `0.1.4-antirollback` and newer also requires `buildNumber` and `metadataSignature`. `buildNumber` is a monotonic unsigned integer compiled into the firmware, and `metadataSignature` signs the canonical metadata payload:
+
+```text
+iot-home-ota-v2
+{sha256}
+{buildNumber}
+{version}
+{size}
+```
+
+The device rejects OTA commands whose signed `buildNumber` is less than or equal to the highest build number it has booted.
 
 ## OTA Status
 
@@ -184,3 +200,9 @@ Example:
 ```
 
 Observed successful OTA progression is `downloading`, then `rebooting`, followed by normal retained status and telemetry with the new firmware version.
+
+## Deployment Attempts
+
+The collector can compare reported `firmwareVersion` values against a configured desired version. When a mismatch is detected, it records a deployment attempt with the stable `deviceId`, current version, target version, and optional `localIp` metadata from the MQTT payload. IP addresses are diagnostic only and are not used as device identity.
+
+Automatic OTA publish is opt-in with the collector `--auto-ota` flag and requires a staged manifest under `data/firmware/{version}/manifest.json`.

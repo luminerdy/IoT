@@ -13,6 +13,8 @@ fi
 
 mqtt_username="${MQTT_USERNAME:-iot}"
 mqtt_password="${MQTT_PASSWORD:-}"
+dashboard_username="${DASHBOARD_USERNAME:-}"
+dashboard_password="${DASHBOARD_PASSWORD:-}"
 
 if [[ -z "${mqtt_password}" && -f "${project_dir}/firmware/include/secrets.h" ]]; then
   mqtt_password="$(
@@ -30,6 +32,14 @@ tmp_env="$(mktemp)"
 {
   printf 'MQTT_USERNAME=%q\n' "${mqtt_username}"
   printf 'MQTT_PASSWORD=%q\n' "${mqtt_password}"
+  if [[ -n "${dashboard_username}" || -n "${dashboard_password}" ]]; then
+    if [[ -z "${dashboard_username}" || -z "${dashboard_password}" ]]; then
+      echo "DASHBOARD_USERNAME and DASHBOARD_PASSWORD must be set together." >&2
+      exit 1
+    fi
+    printf 'DASHBOARD_USERNAME=%q\n' "${dashboard_username}"
+    printf 'DASHBOARD_PASSWORD=%q\n' "${dashboard_password}"
+  fi
 } > "${tmp_env}"
 sudo install -o root -g root -m 0600 "${tmp_env}" "${env_file}"
 rm -f "${tmp_env}"

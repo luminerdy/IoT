@@ -33,3 +33,5 @@ jobs:
         run: cp firmware/include/secrets.sample.h firmware/include/secrets.h
       - name: Check firmware
         run: platformio check -d firmware
+      - name: Build firmware
+        run: platformio run -d firmware

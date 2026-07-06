@@ -11,6 +11,7 @@ AWS IoT is no longer part of the core architecture.
 ## Repository Layout
 
 ```text
+specs/                         Source-of-truth product and engineering requirements
 docs/                           Active project documentation
 app/iot_home/                   Pi collector, dashboard, simulator, and helper CLIs
 config/                         Sample local Pi configuration
@@ -41,6 +42,7 @@ Current next work is operational rather than MVP build-out:
 
 ## Documentation
 
+- [Specification Package](specs/README.md)
 - [Current Status](docs/current-status.md)
 - [Local-First Architecture](Local-First-Architecture.md)
 - [Phase 1 Runbook](docs/phase-1-runbook.md)
@@ -54,6 +56,9 @@ Current next work is operational rather than MVP build-out:
 
 ## Documentation Flow
 
+- Treat `specs/` as the source of truth for what the rebuilt system must do. When implementation and specs disagree, update the relevant spec first or explicitly record why the implementation is intentionally diverging.
+- Before making behavior, security, API, data, deployment, or test changes, review the relevant `specs/` files and update the requirement IDs, acceptance criteria, or testing strategy that should govern the change.
+- Every PR or local change that alters externally observable behavior should update the relevant spec file, the relevant operational/user documentation, and the project status/change log.
 - Update `docs/current-status.md` when the active phase, blockers, or next actions change.
 - Update `docs/progress-log.md` with dated accomplishments.
 - Update `docs/implementation-plan.md` with planned work and phase status.

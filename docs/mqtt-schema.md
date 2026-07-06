@@ -6,7 +6,8 @@ Schema for the local-first implementation.
 
 - Use stable device IDs in topics, not room names.
 - Keep room/location mapping on the Pi.
-- Use retained messages for latest telemetry, latest status, and latest config.
+- Use non-retained messages for telemetry. Use retained messages for latest
+  status and latest config.
 - Use QoS 1 for telemetry, status, config, command, and OTA status.
 
 ## Topics
@@ -115,6 +116,11 @@ Devices ignore unsupported fields and reject config payloads that do not contain
 Publishing an empty retained payload deletes the retained broker value. A connected device treats that message as a request to restore firmware defaults; an offline device will not receive it later. Publish explicit default values when the reset must be applied on the next reconnect.
 
 Firmware filters raw DHT22 samples before telemetry publishing. The current policy samples every 2 seconds, rejects implausible readings, uses a 5-sample rolling median, suppresses one-off temperature jumps greater than `8°F` from the recent median unless 3 similar samples arrive consecutively, publishes on the configured interval, and publishes early only after `changeThresholdF` is exceeded for 3 consecutive valid filtered samples. Humidity is reported but does not trigger early publishing.
+
+Telemetry publishes use `retain=false`; collectors must not rely on retained
+telemetry for latest-state recovery. Retained device status and collector
+receipt timestamps provide restart-safe freshness, and the database path
+deduplicates repeated `(device_id, seq, datetime)` readings.
 
 ## Response
 

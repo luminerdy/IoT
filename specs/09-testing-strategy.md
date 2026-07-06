@@ -1,0 +1,104 @@
+# 11. Testing Strategy (TEST)
+
+Principle: everything that can run on a CI host does; the physical bench
+device is reserved for what only hardware can prove (radio, flash, sensor).
+
+## 11.1 Unit tests (CI, every commit)
+
+**TEST-001 — Collector validation** `MUST`
+Table-driven tests for telemetry/status validation (FR-021): missing fields,
+range edges (−40/185 °F, 0/100 %), non-numeric values, malformed JSON,
+device-ID pattern (SEC-012), topic/payload identity mismatch (FR-022).
+
+**TEST-002 — Persistence & dedupe** `MUST`
+`record_telemetry`/`record_status` upsert behavior, last-seen preservation,
+unique-index dedupe (FR-024), history clamping (already partly covered —
+extend the existing `tests/test_db.py`).
+
+**TEST-003 — Location & floorplan config** `MUST`
+Valid/invalid `locations.json` and `floorplan.json` parsing (DATA-003),
+mapping precedence (FR-025). (Exists today; carry forward.)
+
+**TEST-004 — OTA staging** `MUST` (R4)
+Manifest generation, SHA-256 correctness, signature verifiable with the
+public key via `cryptography`, path-safe version labels, `buildNumber`
+inclusion in signed material (SEC-006), stage-only mode.
+
+**TEST-005 — Retention job** `MUST`
+Prunes only rows older than the window; idempotent.
+
+**TEST-006 — Migrations** `MUST`
+Fresh DB and each prior schema version migrate to current; version recorded.
+
+## 11.2 Firmware native tests (CI host, no hardware)
+
+**TEST-010 — Filter logic** `MUST`
+Median window, plausibility bounds, outlier candidate/confirmation state
+machine (FR-003…FR-005) as pure-C++ tests (PlatformIO `test` on `native`).
+
+**TEST-011 — Publish policy** `MUST`
+Interval vs. confirmed-change publishing decisions (FR-006) with simulated
+clocks.
+
+**TEST-012 — Manifest validation** `MUST` (R4)
+Field parsing, hex decoding, size/sha/signature/buildNumber gate ordering
+(FR-010…FR-012) with the download and flash layers faked.
+
+## 11.3 Integration tests (CI, real broker)
+
+**TEST-020 — End-to-end ingest** `MUST`
+Spin up Mosquitto in CI; run the simulator and collector; assert rows,
+device state, offline-via-LWT, and duplicate-delivery idempotence
+(AC-004…AC-007).
+
+**TEST-021 — HTTP handler security** `MUST`
+Requests against a live dashboard process: path traversal corpus (encoded,
+doubled, symlink) → 404 (AC-015); parameter clamping (AC-012); auth
+required (AC-014); error responses leak no paths (API-026).
+
+**TEST-022 — API contract** `MUST`
+Golden-file JSON shape tests for `/api/latest`, `/api/history`,
+`/api/floorplan` (API-021…023) so UI and firmware can rely on the contract.
+
+**TEST-023 — Broker ACL matrix** `SHOULD`
+Scripted matrix using two device users + collector + admin: each identity
+attempts each topic verb; assert allow/deny per SEC-003 (AC-033).
+
+## 11.4 Hardware bench validation (manual, gated)
+
+**TEST-030 — Release bench checklist** `MUST`
+A written checklist executed on the USB-recoverable bench device before any
+fleet rollout: AC-001, AC-020/021, AC-030…AC-032, AC-044. Results recorded
+(date, firmware build, outcome) in the ops log.
+
+**TEST-031 — Restore drill** `MUST`
+Quarterly: restore latest backup to a scratch DB, verify integrity and
+recency (AC-040).
+
+**TEST-032 — Fresh-install drill** `SHOULD`
+Once per major release: AC-042 on a clean SD image (or container
+approximation of the install script).
+
+## 11.5 Gates and tooling
+
+**TEST-040 — Coverage gate** `MUST`
+`pytest --cov` ≥ 80 % line coverage over hub packages, enforced in CI
+(`--cov-fail-under=80`). *Amended 2026-07-02:* the original per-module 90 %
+gate for the HTTP handler and validation modules is not natively enforceable
+by coverage tooling; those modules are instead reviewed at report level with
+a ≥ 85 % target. Network-bound service loops (`main()` connect loops,
+simulator) are covered by TEST-020 integration tests, not unit coverage.
+
+**TEST-041 — Static analysis** `MUST`
+ruff (lint + format) for Python; `platformio check` retained for firmware
+static analysis **in addition to** a real `platformio run` compile
+(TECH-020).
+
+**TEST-042 — Secret/identifier scan** `MUST`
+CI scan (e.g., gitleaks + a custom pattern list for local IPs/MACs/real
+device IDs) on every push (SEC-014).
+
+**TEST-043 — Rollout safety rule** `MUST`
+OTA rollouts proceed bench → 1 device → small batch → fleet, with telemetry
+observed at each step; the rule lives in the ops runbook and the rollout
+CLI prints it.

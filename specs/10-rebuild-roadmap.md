@@ -95,7 +95,8 @@ run side by side (different systemd units / DB file) during migration.
 
 - Rotating views, floorplan, suspect-reading flags (FR-034…FR-036) on the
   static-asset UI.
-- Summary stats (FR-033), ops polish, backup retention automation.
+- Summary stats (FR-033), device mapping admin, ops polish, backup schedule
+  and retention automation.
 
 **Exit:** AC-011 extended views verified on the 1080p wall display; AC-040.
 

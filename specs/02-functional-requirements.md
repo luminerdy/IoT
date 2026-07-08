@@ -126,7 +126,8 @@ are exempt (FR-015 amendment; enforced by a partial unique index, DATA-001).
 **FR-025 — Location mapping** `MUST`
 An operator-maintained `locations.json` maps device IDs to display locations
 and overrides the device-reported location. Unmapped devices display as
-`UNMAPPED`.
+`UNMAPPED`. The dashboard MAY expose a local-network-only admin workflow to
+view, save, and clear these mappings without hand-editing the JSON file.
 
 ## 4.3 Hub — Dashboard
 
@@ -189,6 +190,9 @@ development against a test broker. The simulator MUST NOT use
 A script produces an online SQLite backup, verifies it with
 `PRAGMA integrity_check`, compresses it, and prunes local backups beyond a
 retention count. Restore procedure is documented and rehearsed (TEST-030).
+The operational schedule SHOULD run the local SQLite export before the
+off-site repository backup so the fresh database-only archive is included in
+the off-site snapshot.
 
 **FR-045 — Device retirement** `SHOULD` *(gap found in implementation review)*
 A documented, scripted flow retires a device: delete its broker credential

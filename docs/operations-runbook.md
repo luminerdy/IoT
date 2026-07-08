@@ -31,7 +31,29 @@ Expected normal state:
 
 ## Backup Check
 
-Scheduled restic backup runs daily at `02:15` CDT.
+Scheduled backups:
+
+- Local SQLite export runs daily at `02:05` CDT.
+- Restic/S3 off-device backup runs daily at `02:15` CDT.
+
+Check the local database-only backup first:
+
+```bash
+tail -80 ~/logs/iot-sqlite-backup.log
+find /home/scotty/IoT/data/backups -maxdepth 1 -type f -name 'iot-*.sqlite.gz' -printf '%TY-%Tm-%Td %TH:%TM %s %f\n' | sort | tail -5
+```
+
+Restore-check the latest local SQLite archive:
+
+```bash
+cd /home/scotty/IoT
+latest="$(find data/backups -maxdepth 1 -type f -name 'iot-*.sqlite.gz' -printf '%T@ %p\n' | sort -n | tail -1 | cut -d' ' -f2-)"
+gunzip -c "$latest" > /tmp/iot-local-restore-check.sqlite
+sqlite3 /tmp/iot-local-restore-check.sqlite "PRAGMA integrity_check;"
+rm -f /tmp/iot-local-restore-check.sqlite
+```
+
+Check restic/S3:
 
 ```bash
 tail -120 ~/logs/restic-iot-backup.log

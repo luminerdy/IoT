@@ -79,6 +79,8 @@ Known successful snapshots:
 c0a264e6
 7ef0b89d
 d5802848
+2ba924d0
+a2980899
 ```
 
 ### Restore Test
@@ -127,10 +129,29 @@ scripts/backup_sqlite.sh
 
 The script uses SQLite's online `.backup` command, runs `PRAGMA integrity_check`, then writes a gzipped archive under `data/backups/`.
 
+Local SQLite backups are scheduled before the off-device restic backup so the latest database-only archive is also captured by restic/S3:
+
+```cron
+5 2 * * * cd /home/scotty/IoT && /home/scotty/IoT/scripts/backup_sqlite.sh data/iot.db >> /home/scotty/logs/iot-sqlite-backup.log 2>&1
+15 2 * * * /home/scotty/scripts/restic-iot-backup.sh
+```
+
+Latest verified local backup as of 2026-07-08:
+
+```text
+data/backups/iot-20260708T183106Z.sqlite.gz
+```
+
 To back up a specific database:
 
 ```sh
 scripts/backup_sqlite.sh data/iot.db
+```
+
+Scheduled backup logs:
+
+```sh
+tail -80 ~/logs/iot-sqlite-backup.log
 ```
 
 ## S3 Copy

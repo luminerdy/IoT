@@ -59,12 +59,18 @@ Daily online backup (FR-044): `sqlite3 .backup` → integrity check → gzip →
 retain last N (default 14) locally; optional off-site copy is opt-in and
 excludes the OTA signing key (SEC-007). Restore is documented and rehearsed
 quarterly (TEST-030).
-*Upstream status (2026-07-05):* a restic repository (encrypted, with a
-forget/prune policy) is live as the off-site implementation. Because it
-backs up the whole checkout and config tree, the exclude list MUST be
-verified to omit `data/keys/` (the OTA signing key) — or the encrypted-repo
-risk explicitly accepted in a recorded decision. Restic's own repo password
-and env file are themselves key material under SEC-007 handling.
+*Upstream status (2026-07-08):* a daily 02:05 local SQLite export is
+installed before the 02:15 restic/S3 job, and the latest archive
+`data/backups/iot-20260708T183106Z.sqlite.gz` was restore-verified. A
+restic repository (encrypted, with a forget/prune policy) is live as the
+off-site implementation; snapshot `a2980899` and `restic check` were
+verified on 2026-07-08. Because restic backs up the whole checkout and
+config tree, the exclude list MUST be verified to omit `data/keys/` (the
+OTA signing key) — or the encrypted-repo risk explicitly accepted in a
+recorded decision. Restic's own repo password and env file are themselves
+key material under SEC-007 handling. Local SQLite backup retention pruning
+remains part of the rebuild target if it is not handled by an external
+cleanup job.
 
 **DATA-008 — OTA artifacts** `SHOULD` (R4)
 Staged firmware lives under `data/firmware/<version>/` containing

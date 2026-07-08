@@ -146,6 +146,12 @@ Given the backup script has run, when the newest backup is restored to a
 scratch path and queried, then integrity_check returns `ok` and the latest
 reading matches production within the backup window.
 
+**AC-040a** (FR-044, DATA-007, TEST-030)
+Given the scheduled backup window has passed, when cron logs, the latest
+local SQLite archive, and the latest restic snapshot are inspected, then the
+local archive predates the restic snapshot, both are current for the day, and
+a restored database copy passes `PRAGMA integrity_check`.
+
 **AC-041** (NFR-007, DATA-005)
 Given readings older than the retention window, when the retention job runs,
 then they are deleted and the dashboard/history APIs still work.

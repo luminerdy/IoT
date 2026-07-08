@@ -159,14 +159,14 @@ Priority 2: Dashboard As The Daily Control Surface
 - Upload the actual floorplan image under `data/dashboard-assets/`.
 - Set `backgroundImage` in local `config/floorplan.json`.
 - Tune local sensor overlay placement without committing private floorplan data.
-- Add a dashboard admin view for device/location mapping.
+- Add a dashboard admin view for device/location mapping. Done on 2026-07-08 with local-network-only writes to `config/locations.json`.
 - Make graph grouping configurable if hard-coded groups become limiting.
 - Keep suspect humidity flagging visible but non-disruptive.
 
 Priority 3: Operations And Data Protection
 
-- Add SQLite backup/export workflow. Initial local backup script and S3-ready runbook are in place; a fresh local backup was restore-verified on 2026-07-02.
-- Add restore verification for at least one backup. Done for both local SQLite backup and latest restic S3 snapshot on 2026-07-02.
+- Add SQLite backup/export workflow. Done; the local SQLite backup runs daily at 02:05 before the 02:15 restic/S3 backup.
+- Add restore verification for at least one backup. Done for both local SQLite backup and latest restic S3 snapshot; reverified on 2026-07-08.
 - Add a compact operational runbook covering service status, logs, OTA rollout, config publish, and sensor replacement. Done in `docs/operations-runbook.md` on 2026-07-05.
 - Decide how much local runtime state should stay JSON files versus moving to SQLite tables.
 

@@ -2,6 +2,33 @@
 
 Use this file for dated accomplishments and important observations. Keep future tasks in `docs/implementation-plan.md` and durable decisions in `docs/decision-record.md`.
 
+## 2026-07-08
+
+### Dashboard Admin Mapping
+
+- Added the dashboard `Manage Devices` admin panel for device/location mapping.
+- Added `GET /api/locations` to return mapped devices and current dashboard mapping state.
+- Added `POST /api/locations` to save or clear display locations in local `config/locations.json`; writes are limited to private, loopback, or link-local clients.
+- Added `save_locations()` and tests for sorted, normalized location writes.
+- Verified normal port `8000` serves the updated dashboard, `/api/locations` returns 21 devices and 21 mappings, and a no-op live mapping save works.
+- Ran `python3 -m compileall app scripts` and `.venv/bin/python -m pytest`; 29 tests passed.
+- Committed the implementation as `bade1bf add dashboard device mapping admin`.
+
+### Backup Check And Local Schedule
+
+- Confirmed the restic/S3 cron backup succeeded at `2026-07-08T02:15:01-05:00` and saved snapshot `a2980899`.
+- Ran `restic check`; it completed with no repository errors.
+- Verified the latest restic snapshot includes `data/iot.db`, `config/locations.json`, and `config/floorplan.json`.
+- Dumped `data/iot.db` from the latest restic snapshot to `/tmp`, ran `PRAGMA integrity_check`, and got `ok`.
+- Added a daily local SQLite backup cron job at `02:05` CDT, before the existing `02:15` restic job:
+
+```cron
+5 2 * * * cd /home/scotty/IoT && /home/scotty/IoT/scripts/backup_sqlite.sh data/iot.db >> /home/scotty/logs/iot-sqlite-backup.log 2>&1
+```
+
+- Ran the local backup manually; it created `data/backups/iot-20260708T183106Z.sqlite.gz`.
+- Restore-checked that archive through `/tmp`; `PRAGMA integrity_check` returned `ok`, and the restored database contained 84,782 readings across 21 devices.
+
 ## 2026-07-05
 
 ### Scheduled Backup Check

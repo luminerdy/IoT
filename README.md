@@ -31,14 +31,14 @@ The original four implementation phases are done. The project is now in Phase 5:
 | Phase 2: ESP32 Firmware MVP | Complete | ESP32 devices publish authenticated local MQTT telemetry with DHT22 readings and health fields. |
 | Phase 3: Runtime Configuration | Complete | Devices accept retained MQTT config for report interval and temperature-change threshold. |
 | Phase 4: Local OTA | Complete and hardened | OTA updates work locally; bad URL, bad SHA-256, interrupted download, and oversized image failures were validated on the USB-recoverable bench device. |
-| Phase 5: Fleet Operations | In progress | The fleet has 21 mapped devices reporting; 8 are on signed OTA firmware and 13 remain on `0.1.2-filtered-telemetry`. The dashboard now includes rotating operator views, live device cards, grouped temperature history, suspect outdoor humidity flagging, and a configurable house diagram. |
+| Phase 5: Fleet Operations | In progress | The fleet has 21 mapped devices reporting on `0.1.4-antirollback`. The dashboard includes rotating operator views, live device cards, grouped temperature history, suspect outdoor humidity flagging, configurable floorplan support, and a `Manage Devices` mapping panel. Local SQLite backups run before the daily restic/S3 backup. |
 
 Current next work is operational rather than MVP build-out:
 
 - Keep watching recently recovered devices during normal telemetry intervals.
 - Use `Bench Device` as the USB bench device before firmware or feature rollout.
 - Replace the approximate dashboard house diagram with an uploaded house image and configurable sensor placement overlays.
-- Continue signed OTA rollout in small batches before broader unattended fleet updates.
+- Keep daily backup checks and periodic restore drills in the operating routine.
 
 ## Documentation
 
@@ -53,6 +53,7 @@ Current next work is operational rather than MVP build-out:
 - [Implementation Plan](docs/implementation-plan.md)
 - [Hardware Notes](docs/hardware-notes.md)
 - [SQLite Backup Runbook](docs/backup-runbook.md)
+- [Operations Runbook](docs/operations-runbook.md)
 
 ## Documentation Flow
 

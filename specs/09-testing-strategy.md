@@ -54,7 +54,7 @@ device state, offline-via-LWT, and duplicate-delivery idempotence
 **TEST-021 — HTTP handler security** `MUST`
 Requests against a live dashboard process: path traversal corpus (encoded,
 doubled, symlink) → 404 (AC-015); parameter clamping (AC-012); auth
-required (AC-014); error responses leak no paths (API-026).
+required (AC-014); error responses leak no paths (API-027).
 
 **TEST-022 — API contract** `MUST`
 Golden-file JSON shape tests for `/api/latest`, `/api/history`,
@@ -72,8 +72,10 @@ fleet rollout: AC-001, AC-020/021, AC-030…AC-032, AC-044. Results recorded
 (date, firmware build, outcome) in the ops log.
 
 **TEST-031 — Restore drill** `MUST`
-Quarterly: restore latest backup to a scratch DB, verify integrity and
-recency (AC-040).
+Quarterly, and after backup schedule changes: restore the latest local
+SQLite backup to a scratch DB, verify integrity and recency, then verify the
+latest restic/S3 snapshot includes the DB and critical config files
+(AC-040, AC-040a).
 
 **TEST-032 — Fresh-install drill** `SHOULD`
 Once per major release: AC-042 on a clean SD image (or container

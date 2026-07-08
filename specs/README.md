@@ -32,6 +32,12 @@ without reverse-engineering behavior from the current code.
 
 ## Amendment log
 
+- **2026-07-08** — operations/admin update: recorded the deployed
+  dashboard device mapping admin workflow (`GET/POST /api/locations`),
+  the daily 02:05 local SQLite backup schedule, the 02:15 restic/S3
+  schedule, verified snapshot `a2980899`, and the restore-verified local
+  archive `data/backups/iot-20260708T183106Z.sqlite.gz`.
+
 - **2026-07-05** — upstream repo review (commits through `4d0e5cc`):
   adopted the fleet-deployed **OTA signature contract v2** (dual signature
   with canonical metadata payload + NVS build high-water mark) as normative
@@ -52,7 +58,7 @@ without reverse-engineering behavior from the current code.
   index (FR-015/FR-024/DATA-001, AC-008); added the normative OTA signature
   contract to API-013; added FR-045 (device retirement); documented the
   localhost 1883 listener decision (SEC-001), the 1024-byte telemetry
-  budget (API-010), `/media/` root (API-025), `buildNumber` in status
+  budget (API-010), `/media/` root (API-026), `buildNumber` in status
   (API-011); amended TEST-040's per-module gate; flagged the IDF-5
   watchdog API change (TECH-012).
 

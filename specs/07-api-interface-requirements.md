@@ -129,7 +129,9 @@ Upstream reference: `publish_ota.py`
 
 ## 9.2 HTTP interface (dashboard)
 
-All endpoints are GET, JSON unless noted, and sit behind SEC-009 auth.
+Endpoints are JSON unless noted, and sit behind SEC-009 auth in the rebuild
+target. Local-network admin writes are allowed only from private, loopback,
+or link-local clients unless stronger auth is enabled.
 
 **API-020 — `GET /`** `MUST`
 Serves the dashboard HTML shell (static asset).
@@ -149,12 +151,21 @@ createdAt`.
 Validated floorplan document `{backgroundImage, zones[]}`; 500 with a clear
 message on invalid config; empty document when absent.
 
-**API-024 — `GET /firmware/<version>/firmware.bin?key=…`** `SHOULD` (R4)
+**API-024 — `GET /api/locations` and `POST /api/locations`** `MAY` (R5)
+`GET` returns `{locations, devices}` where `locations` is the current
+`deviceId → displayLocation` mapping and `devices` contains the latest
+dashboard rows plus `reportedLocation` and `configuredLocation`.
+`POST` accepts `{deviceId, location}`; a non-empty location saves the
+mapping, and an empty location clears it. Invalid JSON, invalid device IDs,
+and overlong locations are rejected with 400. Writes from non-local clients
+are rejected with 403 unless authenticated by a stronger deployment policy.
+
+**API-025 — `GET /firmware/<version>/firmware.bin?key=…`** `SHOULD` (R4)
 Serves staged firmware with correct `Content-Length`. Requires the SEC-016
 capability key (`?key=` query parameter) or operator Basic auth; anything
 else receives 401. Traversal-safe per SEC-010.
 
-**API-025 — Static file roots** `MUST`
+**API-026 — Static file roots** `MUST`
 Two roots, both traversal-safe (SEC-010), served with cache headers:
 - `GET /assets/…` — the packaged dashboard UI (HTML/CSS/JS shipped with
   the hub package).
@@ -163,7 +174,7 @@ Two roots, both traversal-safe (SEC-010), served with cache headers:
   route `/dashboard-assets/` and the flag `--asset-dir`; the rebuild should
   standardize on the shorter `/media/` contract.)
 
-**API-026 — Errors** `MUST`
+**API-027 — Errors** `MUST`
 Unknown paths → 404; malformed input → 400 with a plain message; handler
 exceptions → 500 without stack traces or path disclosure in the body.
 

@@ -12,7 +12,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 
 from iot_home.db import DEFAULT_DB_PATH, connect, init_db, latest_readings, reading_history
 from iot_home.floorplan import DEFAULT_FLOORPLAN_PATH, load_floorplan
-from iot_home.locations import DEFAULT_LOCATIONS_PATH, load_locations, mapped_location
+from iot_home.locations import DEFAULT_LOCATIONS_PATH, load_locations, mapped_location, save_locations
 
 
 def parse_args() -> argparse.Namespace:
@@ -110,6 +110,53 @@ def history_row_to_dict(row, locations: dict[str, str]) -> dict:
         "datetime": row["datetime"],
         "createdAt": row["created_at"],
     }
+
+
+def location_admin_row(row, stale_seconds: int, locations: dict[str, str]) -> dict:
+    current = row_to_dict(row, stale_seconds, locations)
+    device_id = current["deviceId"]
+    return {
+        **current,
+        "reportedLocation": row["location"],
+        "configuredLocation": locations.get(device_id),
+    }
+
+
+def location_payload(rows: list, stale_seconds: int, locations: dict[str, str]) -> dict:
+    mapped_devices = {
+        row["deviceId"]
+        for row in (location_admin_row(raw_row, stale_seconds, locations) for raw_row in rows)
+    }
+    devices = [location_admin_row(row, stale_seconds, locations) for row in rows]
+    for device_id, location in sorted(locations.items(), key=lambda item: item[1].lower()):
+        if device_id not in mapped_devices:
+            devices.append(
+                {
+                    "deviceId": device_id,
+                    "location": location,
+                    "reportedLocation": None,
+                    "configuredLocation": location,
+                    "firmwareVersion": None,
+                    "lastSeen": None,
+                    "online": False,
+                    "stale": False,
+                    "ageSeconds": None,
+                    "rssi": None,
+                    "status": "mapped only",
+                    "temperature": None,
+                    "humidity": None,
+                    "sensorType": None,
+                    "seq": None,
+                    "updatedAt": None,
+                    "observedAt": None,
+                }
+            )
+    return {"locations": locations, "devices": devices}
+
+
+def valid_client_address(value: str) -> bool:
+    client_ip = ipaddress.ip_address(value)
+    return client_ip.is_private or client_ip.is_loopback or client_ip.is_link_local
 
 
 def query_int(query: dict[str, list[str]], name: str, default: int) -> int:
@@ -218,6 +265,11 @@ def page() -> bytes:
       border-color: #9db7d8;
       background: #eaf2ff;
       color: #174ea6;
+    }
+    .toolbar-button.primary {
+      border-color: #9db7d8;
+      background: #174ea6;
+      color: #fff;
     }
     .grid {
       display: grid;
@@ -681,6 +733,64 @@ def page() -> bytes:
     .table-wrap th:nth-child(5) { width: 11%; }
     .table-wrap th:nth-child(6) { width: 15%; }
     .table-wrap th:nth-child(7) { width: 19%; }
+    .admin-view {
+      display: none;
+      margin-top: 18px;
+    }
+    .admin-view.active {
+      display: block;
+    }
+    .mapping-actions {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .mapping-status {
+      min-height: 20px;
+      color: var(--ink-soft);
+      font-size: 13px;
+    }
+    .mapping-status.error {
+      color: var(--red);
+    }
+    .mapping-status.ok {
+      color: var(--green);
+    }
+    .mapping-table input {
+      width: 100%;
+      min-height: 34px;
+      padding: 5px 8px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fff;
+      color: #17202a;
+      font: inherit;
+      font-size: 13px;
+    }
+    .mapping-table input:focus {
+      outline: 2px solid rgb(31 111 235 / 0.22);
+      outline-offset: 1px;
+    }
+    .mapping-table .device-id {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12px;
+      white-space: normal;
+      overflow-wrap: anywhere;
+    }
+    .mapping-table th:nth-child(1) { width: 23%; }
+    .mapping-table th:nth-child(2) { width: 24%; }
+    .mapping-table th:nth-child(3) { width: 15%; }
+    .mapping-table th:nth-child(4) { width: 14%; }
+    .mapping-table th:nth-child(5) { width: 14%; }
+    .mapping-table th:nth-child(6) { width: 10%; }
+    .row-actions {
+      display: flex;
+      gap: 6px;
+      justify-content: flex-end;
+      flex-wrap: wrap;
+    }
     .error {
       border-color: #f0b4ad;
       background: #fff7f5;
@@ -752,6 +862,7 @@ def page() -> bytes:
         <span class="pill" id="last-refresh">Waiting for data</span>
         <span class="pill view-status" id="view-status"></span>
         <button class="toolbar-button" id="rotation-toggle" type="button" aria-pressed="false">Pause Views</button>
+        <button class="toolbar-button primary" id="admin-toggle" type="button" aria-pressed="false">Manage Devices</button>
       </div>
     </header>
     <section class="grid summary" aria-label="Dashboard summary">
@@ -841,6 +952,33 @@ def page() -> bytes:
         </table>
       </div>
     </section>
+
+    <section class="panel admin-view" id="admin-view" aria-label="Device mapping admin">
+      <div class="panel-head">
+        <h2>Device Mappings</h2>
+        <div class="mapping-actions">
+          <span class="mapping-status" id="mapping-status">Loaded from local locations file</span>
+          <button class="toolbar-button" id="mapping-refresh" type="button">Refresh</button>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table class="mapping-table">
+          <thead>
+            <tr>
+              <th>Device</th>
+              <th>Display Location</th>
+              <th>Reported</th>
+              <th>Status</th>
+              <th>Firmware</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="mapping-rows">
+            <tr><td colspan="6" class="empty">No devices loaded.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
   </main>
   <script>
     const state = {
@@ -854,6 +992,8 @@ def page() -> bytes:
       floorplanZones: [],
       activeViewIndex: 0,
       rotationPaused: false,
+      adminOpen: false,
+      mappings: [],
     };
     const dashboardViews = [
       {key: "house", label: "House Diagram"},
@@ -959,7 +1099,21 @@ def page() -> bytes:
     }
 
     function rotateView() {
-      if (!state.rotationPaused) setActiveView(state.activeViewIndex + 1);
+      if (!state.rotationPaused && !state.adminOpen) setActiveView(state.activeViewIndex + 1);
+    }
+
+    function setAdminOpen(open) {
+      state.adminOpen = open;
+      const panel = document.getElementById("admin-view");
+      const toggle = document.getElementById("admin-toggle");
+      panel.classList.toggle("active", open);
+      toggle.setAttribute("aria-pressed", String(open));
+      toggle.textContent = open ? "Close Devices" : "Manage Devices";
+      if (open) {
+        setRotationPaused(true);
+        loadMappings();
+        panel.scrollIntoView({behavior: "smooth", block: "start"});
+      }
     }
 
     function average(rows, key) {
@@ -1151,6 +1305,117 @@ def page() -> bytes:
           tr.appendChild(td);
         });
         body.appendChild(tr);
+      }
+    }
+
+    function mappingStatus(message, kind = "") {
+      const status = document.getElementById("mapping-status");
+      status.className = `mapping-status ${kind}`.trim();
+      status.textContent = message;
+    }
+
+    function renderMappings(devices) {
+      const body = document.getElementById("mapping-rows");
+      body.replaceChildren();
+      if (!devices.length) {
+        body.innerHTML = '<tr><td colspan="6" class="empty">No devices loaded.</td></tr>';
+        return;
+      }
+
+      const sorted = [...devices].sort((a, b) => {
+        const aName = a.configuredLocation || a.location || a.reportedLocation || a.deviceId;
+        const bName = b.configuredLocation || b.location || b.reportedLocation || b.deviceId;
+        return aName.localeCompare(bName);
+      });
+
+      for (const row of sorted) {
+        const tr = document.createElement("tr");
+
+        const device = document.createElement("td");
+        device.className = "device-id";
+        device.textContent = row.deviceId;
+
+        const locationCell = document.createElement("td");
+        const input = document.createElement("input");
+        input.type = "text";
+        input.value = row.configuredLocation || row.location || "";
+        input.placeholder = row.reportedLocation || "UNMAPPED";
+        input.autocomplete = "off";
+        input.dataset.deviceId = row.deviceId;
+        locationCell.appendChild(input);
+
+        const reported = document.createElement("td");
+        reported.textContent = row.reportedLocation || "--";
+
+        const statusCell = document.createElement("td");
+        const [stateClass, stateText] = deviceState(row);
+        const status = document.createElement("span");
+        status.className = `status ${stateClass}`;
+        const dot = document.createElement("span");
+        dot.className = "dot";
+        status.append(dot, document.createTextNode(stateText));
+        statusCell.appendChild(status);
+
+        const firmware = document.createElement("td");
+        firmware.textContent = firmwareLabel(row.firmwareVersion);
+
+        const actions = document.createElement("td");
+        const actionWrap = document.createElement("div");
+        actionWrap.className = "row-actions";
+        const saveButton = document.createElement("button");
+        saveButton.className = "toolbar-button";
+        saveButton.type = "button";
+        saveButton.textContent = "Save";
+        saveButton.addEventListener("click", () => saveMapping(row.deviceId, input.value));
+        const clearButton = document.createElement("button");
+        clearButton.className = "toolbar-button";
+        clearButton.type = "button";
+        clearButton.textContent = "Clear";
+        clearButton.addEventListener("click", () => {
+          input.value = "";
+          saveMapping(row.deviceId, "");
+        });
+        actionWrap.append(saveButton, clearButton);
+        actions.appendChild(actionWrap);
+
+        tr.append(device, locationCell, reported, statusCell, firmware, actions);
+        body.appendChild(tr);
+      }
+    }
+
+    async function loadMappings() {
+      try {
+        mappingStatus("Loading mappings");
+        const response = await fetch("/api/locations", {cache: "no-store"});
+        if (!response.ok) throw new Error("Mapping API request failed");
+        const payload = await response.json();
+        state.mappings = Array.isArray(payload.devices) ? payload.devices : [];
+        renderMappings(state.mappings);
+        mappingStatus(`Loaded ${state.mappings.length} device mapping${state.mappings.length === 1 ? "" : "s"}`, "ok");
+      } catch (error) {
+        mappingStatus(error.message, "error");
+      }
+    }
+
+    async function saveMapping(deviceId, location) {
+      try {
+        mappingStatus("Saving mapping");
+        const response = await fetch("/api/locations", {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({deviceId, location}),
+        });
+        if (!response.ok) {
+          const text = await response.text();
+          throw new Error(text || "Mapping save failed");
+        }
+        const payload = await response.json();
+        state.mappings = Array.isArray(payload.devices) ? payload.devices : [];
+        renderMappings(state.mappings);
+        mappingStatus(location.trim() ? "Mapping saved" : "Mapping cleared", "ok");
+        refresh();
+      } catch (error) {
+        mappingStatus(error.message, "error");
       }
     }
 
@@ -1388,6 +1653,10 @@ def page() -> bytes:
     document.getElementById("rotation-toggle").addEventListener("click", () => {
       setRotationPaused(!state.rotationPaused);
     });
+    document.getElementById("admin-toggle").addEventListener("click", () => {
+      setAdminOpen(!state.adminOpen);
+    });
+    document.getElementById("mapping-refresh").addEventListener("click", loadMappings);
     setActiveView(0);
     setRotationPaused(false);
     refresh();
@@ -1476,11 +1745,90 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(payload)
             return
 
+        if parsed_path == "/api/locations":
+            try:
+                self.locations = load_locations(self.locations_path)
+            except ValueError as exc:
+                self.send_error(500, str(exc))
+                return
+            with connect(self.db_path) as conn:
+                init_db(conn)
+                rows = latest_readings(conn)
+            payload = json.dumps(
+                location_payload(rows, self.stale_seconds, self.locations)
+            ).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+            return
+
         self.send_error(404)
 
+    def do_POST(self) -> None:
+        parsed = urlparse(self.path)
+        if parsed.path != "/api/locations":
+            self.send_error(404)
+            return
+        if not valid_client_address(self.client_address[0]):
+            self.send_error(403)
+            return
+
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+        except ValueError:
+            self.send_error(400, "Invalid content length")
+            return
+        if length <= 0 or length > 4096:
+            self.send_error(400, "Invalid content length")
+            return
+
+        try:
+            body = self.rfile.read(length)
+            payload = json.loads(body.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            self.send_error(400, "Invalid JSON")
+            return
+
+        if not isinstance(payload, dict):
+            self.send_error(400, "Request body must be a JSON object")
+            return
+        device_id = str(payload.get("deviceId", "")).strip()
+        location = str(payload.get("location", "")).strip()
+        if not device_id or len(device_id) > 128:
+            self.send_error(400, "Invalid deviceId")
+            return
+        if len(location) > 80:
+            self.send_error(400, "Location is too long")
+            return
+
+        try:
+            self.locations = load_locations(self.locations_path)
+            if location:
+                self.locations[device_id] = location
+            else:
+                self.locations.pop(device_id, None)
+            save_locations(self.locations, self.locations_path)
+            self.locations = load_locations(self.locations_path)
+        except ValueError as exc:
+            self.send_error(400, str(exc))
+            return
+
+        with connect(self.db_path) as conn:
+            init_db(conn)
+            rows = latest_readings(conn)
+        payload_bytes = json.dumps(
+            location_payload(rows, self.stale_seconds, self.locations)
+        ).encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(payload_bytes)))
+        self.end_headers()
+        self.wfile.write(payload_bytes)
+
     def serve_firmware(self, parsed_path: str) -> None:
-        client_ip = ipaddress.ip_address(self.client_address[0])
-        if not (client_ip.is_private or client_ip.is_loopback or client_ip.is_link_local):
+        if not valid_client_address(self.client_address[0]):
             self.send_error(403)
             return
         self.serve_static_file(parsed_path, "/firmware/", self.firmware_dir)

@@ -6,6 +6,7 @@
 - Firmware `0.1.4-antirollback` requires OTA commands to include a SHA-256 checksum, a P-256 ECDSA firmware signature, a monotonic `buildNumber`, and a P-256 ECDSA metadata signature over the checksum/build/version/size tuple.
 - The OTA private signing key is local-only at `data/keys/ota_signing_key.pem`.
 - Firmware downloads may still use local HTTP because the device verifies the downloaded image hash and signature before applying it.
+- Dashboard password auth is intentionally disabled; dashboard pages and APIs are available to clients on the home network.
 - Dashboard `/firmware/...` responses are restricted to private, loopback, and link-local client addresses.
 
 ## Signed OTA

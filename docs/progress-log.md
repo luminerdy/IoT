@@ -2,6 +2,18 @@
 
 Use this file for dated accomplishments and important observations. Keep future tasks in `docs/implementation-plan.md` and durable decisions in `docs/decision-record.md`.
 
+## 2026-07-05
+
+### Scheduled Backup Check
+
+- Confirmed the unattended restic cron backup succeeded at `2026-07-05T02:15:01-05:00` and saved snapshot `2ba924d0`.
+- Restore-checked snapshot `2ba924d0` into a temporary `/tmp/iot-restic-restore-check-*` directory. The expected `IoT`, `config`, and `.config/restic` roots were present, and the scratch restore directory was removed after verification.
+- Ran `restic check --read-data-subset=1/100`; it completed with no repository errors.
+- Verified `mosquitto.service`, `iot-home-collector.service`, and `iot-home-dashboard.service` are active and enabled after the previous reboot.
+- Verified the dashboard API reports 21 devices, 21 online, 0 stale, 0 unmapped, and all 21 on `0.1.4-antirollback`.
+- Confirmed the USB bench ESP32 remains reachable as `/dev/ttyUSB0` and user `scotty` is in the `dialout` group.
+- Added `docs/operations-runbook.md` as the compact Phase 5 operations reference, including daily service/API checks, backup verification, runtime config publishing with admin MQTT credentials, OTA rollout guardrails, service recovery commands, and the add/replace sensor checklist.
+
 ## 2026-07-04
 
 ### CI And GitHub Access
@@ -44,6 +56,22 @@ Use this file for dated accomplishments and important observations. Keep future 
 - Verified live MQTT ACL behavior: fleet-user command delivery was blocked, admin command delivery worked, and fleet-user telemetry delivery still worked.
 - Confirmed after activation that `mosquitto.service`, `iot-home-collector.service`, and `iot-home-dashboard.service` are active, and the dashboard API reports 21 devices online, 0 stale, 0 unmapped, all on `0.1.4-antirollback`.
 - Updated `scripts/configure_mosquitto_lan.sh` to skip `mosquitto -t` when the installed Mosquitto build does not support config-test mode.
+
+### Dashboard Auth Removal
+
+- Removed dashboard Basic auth from `app/iot_home/dashboard.py` by local preference: anyone already on the home network may view the dashboard without a password.
+- Removed dashboard credential handling from `scripts/install_systemd_services.sh` so future service installs do not write unused `DASHBOARD_USERNAME` or `DASHBOARD_PASSWORD` entries.
+- Kept `/firmware/...` restricted to private, loopback, and link-local client addresses; ESP32 OTA downloads still use the existing local-network guard plus firmware hash/signature validation.
+- Reloaded the live dashboard service through systemd's `Restart=on-failure` path after non-interactive `systemctl restart` required authentication.
+- Verified unauthenticated loopback and LAN `/api/latest` access returns `200` after auth removal.
+
+### Reboot Resilience Check
+
+- Created a fresh post-hardening SQLite backup before reboot: `data/backups/iot-20260704T210906Z.sqlite.gz`.
+- Rebooted the Pi and verified `mosquitto.service`, `iot-home-collector.service`, and `iot-home-dashboard.service` came back active and enabled at boot.
+- Verified dashboard API access after reboot. `/api/latest` reported 21 devices, 21 online, 0 stale, 0 unmapped, and all 21 on `0.1.4-antirollback`.
+- Verified MQTT ACL behavior after reboot with isolated test topics: fleet-user command publish was not delivered, `iot-admin` command publish was delivered, and fleet-user telemetry publish was delivered.
+- End-of-day stop point: core hardening is live and reboot-tested. Pick up after the 2026-07-05 `02:15` CDT backup window by checking the restic log/snapshot and then move to floorplan/dashboard polish or compact operator runbooks.
 
 ### Version Mismatch OTA Trigger
 

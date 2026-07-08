@@ -151,7 +151,7 @@ Priority 1: Fleet Stability
 - Fix retained telemetry pollution by stopping retained telemetry publishes and/or deduping collector inserts on `(device_id, seq, datetime)`. Done for the 21 mapped devices with firmware `0.1.4-antirollback` and the live collector/database deployment on 2026-07-04.
 - Use collector-side desired firmware version checking to record deployment attempts on version mismatch; enable `--auto-ota` only after the exact staged firmware build has passed bench ESP32 validation.
 - Keep retained MQTT config/status state, SQLite device rows, and `config/locations.json` clean when devices are removed, replaced, or renamed.
-- Add a simple operator checklist for adding/replacing a sensor.
+- Add a simple operator checklist for adding/replacing a sensor. Done in `docs/operations-runbook.md` on 2026-07-05.
 
 Priority 2: Dashboard As The Daily Control Surface
 
@@ -167,7 +167,7 @@ Priority 3: Operations And Data Protection
 
 - Add SQLite backup/export workflow. Initial local backup script and S3-ready runbook are in place; a fresh local backup was restore-verified on 2026-07-02.
 - Add restore verification for at least one backup. Done for both local SQLite backup and latest restic S3 snapshot on 2026-07-02.
-- Add a compact operational runbook covering service status, logs, OTA rollout, config publish, and sensor replacement.
+- Add a compact operational runbook covering service status, logs, OTA rollout, config publish, and sensor replacement. Done in `docs/operations-runbook.md` on 2026-07-05.
 - Decide how much local runtime state should stay JSON files versus moving to SQLite tables.
 
 Priority 4: Security Hardening Without Fleet Disruption
@@ -175,7 +175,7 @@ Priority 4: Security Hardening Without Fleet Disruption
 - Keep signed OTA required for new firmware.
 - Pin the PlatformIO `espressif32` platform and add `platformio run` to CI so firmware compilation is checked, not only static analysis. Done on 2026-07-03.
 - Add MQTT ACL protection to the current port `1883` listener so shared credentials cannot publish fleet OTA/config commands. Done and live-activated on 2026-07-04.
-- Add a first dashboard access-control layer before treating the LAN as a trusted boundary. Basic auth done and live-activated on 2026-07-04.
+- Add a first dashboard access-control layer before treating the LAN as a trusted boundary. Basic auth was implemented and live-tested on 2026-07-04, then intentionally removed the same day so trusted home-network clients can view the dashboard without credentials.
 - Add signed OTA anti-rollback with a monotonic build number before the next feature firmware rollout. Done and rolled out to the 21 mapped devices on 2026-07-04.
 - Stage MQTT TLS and per-device ACL migration on the bench device first.
 - Add per-device credentials only after bench validation.

@@ -1,12 +1,9 @@
 from __future__ import annotations
 
 import argparse
-import base64
-import hmac
 import ipaddress
 import json
 import mimetypes
-import os
 from html import escape
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -53,37 +50,7 @@ def parse_args() -> argparse.Namespace:
         default=Path("data/dashboard-assets"),
         help="Directory served under /dashboard-assets/ for dashboard images.",
     )
-    parser.add_argument(
-        "--auth-username",
-        default=os.getenv("DASHBOARD_USERNAME"),
-        help="Optional dashboard Basic auth username. Also read from DASHBOARD_USERNAME.",
-    )
-    parser.add_argument(
-        "--auth-password",
-        default=os.getenv("DASHBOARD_PASSWORD"),
-        help="Optional dashboard Basic auth password. Also read from DASHBOARD_PASSWORD.",
-    )
     return parser.parse_args()
-
-
-def basic_auth_valid(header: str | None, username: str | None, password: str | None) -> bool:
-    if not username and not password:
-        return True
-    if not username or not password or not header or not header.startswith("Basic "):
-        return False
-
-    try:
-        decoded = base64.b64decode(header.removeprefix("Basic "), validate=True).decode("utf-8")
-    except (ValueError, UnicodeDecodeError):
-        return False
-
-    supplied_username, separator, supplied_password = decoded.partition(":")
-    if not separator:
-        return False
-    return hmac.compare_digest(supplied_username, username) and hmac.compare_digest(
-        supplied_password,
-        password,
-    )
 
 
 def parse_utc(value: str | None) -> datetime | None:
@@ -1440,16 +1407,10 @@ class Handler(BaseHTTPRequestHandler):
     stale_seconds: int = 120
     locations_path: Path = DEFAULT_LOCATIONS_PATH
     locations: dict[str, str] = {}
-    auth_username: str | None = None
-    auth_password: str | None = None
 
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
         parsed_path = parsed.path
-
-        if not parsed_path.startswith("/firmware/") and not self.authorized():
-            self.request_auth()
-            return
 
         if parsed_path == "/" or parsed_path == "/index.html":
             self.send_response(200)
@@ -1517,19 +1478,6 @@ class Handler(BaseHTTPRequestHandler):
 
         self.send_error(404)
 
-    def authorized(self) -> bool:
-        return basic_auth_valid(
-            self.headers.get("Authorization"),
-            self.auth_username,
-            self.auth_password,
-        )
-
-    def request_auth(self) -> None:
-        self.send_response(401)
-        self.send_header("WWW-Authenticate", 'Basic realm="IoT Home Dashboard"')
-        self.send_header("Content-Length", "0")
-        self.end_headers()
-
     def serve_firmware(self, parsed_path: str) -> None:
         client_ip = ipaddress.ip_address(self.client_address[0])
         if not (client_ip.is_private or client_ip.is_loopback or client_ip.is_link_local):
@@ -1575,8 +1523,6 @@ def main() -> None:
     Handler.locations_path = args.locations
     Handler.stale_seconds = args.stale_seconds
     Handler.locations = load_locations(args.locations)
-    Handler.auth_username = args.auth_username
-    Handler.auth_password = args.auth_password
     server = ThreadingHTTPServer((args.host, args.port), Handler)
     print(f"Dashboard listening on http://{args.host}:{args.port}")
     try:

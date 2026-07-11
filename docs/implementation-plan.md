@@ -148,6 +148,7 @@ Priority 1: Fleet Stability
 - Continue signed OTA rollout in small batches until the installed fleet is on `0.1.3-signed-ota` or newer. Done for the 21 mapped devices on 2026-07-01.
 - Keep the USB bench device reserved for firmware and feature validation before fleet rollout. No firmware build may go to fleet devices until the exact build has passed bench ESP32 testing.
 - Watch recovered/replaced devices across normal 10-minute report intervals.
+- Monitor the three attic sensors during the 2026-07-11 afternoon heat window. If `Attic` repeats the 2026-07-10 outage near the prior 137.5 F peak, inspect its power supply, regulator, wiring, and enclosure before considering firmware changes.
 - Fix retained telemetry pollution by stopping retained telemetry publishes and/or deduping collector inserts on `(device_id, seq, datetime)`. Done for the 21 mapped devices with firmware `0.1.4-antirollback` and the live collector/database deployment on 2026-07-04.
 - Use collector-side desired firmware version checking to record deployment attempts on version mismatch; enable `--auto-ota` only after the exact staged firmware build has passed bench ESP32 validation.
 - Keep retained MQTT config/status state, SQLite device rows, and `config/locations.json` clean when devices are removed, replaced, or renamed.
@@ -161,6 +162,7 @@ Priority 2: Dashboard As The Daily Control Surface
 - Tune local sensor overlay placement without committing private floorplan data.
 - Add a dashboard admin view for device/location mapping. Done on 2026-07-08 with local-network-only writes to `config/locations.json`.
 - Make graph grouping configurable if hard-coded groups become limiting.
+- Keep the dedicated Attic group, alphabetical device-card order, hottest-first Latest Readings, and 75 F / 100 F graph references covered by the dashboard presentation contract test. Added on 2026-07-10.
 - Keep suspect humidity flagging visible but non-disruptive.
 
 Priority 3: Operations And Data Protection

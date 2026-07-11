@@ -1,6 +1,6 @@
 # 12. Rebuild Roadmap
 
-Phased so the live fleet (21 devices) keeps reporting throughout. Each phase
+Phased so the live fleet (currently 23 devices) keeps reporting throughout. Each phase
 ends with its listed acceptance criteria green. Old and new components may
 run side by side (different systemd units / DB file) during migration.
 

@@ -24,7 +24,7 @@ curl -fsS http://127.0.0.1:8000/api/latest
 
 Expected normal state:
 
-- 21 mapped devices online.
+- 23 mapped devices online (current fleet size; adjust when devices are added or retired).
 - 0 stale devices.
 - 0 `UNMAPPED` rows.
 - All mapped devices on `0.1.4-antirollback` until the next validated firmware rollout.

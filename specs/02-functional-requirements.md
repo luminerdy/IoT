@@ -134,7 +134,9 @@ view, save, and clear these mappings without hand-editing the JSON file.
 **FR-030 — Latest view** `MUST`
 The dashboard shows, per device: location, temperature, humidity, RSSI,
 firmware version, online/offline/stale state, and last-seen age. Devices are
-ordered by location.
+ordered by location in the device-card view. The Latest Readings table is
+ordered by temperature descending (hottest first), with location as the
+tie-breaker, so thermal hotspots are immediately visible.
 
 **FR-031 — Stale detection** `MUST`
 A device marked online whose last observation is older than a configurable
@@ -143,6 +145,9 @@ threshold (default 1200 s) is displayed as **stale**, distinct from offline.
 **FR-032 — History view** `MUST`
 The dashboard charts temperature history for a selectable window (1–168 h,
 default 24 h), grouped by location groups, with per-group show/hide toggles.
+The standard groups are Inside, Outside, Attic, and Separate. A floorplan
+zone with type `attic`, or a location whose name begins with `Attic`, belongs
+to Attic and MUST NOT also appear in Inside or Separate.
 
 **FR-033 — Summary stats** `SHOULD`
 Aggregate tiles: devices online/total, stale count, min/max temperature.

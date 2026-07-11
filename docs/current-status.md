@@ -1,6 +1,6 @@
 # Current Status
 
-Last updated: 2026-07-08
+Last updated: 2026-07-10
 
 This is the first file to read after a reboot, context switch, or long pause.
 
@@ -12,7 +12,7 @@ The project is a local-first Raspberry Pi IoT system with MQTT, SQLite, a boot-e
 
 Phase 5: Fleet operations plus daily dashboard improvements
 
-Status: Phases 0 through 4 are complete for the current local-first system. Signed OTA hardening and signed build-number anti-rollback are validated on the USB-recoverable bench device, and all 21 mapped devices are on `0.1.4-antirollback`. The active work is Phase 5: fleet operations, dashboard maintenance workflows, backups, tests/CI, and staged security hardening.
+Status: Phases 0 through 4 are complete for the current local-first system. Signed OTA hardening and signed build-number anti-rollback are validated on the USB-recoverable bench device, and all 23 mapped devices are on `0.1.4-antirollback`. The active work is Phase 5: fleet operations, dashboard maintenance workflows, backups, tests/CI, and staged security hardening.
 
 ## Accomplished
 
@@ -80,13 +80,16 @@ Status: Phases 0 through 4 are complete for the current local-first system. Sign
 - Added a dashboard `Manage Devices` admin panel on 2026-07-08 for device/location mapping, with `/api/locations` read/save support and local-network-only writes to `config/locations.json`.
 - Checked backups on 2026-07-08: restic snapshot `a2980899` is present from the 02:15 cron run, `restic check` found no repository errors, the latest snapshot contains `data/iot.db`, `config/locations.json`, and `config/floorplan.json`, and the dumped database passed SQLite integrity check.
 - Added a daily local SQLite backup cron job at 02:05 CDT so `data/backups/iot-*.sqlite.gz` is refreshed before the 02:15 restic/S3 backup. Manually created and restore-verified `data/backups/iot-20260708T183106Z.sqlite.gz`.
+- Provisioned `AtticChimney` on 2026-07-09 and `Attic` on 2026-07-10, bringing the mapped fleet to 23 devices and the attic set to three sensors.
+- Added a dedicated Attic graph group, alphabetical device-card sorting, hottest-first Latest Readings, and graph reference lines at 75 F and 100 F.
+- Recorded an approximately 3 hour 12 minute `Attic` telemetry gap after a 137.5 F peak. The gap began before the Pi reboot and did not affect the other attic sensors; heat-related power or reboot instability remains a hypothesis to check during the next afternoon heat window.
 
 ## Live Dashboard State
 
-Latest dashboard API check on 2026-07-08 at about 13:30 CDT shows 21 mapped devices online, 0 stale, and 0 unmapped after the `0.1.4-antirollback` rollout, MQTT ACL activation, dashboard auth removal, Pi reboot, scheduled backup verification, and dashboard admin mapping deployment. All 21 mapped devices are on `0.1.4-antirollback`; 0 devices remain on `0.1.3-signed-ota`. The live dashboard also has the 1080p-fit rotation views, floorplan-derived graph groups, the laundry-room Inside override, the rotation pause/resume control, and the `Manage Devices` mapping panel loaded.
+Latest dashboard API check on 2026-07-10 shows 23 mapped devices, including `Attic`, `AtticChimney`, and `AtticDoor`, online and non-stale with no unmapped devices. All 23 mapped devices are on `0.1.4-antirollback`; 0 devices remain on `0.1.3-signed-ota`. The dashboard code includes the dedicated Attic graph group, alphabetical device cards, hottest-first Latest Readings, and 75 F / 100 F graph references.
 
-- Live fleet count: 21 online, 0 offline.
-- Anti-rollback firmware count: 21 devices on `0.1.4-antirollback`.
+- Live fleet count: 23 online, 0 offline at the latest check.
+- Anti-rollback firmware count: 23 devices on `0.1.4-antirollback`.
 - Remaining old firmware count: 0 devices on `0.1.3-signed-ota`.
 - `Sunroom` / `esp32-device-id`: online again after wire replacement; current sequence is increasing normally.
 - Current suspect humidity flag: `Porch` at `99.9%`.
@@ -103,7 +106,7 @@ Latest dashboard API check on 2026-07-08 at about 13:30 CDT shows 21 mapped devi
 1. Keep watching the `0.1.4-antirollback` fleet through normal telemetry intervals and recheck `/api/latest` plus collector logs if device status looks odd.
 2. Keep `Bench Device` (`esp32-device-id`) on `/dev/ttyUSB0` for firmware and feature validation before deploying to other devices; never push firmware to the fleet until the exact build has passed bench ESP32 testing.
 3. Use collector desired-version mismatch detection for deployment records; only enable `--auto-ota` after the exact staged firmware build has passed bench ESP32 validation.
-4. Provision the second attic ESP32 when available and place it in the intended graph group.
+4. Monitor all three attic sensors during the 2026-07-11 afternoon heat window; if `Attic` repeats its outage near the prior 137.5 F peak, inspect its power supply, regulator, wiring, and enclosure.
 5. Upload the actual house image under `data/dashboard-assets/`, set `backgroundImage` in local `config/floorplan.json`, and tune the existing sensor placement overlay.
 6. Keep backup checks in the daily routine: local SQLite export at 02:05, restic/S3 at 02:15, plus periodic restore checks.
 
@@ -140,7 +143,7 @@ Latest dashboard API check on 2026-07-08 at about 13:30 CDT shows 21 mapped devi
 - Dashboard URL on the Pi: `http://127.0.0.1:8000`; LAN URL: `http://iot-pi.local:8000` or `http://<pi-ip-address>:8000`.
 - Dashboard app: summary metrics, configurable house diagram, device cards, latest readings, `/api/history` trend data, and `/api/locations` mapping admin are in `app/iot_home/dashboard.py`. The diagram supports fallback built-in placements plus local `config/floorplan.json`; actual image assets should live under `data/dashboard-assets/` and be referenced as `/dashboard-assets/<file>`. The Temperature Graph selector is grouped into `Inside`, `Outside`, and `Separate`, with both group-level `All` checkboxes and individual device checkboxes. Grouping follows floorplan zone metadata where available, with a small Inside override for the laundry-room utility location. Outdoor DHT22 humidity at or above `99%` is flagged as suspect and excluded from average humidity.
 - Dashboard rotation: the main dashboard content now rotates every 5 seconds through House Diagram, Device List Grid, Temperature Graph, and Latest Readings. Normal port `8000` serves this rotating view. Use the `Pause Views` button to hold the current view for inspection; data refresh continues while rotation is paused.
-- Dashboard verification: normal port `8000` serves `/api/floorplan`, the suspect humidity flag, and the current floorplan placements. Latest live check on 2026-07-01 showed 21 mapped devices online, 0 stale, no `UNMAPPED` rows, and 21 devices on signed OTA. The stale-calculation fix for bad startup/NTP timestamps, 1080p-fit rotated views, floorplan-derived graph groups, laundry-room Inside override, AtticDoor Separate grouping, and pause/resume control are loaded on normal port `8000`.
+- Dashboard verification: normal port `8000` serves `/api/floorplan`, the suspect humidity flag, and the current floorplan placements. The latest check on 2026-07-10 showed 23 mapped devices online, 0 stale, no `UNMAPPED` rows, and all 23 on signed OTA. The dashboard code includes collector-receipt-time stale calculation, 1080p-fit rotated views, the dedicated Attic graph group, alphabetical device cards, hottest-first Latest Readings, 75 F / 100 F graph references, and pause/resume control.
 - Telemetry policy memory: ESP32s should read DHT22 frequently, reject impossible values and one-off large jumps, publish median-filtered temp/humidity every 600 seconds, and only publish early when filtered temperature differs by the configured threshold for 3 consecutive valid samples. Humidity is reported but does not trigger early publishes.
 - Latest live-tested OTA artifact: `data/firmware/0.1.4-antirollback/firmware.bin`; ignored by git because runtime/build artifacts stay local.
 - Current hardening state: MQTT ACLs, collector/database dedupe, non-retained telemetry firmware, signed OTA, and signed anti-rollback are live. Dashboard password auth is intentionally disabled; home-network clients may view the dashboard without credentials.

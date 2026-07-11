@@ -1013,12 +1013,17 @@ def page() -> bytes:
       {
         key: "inside",
         label: "Inside",
-        match: (location) => !isOutsideGraphLocation(location) && !isSeparateGraphLocation(location),
+        match: (location) => !isOutsideGraphLocation(location) && !isAtticGraphLocation(location) && !isSeparateGraphLocation(location),
       },
       {
         key: "outside",
         label: "Outside",
         match: isOutsideGraphLocation,
+      },
+      {
+        key: "attic",
+        label: "Attic",
+        match: isAtticGraphLocation,
       },
       {
         key: "separate",
@@ -1176,7 +1181,10 @@ def page() -> bytes:
         return;
       }
 
-      for (const row of rows) {
+      const sortedRows = [...rows].sort((a, b) =>
+        deviceLabel(a).localeCompare(deviceLabel(b), undefined, {sensitivity: "base"})
+      );
+      for (const row of sortedRows) {
         const card = document.createElement("article");
         card.className = "device";
 
@@ -1268,7 +1276,12 @@ def page() -> bytes:
         return;
       }
       body.replaceChildren();
-      for (const row of rows) {
+      const sortedRows = [...rows].sort((a, b) => {
+        const aTemp = typeof a.temperature === "number" ? a.temperature : Number.NEGATIVE_INFINITY;
+        const bTemp = typeof b.temperature === "number" ? b.temperature : Number.NEGATIVE_INFINITY;
+        return bTemp - aTemp || deviceLabel(a).localeCompare(deviceLabel(b));
+      });
+      for (const row of sortedRows) {
         const [stateClass, stateText] = deviceState(row);
         const tr = document.createElement("tr");
         const cells = [
@@ -1440,6 +1453,11 @@ def page() -> bytes:
       return separateGraphLocations.has(location) || zone?.type === "utility";
     }
 
+    function isAtticGraphLocation(location) {
+      const zone = floorplanZoneFor(location);
+      return zone?.type === "attic" || location.toLowerCase().startsWith("attic");
+    }
+
     function sortedDevices(rows) {
       const seen = new Map();
       for (const row of rows) {
@@ -1558,10 +1576,6 @@ def page() -> bytes:
     function renderTrend(rows) {
       const svg = document.getElementById("trend");
       svg.replaceChildren();
-      const grid = document.createElementNS("http://www.w3.org/2000/svg", "path");
-      grid.setAttribute("class", "axis");
-      grid.setAttribute("d", "M36 36H864M36 106H864M36 176H864");
-      svg.appendChild(grid);
       syncSelectedDevices([...state.latest, ...rows]);
       renderDeviceToggles([...state.latest, ...rows]);
       const selectedRows = rows.filter((row) => state.selectedDevices.has(row.deviceId));
@@ -1577,18 +1591,27 @@ def page() -> bytes:
         return;
       }
       const temps = selectedRows.map((row) => row.temperature).filter((value) => typeof value === "number");
-      const min = Math.floor(Math.min(...temps) - 1);
-      const max = Math.ceil(Math.max(...temps) + 1);
+      const min = Math.min(75, Math.floor(Math.min(...temps) - 1));
+      const max = Math.max(100, Math.ceil(Math.max(...temps) + 1));
       const times = selectedRows
         .map((row) => new Date(row.createdAt || row.datetime).getTime())
         .filter((time) => !Number.isNaN(time));
       const start = Math.min(...times);
       const end = Math.max(...times);
-      for (const value of [max, Math.round((min + max) / 2), min]) {
+      const referenceValues = [...new Set([max, 100, 75, min])].sort((a, b) => b - a);
+      for (const value of referenceValues) {
+        const y = 176 - ((value - min) / (max - min)) * 140;
+        const grid = document.createElementNS("http://www.w3.org/2000/svg", "line");
+        grid.setAttribute("class", "axis");
+        grid.setAttribute("x1", "36");
+        grid.setAttribute("x2", "864");
+        grid.setAttribute("y1", `${y}`);
+        grid.setAttribute("y2", `${y}`);
+        svg.appendChild(grid);
         const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
         label.setAttribute("class", "axis-label");
         label.setAttribute("x", "40");
-        label.setAttribute("y", `${180 - ((value - min) / (max - min)) * 140}`);
+        label.setAttribute("y", `${y + 4}`);
         label.textContent = `${value} F`;
         svg.appendChild(label);
       }

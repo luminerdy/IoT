@@ -2,6 +2,29 @@
 
 Use this file for dated accomplishments and important observations. Keep future tasks in `docs/implementation-plan.md` and durable decisions in `docs/decision-record.md`.
 
+## 2026-07-10
+
+### Third Attic Sensor And Dashboard Thermal View
+
+- Provisioned and mapped the third attic device as `Attic`, bringing the live mapped fleet to 23 devices and the attic set to `Attic`, `AtticChimney`, and `AtticDoor`; all three report firmware `0.1.4-antirollback`.
+- Added a distinct `Attic` Temperature Graph selector group. Locations in an `attic` floorplan zone or beginning with `Attic` are excluded from `Inside` and `Separate`.
+- Sorted Device List Grid cards alphabetically by display location and Latest Readings by temperature descending so the hottest locations appear first.
+- Changed the temperature graph to retain 75 F and 100 F reference lines while expanding its range for selected readings outside that span.
+- Observed the new `Attic` sensor peak at `137.5 F` around 15:21 CDT, stop reporting after 15:22, and return around 18:34 at `124.3 F`. The approximately 3 hour 12 minute gap began before the Pi reboot at 17:33 and was isolated from `AtticChimney` and `AtticDoor`. Repeated sequence resets before the gap indicate device reboot or power instability; heat is a plausible correlation, not yet a confirmed cause.
+- After recovery, the device advanced sequence numbers normally and remained online with good RSSI. Recheck during the 2026-07-11 afternoon heat window for a repeatable temperature/offline threshold.
+
+## 2026-07-09
+
+### AtticChimney ESP32 Provisioned
+
+- Reviewed `AtticDoor` telemetry from the two attic-door opening tests. The first opening around 12:21 CDT dropped the attic-door reading from about `109.9F` to `97.5F`; the second opening around 17:00 CDT dropped it from about `123.8F` to near `100F`.
+- Identified the new blank ESP32 on `/dev/ttyUSB0`; the existing flashed USB sensor remained on `/dev/ttyUSB1`.
+- USB-flashed firmware `0.1.4-antirollback` to the new ESP32.
+- Published retained default config: `reportIntervalSeconds=600`, `changeThresholdF=1.0`.
+- Mapped the new device to `AtticChimney` in local `config/locations.json` and added it to the local floorplan as a `utility` zone so it appears with the separate/utility graph group.
+- Restarted `iot-home-collector.service` and `iot-home-dashboard.service`.
+- Verified `AtticChimney` on `/api/latest`: online, non-stale, firmware `0.1.4-antirollback`, status `OK`, valid DHT22 telemetry, and no `UNMAPPED` devices.
+
 ## 2026-07-08
 
 ### Dashboard Admin Mapping

@@ -52,7 +52,7 @@ written.
 ## Dashboard
 
 **AC-010** (FR-030, API-021)
-Given 21 devices with recent readings, when `/api/latest` is called, then it
+Given the mapped fleet (currently 23 devices) with recent readings, when `/api/latest` is called, then it
 returns one entry per device with correct mapped locations, ordered by
 location, in < 200 ms.
 
@@ -89,6 +89,13 @@ loopback bind starts normally.
 Given a configured `FIRMWARE_DOWNLOAD_KEY`, then `/firmware/…?key=<correct>`
 and operator Basic auth each return the image; a wrong or missing key
 returns 401; the key comparison is constant-time.
+
+**AC-018** (FR-030, FR-032) *(added 2026-07-10)*
+Given current readings for inside, outside, attic, and separate/utility
+locations, when the dashboard renders, then device cards are alphabetical by
+display location, Latest Readings is hottest-first, and attic locations appear
+only in the Attic temperature-history group. The graph scale always includes
+75 F and 100 F reference lines while expanding to contain the selected data.
 
 ## Configuration (R3)
 

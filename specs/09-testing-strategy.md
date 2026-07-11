@@ -30,6 +30,12 @@ Prunes only rows older than the window; idempotent.
 **TEST-006 — Migrations** `MUST`
 Fresh DB and each prior schema version migrate to current; version recorded.
 
+**TEST-007 — Dashboard presentation contract** `SHOULD` (R5)
+Inspect the generated dashboard page for the location sort, hottest-first
+Latest Readings sort, distinct Attic history group, and fixed 75 F / 100 F
+graph references (FR-030, FR-032, AC-018). Exercise the rendered behavior in
+a browser after material JavaScript changes.
+
 ## 11.2 Firmware native tests (CI host, no hardware)
 
 **TEST-010 — Filter logic** `MUST`

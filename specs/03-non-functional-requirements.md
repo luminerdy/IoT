@@ -2,7 +2,7 @@
 
 **NFR-001 — Fleet scale** `MUST`
 All hub components operate correctly with 50 devices reporting at the
-minimum interval (10 s) without message loss. Design target: 21 devices at
+minimum interval (10 s) without message loss. Design target: 23 devices at
 600 s today.
 
 **NFR-002 — Hub hardware envelope** `MUST`

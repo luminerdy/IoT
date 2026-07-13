@@ -24,7 +24,6 @@
 #endif
 
 namespace {
-constexpr uint8_t LED_PIN = 2;
 constexpr uint8_t DHT_PIN = 15;
 constexpr uint8_t DHT_TYPE = DHT22;
 constexpr unsigned long WIFI_RETRY_MS = 500;
@@ -183,16 +182,6 @@ const char *resetReason()
       return "Brownout";
     default:
       return "Unknown";
-  }
-}
-
-void blink(unsigned int count, unsigned int delayMs)
-{
-  for (unsigned int i = 0; i < count; i++) {
-    digitalWrite(LED_PIN, HIGH);
-    delay(delayMs);
-    digitalWrite(LED_PIN, LOW);
-    delay(delayMs);
   }
 }
 
@@ -903,7 +892,6 @@ bool connectMqtt()
   );
   if (!connected) {
     Serial.printf("MQTT connect failed, state=%d\n", mqtt.state());
-    blink(1, 100);
     return false;
   }
 
@@ -985,7 +973,6 @@ void publishTelemetry(float temperatureF, float humidity)
     lastTemperatureF = temperatureF;
     lastReportMs = millis();
     consecutiveTempChangeSamples = 0;
-    blink(1, 50);
   }
 }
 }
@@ -994,7 +981,6 @@ void setup()
 {
   Serial.begin(115200);
   delay(1000);
-  pinMode(LED_PIN, OUTPUT);
   dht.begin();
 
   Serial.printf("Starting firmware %s\n", FIRMWARE_VERSION);

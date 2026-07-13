@@ -147,6 +147,8 @@ Priority 1: Fleet Stability
 
 - Continue signed OTA rollout in small batches until the installed fleet is on `0.1.3-signed-ota` or newer. Done for the 21 mapped devices on 2026-07-01.
 - Keep the USB bench device reserved for firmware and feature validation before fleet rollout. No firmware build may go to fleet devices until the exact build has passed bench ESP32 testing.
+- Complete the `0.1.5-led-off` rollout only after resolving or explicitly isolating MasterBedroom's frequent MQTT reconnects and incomplete OTA download. Current state: 7 of 23 devices updated; all 23 online and non-stale; rollout paused.
+- Require acknowledged `downloading → rebooting` OTA states and fresh target-version telemetry for every device before expanding a batch. Use the verified numeric Pi LAN address while ESP32 `.local` resolution remains unavailable.
 - Watch recovered/replaced devices across normal 10-minute report intervals.
 - Monitor the three attic sensors during the 2026-07-11 afternoon heat window. If `Attic` repeats the 2026-07-10 outage near the prior 137.5 F peak, inspect its power supply, regulator, wiring, and enclosure before considering firmware changes.
 - Fix retained telemetry pollution by stopping retained telemetry publishes and/or deduping collector inserts on `(device_id, seq, datetime)`. Done for the 21 mapped devices with firmware `0.1.4-antirollback` and the live collector/database deployment on 2026-07-04.

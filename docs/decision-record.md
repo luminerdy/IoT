@@ -193,3 +193,13 @@ This file records project architecture decisions and the reasoning behind them.
 **Reasoning:** The existing firmware signature authorizes the binary bytes, but does not prevent an old signed binary from being replayed later. The first anti-rollback rollout must still be accepted by `0.1.3-signed-ota`, so the binary signature remains unchanged. New firmware stores the highest booted build number in ESP32 NVS and rejects future OTA commands whose signed build number is less than or equal to that value.
 
 **Status:** Accepted and live-validated on 2026-07-04. `Sunroom Test` accepted `0.1.4-antirollback` build `2026070401`, rejected a signed lower-build rollback command with `firmware rollback rejected`, and the 21 mapped devices were rolled out in small batches.
+
+## DR-020: Disable Firmware-Driven Onboard LED Activity
+
+**Date:** 2026-07-12
+
+**Decision:** Do not drive the ESP32 onboard LED for telemetry publishes, MQTT connection failures, or reconnect attempts. Use MQTT status, telemetry, and the dashboard as the operational health indicators.
+
+**Reasoning:** The activity flash is too brief to provide useful diagnostic information and is disruptive at night. A scheduled quiet-hours implementation would add device-local time and policy complexity without improving observability. Existing remote status and telemetry provide a more durable health signal.
+
+**Status:** Implemented in signed firmware `0.1.5-led-off`, build `2026071201`. The exact build passed the USB bench gate and one full ten-minute telemetry interval. Seven of 23 devices are updated and healthy; rollout is paused while MasterBedroom's unrelated reconnect/download issue is investigated.

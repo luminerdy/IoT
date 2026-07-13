@@ -1,16 +1,23 @@
 # Session Handoff
 
-Last updated: 2026-07-10
+Last updated: 2026-07-12
 
 ## Current State
 
 The local-first IoT stack is running on the Pi. Mosquitto, the collector, and
-the dashboard are active. The live mapped fleet contains 23 devices on
-`0.1.4-antirollback`, including `Attic`, `AtticChimney`, and `AtticDoor`.
+the dashboard are active. All 23 mapped devices are online and non-stale.
+Seven devices are on `0.1.5-led-off`; 16 remain on `0.1.4-antirollback`.
 
-Uncommitted work adds a dedicated Attic graph group, alphabetical device-card
-sorting, hottest-first Latest Readings, and graph reference lines at 75 F and
-100 F. The specs, tests, and operating docs were updated with this behavior.
+The `0.1.5-led-off` firmware removes onboard LED flashes from telemetry and
+MQTT failure paths. The exact signed build `2026071201` passed a USB bench
+flash and full report interval on Sunroom Test, then reached Den, Kitchen,
+Office, FrontBedroom, Entryway, and Laundryroom successfully.
+
+The rollout is paused at MasterBedroom. It remains healthy on the old firmware
+but reconnects to MQTT frequently and did not complete OTA. ESP32 clients also
+failed to fetch through `iot-pi.local`; the successful batches used
+`http://<pi-lan-ip>:8000`. Require per-device `downloading → rebooting` status
+and fresh target-version telemetry before expanding future batches.
 
 ## Attic Observation To Follow Up
 
@@ -36,5 +43,5 @@ python3 -m compileall app scripts
 curl -fsS http://127.0.0.1:8000/api/latest
 ```
 
-The expected live state is 23 mapped devices, no `UNMAPPED` rows, and all
-three attic locations online when their most recent reports are fresh.
+The expected live state is 23 mapped devices, no `UNMAPPED` rows, 7 devices on
+`0.1.5-led-off`, 16 on `0.1.4-antirollback`, and all devices online/non-stale.

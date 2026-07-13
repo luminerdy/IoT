@@ -825,3 +825,11 @@ Use this file for dated accomplishments and important observations. Keep future 
   - `0.1.2-filtered-telemetry`: 13 devices.
 - `Sunroom` remained online after the wire replacement and had advanced to sequence 145.
 - `/api/floorplan` loaded the local configured zones; `backgroundImage` is still unset until the actual house image is uploaded.
+
+# LED-Off Firmware Rollout
+
+- Built and signed firmware `0.1.5-led-off` with anti-rollback build number `2026071201`; the staged and dashboard-served binaries matched SHA-256 `6f8caa48dc9f948c7d4e714a0645eeea66c731d53d62a4631f99076e347febf8`.
+- USB-flashed the exact build to `Sunroom Test` / `esp32-9c9c1fda3670` and verified it remained online and non-stale through a full ten-minute telemetry interval.
+- Rolled out successfully to `Den`, `Kitchen`, `Office`, `FrontBedroom`, `Entryway`, and `Laundryroom`; each returned online and non-stale on `0.1.5-led-off`.
+- Initial canary commands using `iot-pi.local` were acknowledged but could not reach the firmware endpoint. Retrying with the numeric Pi LAN address completed successfully.
+- Paused the rollout at `MasterBedroom`: it remains online and non-stale on `0.1.4-antirollback`, but repeated commands were missed during MQTT reconnects or stopped after `downloading`. Do not retry broadly until its connectivity/download path is checked. `Studio` and the rest of the fleet were intentionally left untouched after the batch pause.

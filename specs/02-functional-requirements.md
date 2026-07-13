@@ -92,6 +92,13 @@ so sentinel rows from successive quick reboots would otherwise collide on
 the dedupe key and be wrongly dropped. Accepted trade-off: a rare QoS-1
 redelivery of a pre-sync reading may store a duplicate row.
 
+**FR-016 — No activity LED** `MUST` *(added 2026-07-12)*
+Normal operation MUST NOT drive or blink the ESP32 onboard LED for telemetry
+publishes, MQTT connection failures, or reconnect attempts. Device health is
+reported through MQTT status, telemetry, and the dashboard instead of a local
+activity light. This requirement does not prohibit bootloader-controlled LED
+behavior during reset or physical USB flashing.
+
 ## 4.2 Hub — Collector
 
 **FR-020 — Subscription** `MUST`

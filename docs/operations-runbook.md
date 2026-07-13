@@ -27,7 +27,7 @@ Expected normal state:
 - 23 mapped devices online (current fleet size; adjust when devices are added or retired).
 - 0 stale devices.
 - 0 `UNMAPPED` rows.
-- All mapped devices on `0.1.4-antirollback` until the next validated firmware rollout.
+- During the paused LED-off rollout: 7 devices on `0.1.5-led-off`, 16 on `0.1.4-antirollback`, and 0 stale.
 
 ## Backup Check
 
@@ -128,9 +128,9 @@ Build and stage firmware:
 ```bash
 cd /home/scotty/IoT
 .venv/bin/pio run -d firmware
-PYTHONPATH=app python3 -m iot_home.publish_ota esp32-device-id 0.1.4-antirollback \
-  --base-url http://iot-pi.local:8000 \
-  --build-number 2026070401 \
+PYTHONPATH=app python3 -m iot_home.publish_ota esp32-device-id 0.1.5-led-off \
+  --base-url http://<pi-lan-ip>:8000 \
+  --build-number 2026071201 \
   --stage-only
 ```
 
@@ -138,16 +138,16 @@ Verify staged firmware is served:
 
 ```bash
 curl -s -o /tmp/iot-fw-test.bin -w '%{http_code} %{size_download}\n' \
-  http://127.0.0.1:8000/firmware/0.1.4-antirollback/firmware.bin
+  http://127.0.0.1:8000/firmware/0.1.5-led-off/firmware.bin
 ```
 
 Publish OTA only after bench validation:
 
 ```bash
 source /home/scotty/.config/iot-home/operator-credentials.env
-MQTT_USERNAME="$MQTT_ADMIN_USERNAME" MQTT_PASSWORD="$MQTT_ADMIN_PASSWORD" PYTHONPATH=app python3 -m iot_home.publish_ota esp32-device-id 0.1.4-antirollback \
-  --base-url http://iot-pi.local:8000 \
-  --build-number 2026070401
+MQTT_USERNAME="$MQTT_ADMIN_USERNAME" MQTT_PASSWORD="$MQTT_ADMIN_PASSWORD" PYTHONPATH=app python3 -m iot_home.publish_ota esp32-device-id 0.1.5-led-off \
+  --base-url http://<pi-lan-ip>:8000 \
+  --build-number 2026071201
 ```
 
 Watch status:
@@ -166,6 +166,13 @@ online telemetry on the target firmware version
 ```
 
 Roll out to the fleet in small batches. After each batch, verify `/api/latest` shows the expected firmware, no stale devices, and no `UNMAPPED` rows.
+
+For each target, actively observe both `downloading` and `rebooting`, then
+confirm fresh telemetry on the target version. If a command is missed, a
+terminal OTA status is absent, or the device does not converge, stop expanding
+the batch. Do not repeatedly hammer a reconnecting device. The July 12 rollout
+also showed that ESP32 clients could not resolve `iot-pi.local`; use the
+verified Pi LAN address for OTA until sensor-side mDNS resolution is proven.
 
 ## Add Or Replace A Sensor
 

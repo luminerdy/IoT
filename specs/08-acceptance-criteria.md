@@ -49,6 +49,12 @@ are stored — sentinel rows are exempt from de-duplication.
 Given telemetry lacking `seq`, then it is rejected and logged; no row is
 written.
 
+**AC-009a** (FR-016) *(added 2026-07-12)*
+Given the bench device running the release candidate, when it publishes
+telemetry and experiences an MQTT reconnect attempt, then firmware does not
+drive the onboard LED. Telemetry and connection status remain observable
+through MQTT and the dashboard.
+
 ## Dashboard
 
 **AC-010** (FR-030, API-021)
@@ -132,6 +138,13 @@ downloading, with reason indicating rollback protection.
 firmware rejected a signed lower-build command with
 `firmware rollback rejected`; AC-030/AC-031 equivalents were bench-run
 before the 21-device batch rollout.
+
+**AC-032a** (FR-016, TEST-043) *(added 2026-07-12)*
+Given the exact `0.1.5-led-off` binary on the USB bench device, when it remains
+online through a full configured report interval, then the next periodic
+telemetry arrives without firmware-driven LED activity. A fleet rollout may
+proceed only in acknowledged batches, and must pause when any device fails to
+reach a terminal OTA state and return online on the target version.
 
 **AC-045** (FR-046, DATA-010) *(added 2026-07-05)*
 Given a desired firmware version configured and a device reporting an

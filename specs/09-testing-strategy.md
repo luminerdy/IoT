@@ -109,4 +109,8 @@ device IDs) on every push (SEC-014).
 **TEST-043 — Rollout safety rule** `MUST`
 OTA rollouts proceed bench → 1 device → small batch → fleet, with telemetry
 observed at each step; the rule lives in the ops runbook and the rollout
-CLI prints it.
+CLI prints it. For each device, observe `downloading → rebooting` and confirm
+fresh dashboard telemetry on the target version. A missing terminal status or
+failure to converge pauses expansion of the rollout. Firmware-download URLs
+must be verified from the sensor network; use a reachable LAN address when
+`.local` name resolution is not available to ESP32 clients.

@@ -1,6 +1,6 @@
 # Current Status
 
-Last updated: 2026-07-10
+Last updated: 2026-07-12
 
 This is the first file to read after a reboot, context switch, or long pause.
 
@@ -12,7 +12,7 @@ The project is a local-first Raspberry Pi IoT system with MQTT, SQLite, a boot-e
 
 Phase 5: Fleet operations plus daily dashboard improvements
 
-Status: Phases 0 through 4 are complete for the current local-first system. Signed OTA hardening and signed build-number anti-rollback are validated on the USB-recoverable bench device, and all 23 mapped devices are on `0.1.4-antirollback`. The active work is Phase 5: fleet operations, dashboard maintenance workflows, backups, tests/CI, and staged security hardening.
+Status: Phases 0 through 4 are complete for the current local-first system. Signed OTA hardening and signed build-number anti-rollback are live. The `0.1.5-led-off` rollout is paused at 7 of 23 devices after MasterBedroom could not complete OTA; all 23 devices remain online and non-stale. The active work is Phase 5: fleet operations, dashboard maintenance workflows, backups, tests/CI, and staged security hardening.
 
 ## Accomplished
 
@@ -83,13 +83,19 @@ Status: Phases 0 through 4 are complete for the current local-first system. Sign
 - Provisioned `AtticChimney` on 2026-07-09 and `Attic` on 2026-07-10, bringing the mapped fleet to 23 devices and the attic set to three sensors.
 - Added a dedicated Attic graph group, alphabetical device-card sorting, hottest-first Latest Readings, and graph reference lines at 75 F and 100 F.
 - Recorded an approximately 3 hour 12 minute `Attic` telemetry gap after a 137.5 F peak. The gap began before the Pi reboot and did not affect the other attic sensors; heat-related power or reboot instability remains a hypothesis to check during the next afternoon heat window.
+- Removed firmware-driven onboard LED flashes from telemetry publishes and MQTT connection failures in `0.1.5-led-off` build `2026071201`.
+- Built, signed, staged, and USB-validated the exact `0.1.5-led-off` binary on `Sunroom Test`; it remained online and non-stale through a full ten-minute report interval.
+- Rolled `0.1.5-led-off` to Den, Kitchen, Office, FrontBedroom, Entryway, and Laundryroom. Together with Sunroom Test, 7 devices are online and non-stale on the new build.
+- Paused the rollout after MasterBedroom repeatedly missed OTA commands or stopped after `downloading`. It remains online/non-stale on `0.1.4-antirollback` but continues frequent MQTT disconnect/reconnect cycles. The remaining fleet was intentionally left on the prior firmware.
+- Confirmed ESP32 clients could not fetch the artifact through `iot-pi.local` during this rollout. The working OTA base URL used the numeric Pi LAN address `http://<pi-lan-ip>:8000`.
 
 ## Live Dashboard State
 
-Latest dashboard API check on 2026-07-10 shows 23 mapped devices, including `Attic`, `AtticChimney`, and `AtticDoor`, online and non-stale with no unmapped devices. All 23 mapped devices are on `0.1.4-antirollback`; 0 devices remain on `0.1.3-signed-ota`. The dashboard code includes the dedicated Attic graph group, alphabetical device cards, hottest-first Latest Readings, and 75 F / 100 F graph references.
+Latest dashboard API check on 2026-07-12 shows 23 mapped devices online and non-stale with no unmapped devices. Seven devices are on `0.1.5-led-off`; 16 remain on `0.1.4-antirollback`. The dashboard code includes the dedicated Attic graph group, alphabetical device cards, hottest-first Latest Readings, and 75 F / 100 F graph references.
 
 - Live fleet count: 23 online, 0 offline at the latest check.
-- Anti-rollback firmware count: 23 devices on `0.1.4-antirollback`.
+- LED-off firmware count: 7 devices on `0.1.5-led-off`.
+- Previous firmware count: 16 devices on `0.1.4-antirollback`.
 - Remaining old firmware count: 0 devices on `0.1.3-signed-ota`.
 - `Sunroom` / `esp32-device-id`: online again after wire replacement; current sequence is increasing normally.
 - Current suspect humidity flag: `Porch` at `99.9%`.
@@ -97,13 +103,14 @@ Latest dashboard API check on 2026-07-10 shows 23 mapped devices, including `Att
 
 ## Active Blockers
 
+- `0.1.5-led-off` rollout is paused at MasterBedroom. Diagnose its frequent MQTT reconnects and incomplete firmware download before resuming or skipping it in a later acknowledged batch.
 - The actual house image has not been uploaded yet. The dashboard is ready for it through `data/dashboard-assets/` plus `config/floorplan.json`.
 - The four-view rotating dashboard is active on normal port `8000`, including the pause/resume control, floorplan-derived Temperature Graph groups, 1080p-fit Device List Grid and Latest Readings views, collector-receipt-time stale calculation, and `Manage Devices` panel.
 - Live operator credentials for `iot-admin` are stored locally in `/home/scotty/.config/iot-home/operator-credentials.env` with mode `0600`. Dashboard Basic auth was removed on 2026-07-04; dashboard access is intentionally open to clients on the home network.
 
 ## Next Actions
 
-1. Keep watching the `0.1.4-antirollback` fleet through normal telemetry intervals and recheck `/api/latest` plus collector logs if device status looks odd.
+1. Keep the `0.1.5-led-off` rollout paused while diagnosing MasterBedroom's reconnect/download behavior; do not broaden OTA attempts without per-device terminal acknowledgments.
 2. Keep `Bench Device` (`esp32-device-id`) on `/dev/ttyUSB0` for firmware and feature validation before deploying to other devices; never push firmware to the fleet until the exact build has passed bench ESP32 testing.
 3. Use collector desired-version mismatch detection for deployment records; only enable `--auto-ota` after the exact staged firmware build has passed bench ESP32 validation.
 4. Monitor all three attic sensors during the 2026-07-11 afternoon heat window; if `Attic` repeats its outage near the prior 137.5 F peak, inspect its power supply, regulator, wiring, and enclosure.
@@ -145,5 +152,5 @@ Latest dashboard API check on 2026-07-10 shows 23 mapped devices, including `Att
 - Dashboard rotation: the main dashboard content now rotates every 5 seconds through House Diagram, Device List Grid, Temperature Graph, and Latest Readings. Normal port `8000` serves this rotating view. Use the `Pause Views` button to hold the current view for inspection; data refresh continues while rotation is paused.
 - Dashboard verification: normal port `8000` serves `/api/floorplan`, the suspect humidity flag, and the current floorplan placements. The latest check on 2026-07-10 showed 23 mapped devices online, 0 stale, no `UNMAPPED` rows, and all 23 on signed OTA. The dashboard code includes collector-receipt-time stale calculation, 1080p-fit rotated views, the dedicated Attic graph group, alphabetical device cards, hottest-first Latest Readings, 75 F / 100 F graph references, and pause/resume control.
 - Telemetry policy memory: ESP32s should read DHT22 frequently, reject impossible values and one-off large jumps, publish median-filtered temp/humidity every 600 seconds, and only publish early when filtered temperature differs by the configured threshold for 3 consecutive valid samples. Humidity is reported but does not trigger early publishes.
-- Latest live-tested OTA artifact: `data/firmware/0.1.4-antirollback/firmware.bin`; ignored by git because runtime/build artifacts stay local.
+- Latest live-tested OTA artifact: `data/firmware/0.1.5-led-off/firmware.bin`, build `2026071201`; ignored by git because runtime/build artifacts stay local.
 - Current hardening state: MQTT ACLs, collector/database dedupe, non-retained telemetry firmware, signed OTA, and signed anti-rollback are live. Dashboard password auth is intentionally disabled; home-network clients may view the dashboard without credentials.

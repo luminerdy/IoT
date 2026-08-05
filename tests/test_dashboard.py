@@ -13,3 +13,5 @@ def test_dashboard_page_keeps_attic_and_thermal_sorting_contract() -> None:
     assert "Math.min(75," in html
     assert "Math.max(100," in html
     assert "[max, 100, 75, min]" in html
+    assert 'id="pi-temperature"' in html
+    assert 'fetch("/api/system"' in html

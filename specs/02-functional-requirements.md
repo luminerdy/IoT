@@ -78,9 +78,13 @@ The device publishes OTA lifecycle states (`downloading`, `rejected`,
 
 **FR-014 — Network resilience** `MUST` `[CHANGE]`
 WiFi and MQTT reconnects use bounded retries with backoff. The device
-enables a hardware/task watchdog such that no network outage state can wedge
-the device; if connectivity cannot be restored within 15 minutes, the device
-reboots itself. (Current firmware spins forever in `connectWifi()`.)
+never waits indefinitely for WiFi or MQTT; if full connectivity cannot be
+restored within 15 minutes, the device records `network_timeout` in NVS and
+reboots itself. As a second recovery layer, each device performs a safety
+reboot after 7 days plus a deterministic device-ID-based offset of 0–24 hours,
+preventing the fleet from rebooting together. OTA application is not
+interrupted by either timer. The next successful telemetry reports the
+persisted recovery reason once, then clears it.
 
 **FR-015 — Time handling** `MUST`
 The device syncs time via NTP. Until sync succeeds, telemetry carries the
@@ -175,6 +179,11 @@ pegged at 99–100 %) are visually flagged, not hidden.
 **FR-037 — Firmware distribution** `SHOULD` (R4)
 The hub serves staged firmware images at stable URLs for device download,
 subject to SEC-007/SEC-008. Path traversal MUST be impossible (SEC-010).
+
+**FR-038 — Hub temperature monitoring** `SHOULD` *(added 2026-08-04)*
+The collector samples the Raspberry Pi CPU temperature every 600 seconds,
+stores the samples in SQLite, and the dashboard shows the latest value with
+its sample age so thermal conditions can be correlated with outages.
 
 ## 4.4 Hub — Operator tools
 

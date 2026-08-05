@@ -1,6 +1,6 @@
 # Current Status
 
-Last updated: 2026-07-12
+Last updated: 2026-08-05
 
 This is the first file to read after a reboot, context switch, or long pause.
 
@@ -12,7 +12,7 @@ The project is a local-first Raspberry Pi IoT system with MQTT, SQLite, a boot-e
 
 Phase 5: Fleet operations plus daily dashboard improvements
 
-Status: Phases 0 through 4 are complete for the current local-first system. Signed OTA hardening and signed build-number anti-rollback are live. The `0.1.5-led-off` rollout is paused at 7 of 23 devices after MasterBedroom could not complete OTA; all 23 devices remain online and non-stale. The active work is Phase 5: fleet operations, dashboard maintenance workflows, backups, tests/CI, and staged security hardening.
+Status: Phases 0 through 4 are complete for the current local-first system. Signed OTA hardening and signed build-number anti-rollback are live. Firmware `0.1.6-recovery` build `2026072401` was deployed to all 23 devices. `AtticChimney` is now temporarily retired pending safe physical replacement, leaving 22 active devices online and non-stale. The active work is Phase 5: fleet operations, dashboard maintenance workflows, backups, tests/CI, and staged security hardening.
 
 ## Accomplished
 
@@ -88,34 +88,66 @@ Status: Phases 0 through 4 are complete for the current local-first system. Sign
 - Rolled `0.1.5-led-off` to Den, Kitchen, Office, FrontBedroom, Entryway, and Laundryroom. Together with Sunroom Test, 7 devices are online and non-stale on the new build.
 - Paused the rollout after MasterBedroom repeatedly missed OTA commands or stopped after `downloading`. It remains online/non-stale on `0.1.4-antirollback` but continues frequent MQTT disconnect/reconnect cycles. The remaining fleet was intentionally left on the prior firmware.
 - Confirmed ESP32 clients could not fetch the artifact through `iot-pi.local` during this rollout. The working OTA base URL used the numeric Pi LAN address `http://<pi-lan-ip>:8000`.
+- Fixed and deployed the Pi3 external watchdog's first-recovery cooldown logic,
+  then completed a controlled end-to-end relay test on 2026-08-05. GPIO17
+  removed PiServer power for 15 seconds after the five-check test threshold,
+  PiServer booted successfully, and its core services returned active. The
+  production threshold is now 10 consecutive one-minute failures, with a
+  one-hour cooldown between actual relay cycles.
 
 ## Live Dashboard State
 
-Latest dashboard API check on 2026-07-12 shows 23 mapped devices online and non-stale with no unmapped devices. Seven devices are on `0.1.5-led-off`; 16 remain on `0.1.4-antirollback`. The dashboard code includes the dedicated Attic graph group, alphabetical device cards, hottest-first Latest Readings, and 75 F / 100 F graph references.
+The latest dashboard API check on 2026-08-05 shows 22 active mapped devices and
+one online `UNMAPPED` device, all online and non-stale on `0.1.6-recovery`. The
+dashboard code includes the dedicated Attic graph group, alphabetical device
+cards, hottest-first Latest Readings, and 75 F / 100 F graph references.
 
-- Live fleet count: 23 online, 0 offline at the latest check.
-- LED-off firmware count: 7 devices on `0.1.5-led-off`.
-- Previous firmware count: 16 devices on `0.1.4-antirollback`.
+Firmware `0.1.6-recovery` build `2026072401` passed the USB bench gate on
+2026-07-25. It replaces the blocking initial WiFi loop with bounded reconnect
+attempts, reboots after 15 minutes without full WiFi/MQTT connectivity, and
+adds a device-staggered 7–8 day safety reboot with a persisted one-shot
+`recoveryReason`. A bench-only MQTT proxy outage triggered the production
+15-minute `network_timeout` restart. A temporary 60–70 second safety interval
+triggered `weekly_safety`. Both tests returned automatically with
+`restartReason=Software`, reported the expected recovery reason once, and
+cleared it to `none` on the next successful telemetry. The real 7–8 day
+constants and direct production MQTT port were then restored and the exact
+production build was reflashed and reverified on `Sunroom Test`.
+
+- Live fleet count: 22 active mapped devices online, 0 offline, and 0 stale at
+  the latest check on 2026-08-05. One additional online device has returned as
+  `UNMAPPED`, consistent with the temporarily retired `AtticChimney` reporting
+  again.
+- Recovery firmware count: 22 active devices on `0.1.6-recovery` build `2026072401`, plus the temporarily retired `AtticChimney` device on the same build.
+- Previous firmware count: 0 devices.
 - Remaining old firmware count: 0 devices on `0.1.3-signed-ota`.
 - `Sunroom` / `esp32-device-id`: online again after wire replacement; current sequence is increasing normally.
 - Current suspect humidity flag: `Porch` at `99.9%`.
-- `UNMAPPED` count: 0.
+- `UNMAPPED` count: 1 online device at the latest check on 2026-08-05.
 
 ## Active Blockers
 
-- `0.1.5-led-off` rollout is paused at MasterBedroom. Diagnose its frequent MQTT reconnects and incomplete firmware download before resuming or skipping it in a later acknowledged batch.
+- MasterBedroom completed the `0.1.6-recovery` rollout in an isolated acknowledged attempt. Its power supply was replaced by the operator before the 2026-08-04 check; it is currently reporting normally, so the prior reconnect issue is no longer active unless it recurs.
+- `BunkHouse` also received replacement power before the 2026-08-04 check and is currently online and reporting normally; its prior long-offline issue is no longer active unless it recurs.
+- `AtticChimney` stopped reporting and was temporarily retired from the dashboard fleet on 2026-08-04 until it is safe to enter the attic and replace it. Historical readings were preserved.
 - The actual house image has not been uploaded yet. The dashboard is ready for it through `data/dashboard-assets/` plus `config/floorplan.json`.
 - The four-view rotating dashboard is active on normal port `8000`, including the pause/resume control, floorplan-derived Temperature Graph groups, 1080p-fit Device List Grid and Latest Readings views, collector-receipt-time stale calculation, and `Manage Devices` panel.
 - Live operator credentials for `iot-admin` are stored locally in `/home/scotty/.config/iot-home/operator-credentials.env` with mode `0600`. Dashboard Basic auth was removed on 2026-07-04; dashboard access is intentionally open to clients on the home network.
 
 ## Next Actions
 
-1. Keep the `0.1.5-led-off` rollout paused while diagnosing MasterBedroom's reconnect/download behavior; do not broaden OTA attempts without per-device terminal acknowledgments.
-2. Keep `Bench Device` (`esp32-device-id`) on `/dev/ttyUSB0` for firmware and feature validation before deploying to other devices; never push firmware to the fleet until the exact build has passed bench ESP32 testing.
-3. Use collector desired-version mismatch detection for deployment records; only enable `--auto-ota` after the exact staged firmware build has passed bench ESP32 validation.
-4. Monitor all three attic sensors during the 2026-07-11 afternoon heat window; if `Attic` repeats its outage near the prior 137.5 F peak, inspect its power supply, regulator, wiring, and enclosure.
-5. Upload the actual house image under `data/dashboard-assets/`, set `backgroundImage` in local `config/floorplan.json`, and tune the existing sensor placement overlay.
-6. Keep backup checks in the daily routine: local SQLite export at 02:05, restic/S3 at 02:15, plus periodic restore checks.
+1. Monitor the Pi3 watchdog with its production threshold of 10 consecutive
+   one-minute failures; investigate repeated recovery cycles rather than
+   relying on them to conceal a fault.
+2. Decide whether to remap or re-retire the online `UNMAPPED` device that
+   returned after the 2026-08-05 power-cycle test.
+3. Monitor the fleet after the completed `0.1.6-recovery` rollout; revisit MasterBedroom or BunkHouse only if connectivity trouble recurs after their power replacements.
+4. Keep `Bench Device` (`esp32-device-id`) on `/dev/ttyUSB0` for firmware and feature validation before deploying to other devices.
+5. Replace the temporarily retired `AtticChimney` device when attic access is safe.
+6. Use collector desired-version mismatch detection for deployment records; only enable `--auto-ota` after explicit rollout approval.
+7. Continue monitoring the two active attic sensors during high heat; if `Attic` repeats its outage near the prior 137.5 F peak, inspect its power supply, regulator, wiring, and enclosure.
+8. Upload the actual house image under `data/dashboard-assets/`, set `backgroundImage` in local `config/floorplan.json`, and tune the existing sensor placement overlay.
+9. Keep backup checks in the daily routine: local SQLite export at 02:05, restic/S3 at 02:15, plus periodic restore checks.
 
 ## Decisions To Revisit Soon
 
@@ -139,8 +171,12 @@ Latest dashboard API check on 2026-07-12 shows 23 mapped devices online and non-
 
 ## Stop Point
 
-- Afternoon 2026-07-08: scheduled restic snapshot `a2980899` is verified, restic repository check found no errors, a local SQLite backup cron job is installed for 02:05, local backup `data/backups/iot-20260708T183106Z.sqlite.gz` restore-check passed, services are active, and dashboard APIs report 21 online / 0 stale / 0 unmapped.
-- Local branch: `main`
+- Morning 2026-08-05: the Pi3 watchdog cooldown fix and complete relay recovery
+  path are validated. Production uses 10 consecutive one-minute failures, a
+  15-second power interruption, and a one-hour between-cycle cooldown. Core
+  PiServer services are active and enabled; the dashboard reports 22 active
+  mapped devices plus one online `UNMAPPED` device.
+- Local branch: `agent/disable-iot-led`
 - Latest local commit: run `git log -1 --oneline`.
 - Public GitHub repo: `luminerdy/IoT`
 - Merged PR: `https://github.com/luminerdy/IoT/pull/3`

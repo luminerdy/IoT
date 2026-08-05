@@ -3,8 +3,15 @@ import json
 
 import paho.mqtt.client as mqtt
 
-from iot_home.collector import maybe_trigger_deployment
+from iot_home.collector import maybe_trigger_deployment, read_pi_temperature_f
 from iot_home.db import connect, init_db
+
+
+def test_read_pi_temperature_f(tmp_path):
+    thermal_file = tmp_path / "temp"
+    thermal_file.write_text("53800\n", encoding="utf-8")
+
+    assert read_pi_temperature_f(thermal_file) == 128.8
 
 
 class FakePublishResult:

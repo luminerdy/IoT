@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import ssl
+import time
 from pathlib import Path
 
 import paho.mqtt.client as mqtt
@@ -17,6 +18,7 @@ from iot_home.db import (
     recent_deployment_attempt_exists,
     record_deployment_attempt,
     record_status,
+    record_system_metric,
     record_telemetry,
     update_deployment_attempt,
 )
@@ -66,7 +68,21 @@ def parse_args() -> argparse.Namespace:
         default=86400,
         help="Minimum seconds between deployment attempts for the same device and target version.",
     )
+    parser.add_argument(
+        "--pi-temperature-interval-seconds",
+        type=int,
+        default=600,
+        help="Seconds between Raspberry Pi CPU temperature samples (default: 600).",
+    )
     return parser.parse_args()
+
+
+PI_TEMPERATURE_PATH = Path("/sys/class/thermal/thermal_zone0/temp")
+
+
+def read_pi_temperature_f(path: Path = PI_TEMPERATURE_PATH) -> float:
+    celsius = float(path.read_text(encoding="utf-8").strip()) / 1000.0
+    return round((celsius * 9 / 5) + 32, 1)
 
 
 def validate_telemetry(payload: dict) -> None:
@@ -212,8 +228,28 @@ def main() -> None:
     client.on_connect = on_connect
     client.on_message = on_message
     client.connect(args.broker, args.port, keepalive=60)
+    temperature_interval = max(10, args.pi_temperature_interval_seconds)
+    next_temperature_sample = 0.0
     try:
-        client.loop_forever()
+        while True:
+            result = client.loop(timeout=1.0)
+            if result != mqtt.MQTT_ERR_SUCCESS:
+                LOG.warning("MQTT loop stopped with code %s; reconnecting", result)
+                time.sleep(1)
+                try:
+                    client.reconnect()
+                except OSError:
+                    LOG.exception("MQTT reconnect failed")
+                    time.sleep(4)
+            now = time.monotonic()
+            if now >= next_temperature_sample:
+                next_temperature_sample = now + temperature_interval
+                try:
+                    temperature_f = read_pi_temperature_f()
+                    record_system_metric(conn, "pi_cpu_temperature_f", temperature_f)
+                    LOG.info("Pi CPU temperature %.1f F", temperature_f)
+                except (OSError, ValueError):
+                    LOG.exception("Failed to sample Pi CPU temperature")
     except KeyboardInterrupt:
         LOG.info("Collector stopped")
     finally:

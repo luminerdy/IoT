@@ -57,6 +57,16 @@ CREATE TABLE IF NOT EXISTS deployment_attempts (
 
 CREATE INDEX IF NOT EXISTS idx_deployment_attempts_device_created
 ON deployment_attempts (device_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS system_metrics (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    metric TEXT NOT NULL,
+    value REAL NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_system_metrics_metric_created
+ON system_metrics (metric, created_at DESC);
 """
 
 
@@ -274,6 +284,27 @@ def update_deployment_attempt(
             """,
             (status, rollout_id, message, attempt_id),
         )
+
+
+def record_system_metric(conn: sqlite3.Connection, metric: str, value: float) -> None:
+    with conn:
+        conn.execute(
+            "INSERT INTO system_metrics (metric, value) VALUES (?, ?)",
+            (metric, float(value)),
+        )
+
+
+def latest_system_metric(conn: sqlite3.Connection, metric: str) -> sqlite3.Row | None:
+    return conn.execute(
+        """
+        SELECT metric, value, created_at
+        FROM system_metrics
+        WHERE metric = ?
+        ORDER BY created_at DESC, id DESC
+        LIMIT 1
+        """,
+        (metric,),
+    ).fetchone()
 
 
 def latest_readings(conn: sqlite3.Connection) -> list[sqlite3.Row]:

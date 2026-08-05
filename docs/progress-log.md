@@ -1,5 +1,39 @@
 # Progress Log
 
+## 2026-08-05
+
+- Fixed the Pi3 watchdog's initial-cooldown bug so the first qualified recovery
+  is immediately eligible and the one-hour cooldown applies only between actual
+  relay cycles. All 34 Python tests passed, and the installed Pi3 script matched
+  the tested local checksum.
+- Completed a controlled end-to-end PiServer recovery test. After five
+  consecutive failed checks, the Pi3 activated BCM GPIO17 at 08:04:50 CDT,
+  removed target power for 15 seconds, and restored it. PiServer booted at
+  08:05:19; Mosquitto, the collector, and the dashboard returned active and
+  enabled, and the Pi3 reported the target healthy at 08:05:44.
+- Changed the live production threshold from the five-check test setting to 10
+  consecutive one-minute failures. Verified
+  `WATCHDOG_FAILURES_BEFORE_RECOVERY=10`, an active and enabled watchdog
+  service, and GPIO17 output-low at idle. Retained the 15-second relay-off time
+  and one-hour cooldown between actual relay cycles.
+- The post-recovery dashboard check reported 23 online, non-stale records on
+  `0.1.6-recovery`: 22 active mapped devices and one `UNMAPPED` device,
+  consistent with the temporarily retired `AtticChimney` reporting again.
+
+## 2026-08-04
+
+- Temporarily retired `AtticChimney` from the active dashboard fleet until attic access is safe and the device can be replaced. Removed its ignored local location and floorplan entries and its current `devices` row while preserving all 463 historical readings. Created verified pre-change backup `data/backups/iot-20260804T125801Z.sqlite.gz`.
+- Recorded that the operator replaced power for `MasterBedroom`. The live 2026-08-04 check shows it online, fresh, and reporting normally on `0.1.6-recovery`; treat the earlier reconnect problem as resolved unless it recurs.
+- Recorded that the operator also replaced power for `BunkHouse`. The live 2026-08-04 check shows it online, fresh, and reporting normally on `0.1.6-recovery`; treat the earlier long-offline problem as resolved unless it recurs.
+- Set up a Raspberry Pi 3 as the external PiServer watchdog. The local SSH alias
+  is `pi-watchdog`, using a dedicated SSH identity. The Pi3 runs an enabled and
+  active `pi-watchdog.service`, watches PiServer through its private LAN
+  address, and has relay control enabled on BCM GPIO17 for a Digital Loggers
+  IoT Relay. That relay accepts a direct 3.3 V GPIO signal plus ground and does
+  not require an external resistor or driver.
+- Observed a real PiServer-unreachable interval from 21:13 through 21:23. The Pi3 correctly detected 11 failed checks and saw PiServer recover at 21:24, but did not activate the relay. The cause is a watchdog cooldown bug: `last_recovery = 0.0` combined with monotonic uptime prevents the first recovery until the Pi3 has been up for one hour. The Pi3 had booted at 20:33, so the five-failure threshold at 21:17 was still inside that unintended startup block.
+- Left the watchdog running overnight so a later test can exercise relay recovery after the one-hour restriction has elapsed. Scheduled the one-time user timer `iot-watchdog-morning-check.timer` for 2026-08-05 07:00 CDT. It runs `tools/morning_watchdog_check.sh` read-only and writes `data/watchdog-morning-check-2026-08-05.txt` with both machines' uptime, service health, GPIO17 state, and watchdog recovery logs.
+
 Use this file for dated accomplishments and important observations. Keep future tasks in `docs/implementation-plan.md` and durable decisions in `docs/decision-record.md`.
 
 ## 2026-07-10
@@ -833,3 +867,70 @@ Use this file for dated accomplishments and important observations. Keep future 
 - Rolled out successfully to `Den`, `Kitchen`, `Office`, `FrontBedroom`, `Entryway`, and `Laundryroom`; each returned online and non-stale on `0.1.5-led-off`.
 - Initial canary commands using `iot-pi.local` were acknowledged but could not reach the firmware endpoint. Retrying with the numeric Pi LAN address completed successfully.
 - Paused the rollout at `MasterBedroom`: it remains online and non-stale on `0.1.4-antirollback`, but repeated commands were missed during MQTT reconnects or stopped after `downloading`. Do not retry broadly until its connectivity/download path is checked. `Studio` and the rest of the fleet were intentionally left untouched after the batch pause.
+# 2026-07-24
+
+## Unattended Device Recovery
+
+- Added firmware `0.1.6-recovery` build `2026072401` for difficult-to-access
+  sensors.
+- Replaced the indefinitely blocking initial WiFi connection loop with bounded
+  reconnect attempts.
+- Added a recovery reboot after 15 continuous minutes without both WiFi and
+  MQTT, plus a deterministic device-staggered safety reboot after 7–8 days.
+- Persisted `network_timeout` or `weekly_safety` across the restart so the next
+  successful telemetry reports the cause once.
+- Kept recovery timers outside the synchronous OTA application path so they
+  cannot interrupt an update.
+- Built successfully, passed all 30 Python tests and PlatformIO static analysis,
+  and USB-flashed `/dev/ttyUSB0`. The uploader confirmed MAC
+  `<bench-mac>`, matching `Sunroom Test` / `esp32-device-id`.
+- Verified Sunroom Test returned online and non-stale on `0.1.6-recovery`,
+  publishing fresh DHT22 telemetry after the flash.
+
+# 2026-07-25
+
+## Recovery Firmware Bench Gate
+
+- Isolated only `Sunroom Test` from MQTT by temporarily flashing a build pointed
+  at a user-owned TCP proxy on port `1884`; the production broker and fleet
+  remained online.
+- Held the MQTT path down continuously for the production 15-minute interval.
+  The device logged `Recovery restart requested: network_timeout` and rebooted.
+- Restored the proxy and verified automatic MQTT recovery. The first telemetry
+  reported `restartReason=Software` and `recoveryReason=network_timeout`; the
+  next successful telemetry reported `recoveryReason=none`.
+- Temporarily shortened the safety interval to 60–70 seconds on the USB bench
+  device. It rebooted with `weekly_safety`, returned automatically, reported
+  the reason once, and cleared it on the next telemetry.
+- Restored the real 7–8 day safety constants and direct MQTT port `1883`, then
+  rebuilt and USB-flashed the exact production `0.1.6-recovery` build
+  `2026072401`.
+- Recorded production firmware SHA-256
+  `56db51afdd3d3e05c3e2741ea90ee6143046b332de19774f317c634b432b8704`.
+- Verified fresh production telemetry from `Sunroom Test` with
+  `recoveryReason=none`.
+- Final checks passed: PlatformIO build, 30 Python tests, and PlatformIO static
+  analysis with only the existing five low-level style notices.
+
+# 2026-08-01
+
+## Backup Verification And Recovery Firmware Rollout
+
+- Verified the scheduled 02:05 local SQLite backup
+  `data/backups/iot-20260801T070501Z.sqlite.gz` by restoring it and running
+  `PRAGMA integrity_check;`; the result was `ok`.
+- Verified the scheduled 02:15 restic/S3 snapshot `b4d60733`, confirmed it
+  contains `data/iot.db` and the current local SQLite archive, and completed
+  `restic check --read-data-subset=1/100` with no errors.
+- Staged and served the bench-validated `0.1.6-recovery` build `2026072401`;
+  the served binary matched SHA-256
+  `56db51afdd3d3e05c3e2741ea90ee6143046b332de19774f317c634b432b8704`.
+- Rolled the firmware out in acknowledged batches. Each device either reported
+  `downloading` then `rebooting`, or was confirmed at build `2026072401` by an
+  anti-rollback rejection on a retry.
+- Retried Kitchen after its first command was missed and confirmed a complete
+  acknowledged update. Updated MasterBedroom alone; it completed
+  `downloading` then `rebooting` successfully.
+- Final dashboard verification showed 23 devices online, 0 stale, 0 unmapped,
+  and all 23 on `0.1.6-recovery`. Mosquitto, collector, and dashboard services
+  remained active with no recent warning-level logs.

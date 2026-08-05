@@ -29,6 +29,42 @@ Expected normal state:
 - 0 `UNMAPPED` rows.
 - During the paused LED-off rollout: 7 devices on `0.1.5-led-off`, 16 on `0.1.4-antirollback`, and 0 stale.
 
+Firmware `0.1.6-recovery` adds two unattended recovery paths for difficult-to-access
+devices:
+
+- A device that cannot restore both WiFi and MQTT for 15 continuous minutes
+  records `network_timeout` and reboots.
+- A healthy device performs a staggered safety reboot every 7–8 days. The
+  device ID determines the offset so the fleet does not reboot together.
+- The first successful telemetry after either recovery includes
+  `recoveryReason`; it is cleared after that publish. `restartReason` continues
+  to report the ESP32 hardware reset classification.
+- OTA download and application are synchronous, so recovery timers are not
+  evaluated in the middle of an update.
+
+Treat repeated `network_timeout`, watchdog, panic, or brownout reasons as a
+fault to investigate rather than relying on rebooting to conceal it.
+
+## Pi3 External Watchdog
+
+The external Raspberry Pi 3 is available through the `pi-watchdog` SSH alias.
+Its `pi-watchdog.service` checks PiServer once per minute and requires the
+gateway to remain reachable while PiServer ping, SSH, and dashboard checks all
+fail. Production relay recovery occurs after 10 consecutive failed checks.
+GPIO17 removes PiServer power for 15 seconds, then returns low to restore power.
+A one-hour cooldown applies between actual relay cycles; the first qualified
+recovery after watchdog startup is immediately eligible.
+
+Use read-only checks first:
+
+```bash
+ssh pi-watchdog 'systemctl is-active pi-watchdog.service; systemctl is-enabled pi-watchdog.service; pinctrl get 17; journalctl -u pi-watchdog.service --since "30 minutes ago" --no-pager'
+```
+
+Do not manually toggle GPIO17 or initiate a PiServer shutdown merely to test the
+watchdog without explicit approval. Investigate repeated relay recoveries as a
+system, power, or network fault.
+
 ## Backup Check
 
 Scheduled backups:

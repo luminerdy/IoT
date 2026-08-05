@@ -2,12 +2,26 @@ from iot_home.db import (
     connect,
     init_db,
     latest_readings,
+    latest_system_metric,
     reading_history,
     recent_deployment_attempt_exists,
     record_deployment_attempt,
     record_status,
+    record_system_metric,
     record_telemetry,
 )
+
+
+def test_record_and_read_latest_system_metric(tmp_path):
+    db_path = tmp_path / "iot.db"
+    with connect(db_path) as conn:
+        init_db(conn)
+        record_system_metric(conn, "pi_cpu_temperature_f", 121.5)
+        record_system_metric(conn, "pi_cpu_temperature_f", 123.1)
+        row = latest_system_metric(conn, "pi_cpu_temperature_f")
+
+    assert row is not None
+    assert row["value"] == 123.1
 
 
 def test_record_telemetry_updates_latest_device_state(tmp_path):

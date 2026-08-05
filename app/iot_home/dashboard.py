@@ -10,7 +10,14 @@ from pathlib import Path
 from datetime import UTC, datetime
 from urllib.parse import parse_qs, unquote, urlparse
 
-from iot_home.db import DEFAULT_DB_PATH, connect, init_db, latest_readings, reading_history
+from iot_home.db import (
+    DEFAULT_DB_PATH,
+    connect,
+    init_db,
+    latest_readings,
+    latest_system_metric,
+    reading_history,
+)
 from iot_home.floorplan import DEFAULT_FLOORPLAN_PATH, load_floorplan
 from iot_home.locations import DEFAULT_LOCATIONS_PATH, load_locations, mapped_location, save_locations
 
@@ -860,6 +867,7 @@ def page() -> bytes:
       <div class="toolbar">
         <span class="pill" id="connection"><span class="dot"></span> Connecting</span>
         <span class="pill" id="last-refresh">Waiting for data</span>
+        <span class="pill" id="pi-temperature">Pi --</span>
         <span class="pill view-status" id="view-status"></span>
         <button class="toolbar-button" id="rotation-toggle" type="button" aria-pressed="false">Pause Views</button>
         <button class="toolbar-button primary" id="admin-toggle" type="button" aria-pressed="false">Manage Devices</button>
@@ -994,6 +1002,7 @@ def page() -> bytes:
       rotationPaused: false,
       adminOpen: false,
       mappings: [],
+      system: null,
     };
     const dashboardViews = [
       {key: "house", label: "House Diagram"},
@@ -1168,6 +1177,17 @@ def page() -> bytes:
       const avgHumidity = trustedAverage(rows, "humidity", (row) => !isHumiditySuspect(row));
       setText("avg-humidity", avgHumidity === null ? "--" : fmt(avgHumidity, "%"));
       setText("avg-rssi", average(rows, "rssi") === null ? "--" : fmt(average(rows, "rssi"), " dBm"));
+    }
+
+    function renderSystemMetric(metric) {
+      const element = document.getElementById("pi-temperature");
+      if (!metric || typeof metric.temperatureF !== "number") {
+        element.textContent = "Pi --";
+        element.title = "No Raspberry Pi temperature sample available";
+        return;
+      }
+      element.textContent = `Pi ${metric.temperatureF.toFixed(1)} F`;
+      element.title = `CPU temperature sampled ${metric.ageSeconds ?? "?"} seconds ago`;
     }
 
     function renderDevices(rows) {
@@ -1643,20 +1663,23 @@ def page() -> bytes:
 
     async function refresh() {
       try {
-        const [latestResponse, historyResponse, floorplanResponse] = await Promise.all([
+        const [latestResponse, historyResponse, floorplanResponse, systemResponse] = await Promise.all([
           fetch("/api/latest", {cache: "no-store"}),
           fetch(`/api/history?hours=${state.hours}&limit=50000`, {cache: "no-store"}),
           fetch("/api/floorplan", {cache: "no-store"}),
+          fetch("/api/system", {cache: "no-store"}),
         ]);
-        if (!latestResponse.ok || !historyResponse.ok || !floorplanResponse.ok) {
+        if (!latestResponse.ok || !historyResponse.ok || !floorplanResponse.ok || !systemResponse.ok) {
           throw new Error("Dashboard API request failed");
         }
         state.latest = await latestResponse.json();
         state.history = await historyResponse.json();
         const floorplan = await floorplanResponse.json();
+        state.system = await systemResponse.json();
         state.floorplanBackgroundImage = floorplan.backgroundImage || null;
         state.floorplanZones = Array.isArray(floorplan.zones) ? floorplan.zones : [];
         renderSummary(state.latest);
+        renderSystemMetric(state.system);
         renderFloorplan(state.latest);
         renderDevices(state.latest);
         render(state.latest);
@@ -1761,6 +1784,32 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_error(500, str(exc))
                 return
             payload = json.dumps(floorplan).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+            return
+
+        if parsed_path == "/api/system":
+            with connect(self.db_path) as conn:
+                init_db(conn)
+                row = latest_system_metric(conn, "pi_cpu_temperature_f")
+            if row is None:
+                result = {"temperatureF": None, "sampledAt": None, "ageSeconds": None}
+            else:
+                sampled_at = parse_utc(row["created_at"])
+                age_seconds = (
+                    int((datetime.now(UTC) - sampled_at).total_seconds())
+                    if sampled_at
+                    else None
+                )
+                result = {
+                    "temperatureF": row["value"],
+                    "sampledAt": row["created_at"],
+                    "ageSeconds": age_seconds,
+                }
+            payload = json.dumps(result).encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(payload)))

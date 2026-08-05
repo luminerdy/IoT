@@ -103,6 +103,11 @@ display location, Latest Readings is hottest-first, and attic locations appear
 only in the Attic temperature-history group. The graph scale always includes
 75 F and 100 F reference lines while expanding to contain the selected data.
 
+**AC-019** (FR-038, DATA-011) *(added 2026-08-04)*
+Given the collector is running on the Pi, then it records CPU temperature at
+600-second intervals and `/api/system` exposes the latest value and sample age;
+the dashboard displays that value in its header.
+
 ## Configuration (R3)
 
 **AC-020** (FR-009, API-012)
@@ -190,3 +195,11 @@ and the dashboard recovers without intervention.
 **AC-044** (FR-014, NFR-006)
 Given the WiFi AP goes down for 20 minutes and comes back, then every bench
 device resumes reporting without manual power-cycling.
+
+**AC-044a** (FR-014, NFR-006) *(added 2026-07-24)*
+Given a bench device cannot restore WiFi or MQTT for 15 minutes, then it
+reboots with `recoveryReason=network_timeout` in its next successful
+telemetry. Given a continuously healthy device, it reboots once after its
+deterministic 7–8 day interval with `recoveryReason=weekly_safety`. Device
+intervals differ by device ID, and neither timer can interrupt synchronous
+OTA application.

@@ -53,9 +53,15 @@ Example:
   "numReadErrors": 0,
   "numFilteredReadings": 0,
   "restartReason": "PowerOn",
+  "recoveryReason": "none",
   "status": "OK"
 }
 ```
+
+`restartReason` is the ESP32 hardware reset classification. `recoveryReason`
+is normally `none`; after a firmware-initiated recovery restart, the first
+successfully published telemetry reports `network_timeout` or
+`weekly_safety`, then clears the persisted value.
 
 ## Status
 

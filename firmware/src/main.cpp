@@ -26,8 +26,11 @@
 namespace {
 constexpr uint8_t DHT_PIN = 15;
 constexpr uint8_t DHT_TYPE = DHT22;
-constexpr unsigned long WIFI_RETRY_MS = 500;
+constexpr unsigned long WIFI_RECONNECT_MS = 10000;
 constexpr unsigned long MQTT_RETRY_MS = 5000;
+constexpr unsigned long NETWORK_FAILURE_REBOOT_MS = 15UL * 60UL * 1000UL;
+constexpr unsigned long SAFETY_REBOOT_BASE_MS = 7UL * 24UL * 60UL * 60UL * 1000UL;
+constexpr unsigned long SAFETY_REBOOT_STAGGER_MS = 24UL * 60UL * 60UL * 1000UL;
 constexpr unsigned long DEFAULT_REPORT_INTERVAL_MS = 600000;
 constexpr float DEFAULT_CHANGE_THRESHOLD_F = 1.0;
 constexpr unsigned long MIN_REPORT_INTERVAL_MS = 10000;
@@ -48,6 +51,7 @@ constexpr size_t TOPIC_LEN = 96;
 constexpr size_t PAYLOAD_LEN = 768;
 constexpr const char *ROLLBACK_PREF_NAMESPACE = "iot-ota";
 constexpr const char *ROLLBACK_PREF_KEY = "build";
+constexpr const char *RECOVERY_PREF_KEY = "recovery";
 
 DHT dht(DHT_PIN, DHT_TYPE);
 #ifndef MQTT_USE_TLS
@@ -70,7 +74,12 @@ char responseTopic[TOPIC_LEN];
 char otaStatusTopic[TOPIC_LEN];
 
 unsigned long lastReportMs = 0;
+unsigned long lastWifiAttemptMs = 0;
 unsigned long lastMqttAttemptMs = 0;
+unsigned long networkFailureStartMs = 0;
+unsigned long safetyRebootAtMs = 0;
+bool wifiConnectionInitialized = false;
+char bootRecoveryReason[24] = "none";
 unsigned long reportIntervalMs = DEFAULT_REPORT_INTERVAL_MS;
 uint32_t seq = 0;
 uint32_t readErrors = 0;
@@ -117,6 +126,43 @@ void rememberCurrentBuildNumber()
     Serial.printf("OTA anti-rollback build number already at %lu\n", static_cast<unsigned long>(stored));
   }
   prefs.end();
+}
+
+void loadBootRecoveryReason()
+{
+  Preferences prefs;
+  if (!prefs.begin(ROLLBACK_PREF_NAMESPACE, true)) {
+    return;
+  }
+  String stored = prefs.getString(RECOVERY_PREF_KEY, "none");
+  prefs.end();
+  snprintf(bootRecoveryReason, sizeof(bootRecoveryReason), "%s", stored.c_str());
+}
+
+void clearBootRecoveryReason()
+{
+  if (strcmp(bootRecoveryReason, "none") == 0) {
+    return;
+  }
+
+  Preferences prefs;
+  if (prefs.begin(ROLLBACK_PREF_NAMESPACE, false)) {
+    prefs.remove(RECOVERY_PREF_KEY);
+    prefs.end();
+  }
+  snprintf(bootRecoveryReason, sizeof(bootRecoveryReason), "none");
+}
+
+void restartForRecovery(const char *reason)
+{
+  Serial.printf("Recovery restart requested: %s\n", reason);
+  Preferences prefs;
+  if (prefs.begin(ROLLBACK_PREF_NAMESPACE, false)) {
+    prefs.putString(RECOVERY_PREF_KEY, reason);
+    prefs.end();
+  }
+  delay(250);
+  ESP.restart();
 }
 
 String isoTimestamp()
@@ -208,17 +254,31 @@ void buildDeviceIdentity()
   snprintf(otaStatusTopic, sizeof(otaStatusTopic), "home/sensors/%s/ota/status", deviceId);
 }
 
-void connectWifi()
+void startWifiConnection()
 {
   WiFi.mode(WIFI_STA);
+  WiFi.setAutoReconnect(true);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  lastWifiAttemptMs = millis();
+  Serial.printf("Connecting to WiFi SSID %s\n", WIFI_SSID);
+}
 
-  Serial.printf("Connecting to WiFi SSID %s", WIFI_SSID);
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(WIFI_RETRY_MS);
-    Serial.print(".");
+void maintainWifi()
+{
+  if (WiFi.status() != WL_CONNECTED) {
+    wifiConnectionInitialized = false;
+    if (millis() - lastWifiAttemptMs >= WIFI_RECONNECT_MS) {
+      Serial.println("WiFi still disconnected; retrying");
+      WiFi.disconnect();
+      startWifiConnection();
+    }
+    return;
   }
-  Serial.println();
+
+  if (wifiConnectionInitialized) {
+    return;
+  }
+  wifiConnectionInitialized = true;
   Serial.printf("WiFi connected, IP=%s RSSI=%d\n", WiFi.localIP().toString().c_str(), WiFi.RSSI());
 
 #if MQTT_USE_TLS
@@ -227,6 +287,34 @@ void connectWifi()
 
   configTime(0, 0, "pool.ntp.org", "time.nist.gov");
   waitForTime(15000);
+}
+
+unsigned long deviceSafetyRebootDelayMs()
+{
+  uint32_t hash = 2166136261UL;
+  for (const char *cursor = deviceId; *cursor != '\0'; cursor++) {
+    hash ^= static_cast<uint8_t>(*cursor);
+    hash *= 16777619UL;
+  }
+  return SAFETY_REBOOT_BASE_MS + (hash % SAFETY_REBOOT_STAGGER_MS);
+}
+
+void maintainRecoveryTimers()
+{
+  bool connected = WiFi.status() == WL_CONNECTED && mqtt.connected();
+  unsigned long nowMs = millis();
+
+  if (connected) {
+    networkFailureStartMs = 0;
+  } else if (networkFailureStartMs == 0) {
+    networkFailureStartMs = nowMs;
+  } else if (nowMs - networkFailureStartMs >= NETWORK_FAILURE_REBOOT_MS) {
+    restartForRecovery("network_timeout");
+  }
+
+  if (nowMs >= safetyRebootAtMs) {
+    restartForRecovery("weekly_safety");
+  }
 }
 
 void publishStatus(const char *status, bool retained)
@@ -948,6 +1036,7 @@ void publishTelemetry(float temperatureF, float humidity)
     "\"numReadErrors\":%lu,"
     "\"numFilteredReadings\":%lu,"
     "\"restartReason\":\"%s\","
+    "\"recoveryReason\":\"%s\","
     "\"activeConfig\":{\"reportIntervalSeconds\":%lu,\"changeThresholdF\":%.1f},"
     "\"status\":\"OK\"}",
     static_cast<unsigned long>(seq),
@@ -963,6 +1052,7 @@ void publishTelemetry(float temperatureF, float humidity)
     static_cast<unsigned long>(readErrors),
     static_cast<unsigned long>(filteredReadings),
     resetReason(),
+    bootRecoveryReason,
     static_cast<unsigned long>(reportIntervalMs / 1000),
     changeThresholdF
   );
@@ -973,6 +1063,7 @@ void publishTelemetry(float temperatureF, float humidity)
     lastTemperatureF = temperatureF;
     lastReportMs = millis();
     consecutiveTempChangeSamples = 0;
+    clearBootRecoveryReason();
   }
 }
 }
@@ -985,8 +1076,14 @@ void setup()
 
   Serial.printf("Starting firmware %s\n", FIRMWARE_VERSION);
   rememberCurrentBuildNumber();
-  connectWifi();
+  loadBootRecoveryReason();
   buildDeviceIdentity();
+  safetyRebootAtMs = deviceSafetyRebootDelayMs();
+  Serial.printf(
+    "Safety reboot scheduled after %lu seconds\n",
+    static_cast<unsigned long>(safetyRebootAtMs / 1000)
+  );
+  startWifiConnection();
 
   mqtt.setServer(MQTT_HOST, MQTT_PORT);
   mqtt.setCallback(onMqttMessage);
@@ -996,15 +1093,15 @@ void setup()
 
 void loop()
 {
-  if (WiFi.status() != WL_CONNECTED) {
-    connectWifi();
-  }
+  maintainWifi();
 
   if (!connectMqtt()) {
+    maintainRecoveryTimers();
     delay(100);
     return;
   }
   mqtt.loop();
+  maintainRecoveryTimers();
 
   float humidity = dht.readHumidity();
   float temperatureC = dht.readTemperature();

@@ -93,3 +93,8 @@ Table `deployment_attempts` records fleet reconciliation history (FR-046):
 cooldown check (FR-046) queries this table. Rows are subject to a retention
 window like readings (DATA-005) so the table does not grow unbounded —
 currently unbounded upstream; open item.
+
+**DATA-011 — Hub system metrics** `SHOULD` *(added 2026-08-04)*
+Table `system_metrics` stores append-only hub measurements with `metric`,
+numeric `value`, and authoritative UTC `created_at`. The initial metric is
+`pi_cpu_temperature_f`, sampled every 600 seconds by the collector.

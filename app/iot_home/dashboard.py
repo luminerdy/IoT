@@ -1,9 +1,15 @@
 from __future__ import annotations
 
 import argparse
+import base64
+import binascii
+import hmac
 import ipaddress
 import json
 import mimetypes
+import os
+import threading
+from contextlib import closing
 from html import escape
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -44,6 +50,26 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=Path("data/firmware"),
         help="Directory served under /firmware/ for local OTA downloads.",
+    )
+    parser.add_argument(
+        "--firmware-download-key",
+        default=os.getenv("FIRMWARE_DOWNLOAD_KEY"),
+        help="Capability key required by firmware download URLs (defaults to FIRMWARE_DOWNLOAD_KEY).",
+    )
+    parser.add_argument(
+        "--username",
+        default=os.getenv("DASHBOARD_USERNAME"),
+        help="Dashboard write username (defaults to DASHBOARD_USERNAME).",
+    )
+    parser.add_argument(
+        "--password",
+        default=os.getenv("DASHBOARD_PASSWORD"),
+        help="Dashboard write password (defaults to DASHBOARD_PASSWORD).",
+    )
+    parser.add_argument(
+        "--allow-unauthenticated-read",
+        action="store_true",
+        help="Allow dashboard pages and read-only APIs without Basic authentication.",
     )
     parser.add_argument(
         "--floorplan",
@@ -164,6 +190,34 @@ def location_payload(rows: list, stale_seconds: int, locations: dict[str, str]) 
 def valid_client_address(value: str) -> bool:
     client_ip = ipaddress.ip_address(value)
     return client_ip.is_private or client_ip.is_loopback or client_ip.is_link_local
+
+
+def firmware_request_authorized(provided_key: str | None, configured_key: str | None) -> bool:
+    if not provided_key or not configured_key:
+        return False
+    return hmac.compare_digest(provided_key, configured_key)
+
+
+def basic_request_authorized(
+    authorization: str | None,
+    configured_username: str | None,
+    configured_password: str | None,
+) -> bool:
+    if not authorization or not configured_username or not configured_password:
+        return False
+    scheme, separator, encoded = authorization.partition(" ")
+    if not separator or scheme.lower() != "basic":
+        return False
+    try:
+        decoded = base64.b64decode(encoded, validate=True).decode("utf-8")
+    except (binascii.Error, UnicodeDecodeError):
+        return False
+    username, separator, password = decoded.partition(":")
+    if not separator:
+        return False
+    username_matches = hmac.compare_digest(username, configured_username)
+    password_matches = hmac.compare_digest(password, configured_password)
+    return username_matches and password_matches
 
 
 def query_int(query: dict[str, list[str]], name: str, default: int) -> int:
@@ -765,6 +819,17 @@ def page() -> bytes:
     .mapping-status.ok {
       color: var(--green);
     }
+    .mapping-credential {
+      width: 150px;
+      min-height: 34px;
+      padding: 5px 8px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fff;
+      color: #17202a;
+      font: inherit;
+      font-size: 13px;
+    }
     .mapping-table input {
       width: 100%;
       min-height: 34px;
@@ -966,6 +1031,8 @@ def page() -> bytes:
         <h2>Device Mappings</h2>
         <div class="mapping-actions">
           <span class="mapping-status" id="mapping-status">Loaded from local locations file</span>
+          <input class="mapping-credential" id="mapping-username" type="text" autocomplete="username" placeholder="Admin username" aria-label="Admin username">
+          <input class="mapping-credential" id="mapping-password" type="password" autocomplete="current-password" placeholder="Admin password" aria-label="Admin password">
           <button class="toolbar-button" id="mapping-refresh" type="button">Refresh</button>
         </div>
       </div>
@@ -1432,10 +1499,16 @@ def page() -> bytes:
 
     async function saveMapping(deviceId, location) {
       try {
+        const username = document.getElementById("mapping-username").value;
+        const password = document.getElementById("mapping-password").value;
+        if (!username || !password) throw new Error("Admin username and password are required to save mappings");
         mappingStatus("Saving mapping");
         const response = await fetch("/api/locations", {
           method: "POST",
-          headers: {"Content-Type": "application/json"},
+          headers: {
+            "Authorization": `Basic ${btoa(`${username}:${password}`)}`,
+            "Content-Type": "application/json",
+          },
           body: JSON.stringify({deviceId, location}),
         });
         if (!response.ok) {
@@ -1722,10 +1795,38 @@ class Handler(BaseHTTPRequestHandler):
     stale_seconds: int = 120
     locations_path: Path = DEFAULT_LOCATIONS_PATH
     locations: dict[str, str] = {}
+    firmware_download_key: str | None = None
+    dashboard_username: str | None = None
+    dashboard_password: str | None = None
+    allow_unauthenticated_read: bool = False
+    locations_lock = threading.Lock()
+
+    def request_is_authenticated(self) -> bool:
+        return basic_request_authorized(
+            self.headers.get("Authorization"),
+            self.dashboard_username,
+            self.dashboard_password,
+        )
+
+    def require_authentication(self) -> bool:
+        if self.request_is_authenticated():
+            return True
+        self.send_response(401)
+        self.send_header("WWW-Authenticate", 'Basic realm="IoT Home Admin", charset="UTF-8"')
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+        return False
 
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
         parsed_path = parsed.path
+
+        if parsed_path.startswith("/firmware/"):
+            self.serve_firmware(parsed_path, parsed.query)
+            return
+
+        if not self.allow_unauthenticated_read and not self.require_authentication():
+            return
 
         if parsed_path == "/" or parsed_path == "/index.html":
             self.send_response(200)
@@ -1734,18 +1835,13 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(page())
             return
 
-        if parsed_path.startswith("/firmware/"):
-            self.serve_firmware(parsed_path)
-            return
-
         if parsed_path.startswith("/dashboard-assets/"):
             self.serve_static_file(parsed_path, "/dashboard-assets/", self.asset_dir)
             return
 
         if parsed_path == "/api/latest":
             self.locations = load_locations(self.locations_path)
-            with connect(self.db_path) as conn:
-                init_db(conn)
+            with closing(connect(self.db_path)) as conn:
                 rows = [
                     row_to_dict(row, self.stale_seconds, self.locations)
                     for row in latest_readings(conn)
@@ -1763,8 +1859,7 @@ class Handler(BaseHTTPRequestHandler):
             hours = query_int(query, "hours", 24)
             limit = query_int(query, "limit", 500)
             self.locations = load_locations(self.locations_path)
-            with connect(self.db_path) as conn:
-                init_db(conn)
+            with closing(connect(self.db_path)) as conn:
                 rows = [
                     history_row_to_dict(row, self.locations)
                     for row in reading_history(conn, hours, limit)
@@ -1792,8 +1887,7 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if parsed_path == "/api/system":
-            with connect(self.db_path) as conn:
-                init_db(conn)
+            with closing(connect(self.db_path)) as conn:
                 row = latest_system_metric(conn, "pi_cpu_temperature_f")
             if row is None:
                 result = {"temperatureF": None, "sampledAt": None, "ageSeconds": None}
@@ -1823,8 +1917,7 @@ class Handler(BaseHTTPRequestHandler):
             except ValueError as exc:
                 self.send_error(500, str(exc))
                 return
-            with connect(self.db_path) as conn:
-                init_db(conn)
+            with closing(connect(self.db_path)) as conn:
                 rows = latest_readings(conn)
             payload = json.dumps(
                 location_payload(rows, self.stale_seconds, self.locations)
@@ -1843,8 +1936,7 @@ class Handler(BaseHTTPRequestHandler):
         if parsed.path != "/api/locations":
             self.send_error(404)
             return
-        if not valid_client_address(self.client_address[0]):
-            self.send_error(403)
+        if not self.require_authentication():
             return
 
         try:
@@ -1876,19 +1968,19 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         try:
-            self.locations = load_locations(self.locations_path)
-            if location:
-                self.locations[device_id] = location
-            else:
-                self.locations.pop(device_id, None)
-            save_locations(self.locations, self.locations_path)
-            self.locations = load_locations(self.locations_path)
+            with self.locations_lock:
+                self.locations = load_locations(self.locations_path)
+                if location:
+                    self.locations[device_id] = location
+                else:
+                    self.locations.pop(device_id, None)
+                save_locations(self.locations, self.locations_path)
+                self.locations = load_locations(self.locations_path)
         except ValueError as exc:
             self.send_error(400, str(exc))
             return
 
-        with connect(self.db_path) as conn:
-            init_db(conn)
+        with closing(connect(self.db_path)) as conn:
             rows = latest_readings(conn)
         payload_bytes = json.dumps(
             location_payload(rows, self.stale_seconds, self.locations)
@@ -1899,9 +1991,17 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(payload_bytes)
 
-    def serve_firmware(self, parsed_path: str) -> None:
+    def serve_firmware(self, parsed_path: str, query_string: str) -> None:
         if not valid_client_address(self.client_address[0]):
             self.send_error(403)
+            return
+        keys = parse_qs(query_string).get("key", [])
+        provided_key = keys[0] if len(keys) == 1 else None
+        if not (
+            firmware_request_authorized(provided_key, self.firmware_download_key)
+            or self.request_is_authenticated()
+        ):
+            self.require_authentication()
             return
         self.serve_static_file(parsed_path, "/firmware/", self.firmware_dir)
 
@@ -1927,13 +2027,18 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(content)
 
     def log_message(self, format: str, *args) -> None:
-        safe_path = escape(self.path)
-        print(f"{self.address_string()} {self.command} {safe_path} {args}")
+        safe_path = escape(urlparse(self.path).path)
+        response_code = args[1] if len(args) > 1 else "unknown"
+        print(f"{self.address_string()} {self.command} {safe_path} response={response_code}")
 
 
 def main() -> None:
     args = parse_args()
-    with connect(args.db) as conn:
+    if not args.firmware_download_key:
+        raise SystemExit("FIRMWARE_DOWNLOAD_KEY is required to serve firmware (SEC-016)")
+    if not args.username or not args.password:
+        raise SystemExit("DASHBOARD_USERNAME and DASHBOARD_PASSWORD are required for admin writes (SEC-009)")
+    with closing(connect(args.db)) as conn:
         init_db(conn)
 
     Handler.db_path = args.db
@@ -1943,6 +2048,10 @@ def main() -> None:
     Handler.locations_path = args.locations
     Handler.stale_seconds = args.stale_seconds
     Handler.locations = load_locations(args.locations)
+    Handler.firmware_download_key = args.firmware_download_key
+    Handler.dashboard_username = args.username
+    Handler.dashboard_password = args.password
+    Handler.allow_unauthenticated_read = args.allow_unauthenticated_read
     server = ThreadingHTTPServer((args.host, args.port), Handler)
     print(f"Dashboard listening on http://{args.host}:{args.port}")
     try:

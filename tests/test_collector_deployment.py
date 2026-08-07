@@ -33,6 +33,7 @@ def args_for(tmp_path, *, auto_ota=False):
         auto_ota=auto_ota,
         firmware_dir=tmp_path / "firmware",
         base_url="http://iot-pi.local:8000",
+        firmware_download_key="test-key",
         ota_cooldown_seconds=3600,
     )
 
@@ -97,7 +98,7 @@ def test_mismatch_auto_publishes_staged_ota_command(tmp_path):
     topic, payload, qos, retain = client.published[0]
     command = json.loads(payload.decode("utf-8"))
     assert topic == "home/sensors/esp32-one/command"
-    assert command["url"] == "http://iot-pi.local:8000/firmware/0.1.4/firmware.bin"
+    assert command["url"] == "http://iot-pi.local:8000/firmware/0.1.4/firmware.bin?key=test-key"
     assert qos == 1
     assert retain is False
 

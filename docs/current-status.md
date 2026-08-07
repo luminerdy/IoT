@@ -69,7 +69,9 @@ Status: Phases 0 through 4 are complete for the current local-first system. Sign
 - Pinned PlatformIO `espressif32` to `6.10.0` and added a real firmware build to CI.
 - Activated current-listener MQTT ACL protection on port `1883`: the shared `iot` user keeps telemetry/status flow while `iot-admin` owns config and OTA command publishing.
 - Verified live MQTT ACL rules: fleet-user command delivery was blocked, admin command delivery worked, and fleet-user telemetry delivery still worked.
-- Enabled dashboard Basic auth through `DASHBOARD_USERNAME` and `DASHBOARD_PASSWORD`, then removed it later on 2026-07-04 by local preference so anyone already on the home network can view the dashboard. Private-network `/firmware/...` restrictions still protect OTA downloads from non-local clients.
+- Kept read-only dashboard access open on the home network by explicit policy,
+  while requiring Basic auth for location-mapping writes and a capability key
+  or Basic auth for firmware downloads.
 - Recorded the standing release gate that no firmware build goes to fleet devices until the exact build is fully tested on the local USB-connected bench ESP32.
 - Fixed the CI firmware build failure on PR #3 by making `firmware/include/secrets.sample.h` valid for clean-runner compilation; both Python and firmware checks now pass on the PR.
 - Deployed the Pi-side collector/database changes on 2026-07-04: created backup `data/backups/iot-20260704T180617Z.sqlite.gz`, restarted `iot-home-collector.service`, verified collector logs, verified 21 devices online / 0 stale / 0 unmapped, and confirmed retained-message replay created 0 restart-window duplicate readings.
@@ -94,6 +96,11 @@ Status: Phases 0 through 4 are complete for the current local-first system. Sign
   PiServer booted successfully, and its core services returned active. The
   production threshold is now 10 consecutive one-minute failures, with a
   one-hour cooldown between actual relay cycles.
+- Implemented and activated SEC-016 capability-key protection for firmware
+  downloads on 2026-08-06, with the key stored in the protected service environment.
+  OTA staging and command reconstruction now include the key in the download
+  URL, missing or incorrect keys receive HTTP 401, and query strings are
+  omitted from access logs so the key is not logged.
 
 ## Live Dashboard State
 
@@ -132,22 +139,35 @@ production build was reflashed and reverified on `Sunroom Test`.
 - `AtticChimney` stopped reporting and was temporarily retired from the dashboard fleet on 2026-08-04 until it is safe to enter the attic and replace it. Historical readings were preserved.
 - The actual house image has not been uploaded yet. The dashboard is ready for it through `data/dashboard-assets/` plus `config/floorplan.json`.
 - The four-view rotating dashboard is active on normal port `8000`, including the pause/resume control, floorplan-derived Temperature Graph groups, 1080p-fit Device List Grid and Latest Readings views, collector-receipt-time stale calculation, and `Manage Devices` panel.
-- Live operator credentials for `iot-admin` are stored locally in `/home/scotty/.config/iot-home/operator-credentials.env` with mode `0600`. Dashboard Basic auth was removed on 2026-07-04; dashboard access is intentionally open to clients on the home network.
+- Live operator credentials for `iot-admin` are stored locally in `/home/scotty/.config/iot-home/operator-credentials.env` with mode `0600`. Dashboard read access is intentionally open to clients on the home network; separate dashboard credentials in `/home/scotty/.config/iot-home/dashboard-credentials.env`, also mode `0600`, protect location-mapping writes.
 
 ## Next Actions
 
-1. Monitor the Pi3 watchdog with its production threshold of 10 consecutive
+1. Add lossless database preservation and capacity monitoring: integrity and
+   backup checks, database/free-space alerts, `PRAGMA optimize`, tests, and a
+   systemd timer. Do not delete readings, deployment attempts, or system
+   metrics. Any future archival requires explicit approval and restore proof.
+2. Add CI safeguards: Ruff lint/format, coverage reporting, gitleaks, and a
+   current-tree local-identifier scan with an intentional historical baseline.
+3. Resolve the dormant collector `--auto-ota` versus MQTT ACL contract; retain
+   operator-controlled rollout authority or use a dedicated temporary OTA
+   identity, then add an automated ACL matrix test.
+4. Introduce numbered database migrations and complete the DATA-001 partial
+   dedupe index before larger schema changes.
+5. Replace firmware substring JSON parsing with ArduinoJson, add native tests,
+   and USB-bench the exact build before any OTA rollout.
+6. Design and bench NVS-provisioned per-device MQTT credentials and TLS, then
+   migrate incrementally before retiring the shared credential.
+7. Extract dashboard HTML/CSS/JavaScript into static assets after the security
+   and data milestones above.
+8. Monitor the Pi3 watchdog with its production threshold of 10 consecutive
    one-minute failures; investigate repeated recovery cycles rather than
    relying on them to conceal a fault.
-2. Decide whether to remap or re-retire the online `UNMAPPED` device that
+9. Decide whether to remap or re-retire the online `UNMAPPED` device that
    returned after the 2026-08-05 power-cycle test.
-3. Monitor the fleet after the completed `0.1.6-recovery` rollout; revisit MasterBedroom or BunkHouse only if connectivity trouble recurs after their power replacements.
-4. Keep `Bench Device` (`esp32-device-id`) on `/dev/ttyUSB0` for firmware and feature validation before deploying to other devices.
-5. Replace the temporarily retired `AtticChimney` device when attic access is safe.
-6. Use collector desired-version mismatch detection for deployment records; only enable `--auto-ota` after explicit rollout approval.
-7. Continue monitoring the two active attic sensors during high heat; if `Attic` repeats its outage near the prior 137.5 F peak, inspect its power supply, regulator, wiring, and enclosure.
-8. Upload the actual house image under `data/dashboard-assets/`, set `backgroundImage` in local `config/floorplan.json`, and tune the existing sensor placement overlay.
-9. Keep backup checks in the daily routine: local SQLite export at 02:05, restic/S3 at 02:15, plus periodic restore checks.
+10. Keep the USB bench device on `/dev/ttyUSB0` for firmware validation; replace
+    retired `AtticChimney` only when attic access is safe, continue attic heat
+    monitoring, upload the house image, and keep periodic backup restore checks.
 
 ## Decisions To Revisit Soon
 

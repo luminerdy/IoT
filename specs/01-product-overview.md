@@ -93,7 +93,7 @@ Complete inventory of the current system, classified for the rebuild.
 | F-15 | Firmware file serving for OTA | `dashboard.py` `/firmware/` | Keep — move behind same auth story `[CHANGE]` |
 | F-16 | Broker setup scripts (LAN, TLS+ACL, per-device users) | `scripts/` | Merge: TLS+ACL is the only path `[CHANGE]` |
 | F-17 | systemd deployment units | `deploy/systemd/` | Keep — parameterized install `[CHANGE]` |
-| F-18 | SQLite backup + integrity check | `scripts/backup_sqlite.sh` | Keep + scheduled retention |
+| F-18 | SQLite backup + integrity check | `scripts/backup_sqlite.sh` | Keep + scheduled preservation/capacity checks |
 | F-19 | Fleet simulator | `simulator.py` | Keep as dev tool |
 | F-20 | Telemetry published with `retain=true` | firmware | **Drop** — causes duplicate ingestion `[CHANGE]` |
 | F-21 | IP-allowlist gate on `/firmware/` | `dashboard.py` | **Drop** — replaced by real auth (SEC-007) `[CHANGE]` |

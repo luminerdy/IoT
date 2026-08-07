@@ -43,10 +43,13 @@ produce clear errors, never crashes.
 and history queries. Device `datetime` is informational and may be the
 epoch sentinel before NTP sync (FR-015). All timestamps UTC ISO-8601 `Z`.
 
-**DATA-005 — Retention** `MUST` `[CHANGE]`
-A scheduled job (systemd timer) deletes `readings` older than the configured
-retention (default 90 days) and runs periodic `PRAGMA optimize`/incremental
-vacuum. `devices` rows persist until explicitly removed by the operator.
+**DATA-005 — Historical preservation and capacity** `MUST`
+`readings`, `deployment_attempts`, and `system_metrics` are retained
+indefinitely. Scheduled maintenance may run `PRAGMA optimize`, integrity
+checks, and capacity alerts, but MUST NOT delete historical rows. Any future
+lossless archive must be copied, integrity-verified, restore-tested, and
+explicitly approved before source rows are removed from the live database.
+`devices` rows persist until explicitly removed by the operator.
 
 **DATA-006 — Migrations** `MUST` `[CHANGE]`
 Schema changes ship as numbered, forward-only migration scripts applied
@@ -90,9 +93,9 @@ Table `deployment_attempts` records fleet reconciliation history (FR-046):
 (validated as an IP at ingest, else NULL), `status`
 (`detected` | `published` | `failed`), `rollout_id`, `message`,
 `created_at`/`updated_at`; indexed on `(device_id, created_at DESC)`. The
-cooldown check (FR-046) queries this table. Rows are subject to a retention
-window like readings (DATA-005) so the table does not grow unbounded —
-currently unbounded upstream; open item.
+cooldown check (FR-046) queries this table. Rows are preserved indefinitely
+under DATA-005; capacity monitoring applies to this table along with readings
+and system metrics.
 
 **DATA-011 — Hub system metrics** `SHOULD` *(added 2026-08-04)*
 Table `system_metrics` stores append-only hub measurements with `metric`,

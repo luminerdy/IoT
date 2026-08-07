@@ -81,25 +81,24 @@ blast radius to one revocable identity plus the WiFi PSK (documented).
 
 ## 6.4 Dashboard / HTTP
 
-**SEC-009 — Dashboard authentication** `MUST` `[CHANGE]`
-The dashboard is not reachable unauthenticated beyond localhost. The old
-"private-IP allowlist" gate is removed as security theater on a home LAN.
-*Decision (2026-07-02):* built-in HTTP Basic auth, credentials from
+**SEC-009 — Dashboard authentication** `MUST`
+Dashboard mutations are not reachable without authentication. Read-only pages
+and APIs may remain open on the home LAN only through the explicit
+`--allow-unauthenticated-read` deployment choice. The old private-IP allowlist
+is not authentication.
+Built-in HTTP Basic auth uses credentials from
 `DASHBOARD_USERNAME`/`DASHBOARD_PASSWORD`, compared in constant time. The
-server **refuses to start** on a non-loopback bind without credentials
-(AC-016); `--allow-unauthenticated` overrides only when a network-level
-control (VLAN/firewall) is in place and recorded. Device firmware downloads
-use the capability key defined in SEC-016.
+server refuses to start without credentials because `POST /api/locations`
+always requires them. Without `--allow-unauthenticated-read`, read routes also
+require Basic auth. Device firmware downloads accept Basic auth or the
+capability key defined in SEC-016.
 *Residual risk:* Basic auth over plain LAN HTTP is sniffable — the
 dashboard credential MUST be unique to this system and low-value. A
 TLS-terminating reverse proxy in front is the documented upgrade path.
-*Current implementation note (reviewed 2026-07-05 at commit `4d0e5cc` plus
-local working-tree changes):* Basic auth was added, then intentionally
-removed by local preference so the dashboard is open to home-network
-clients. This spec keeps authentication as the rebuild target; local
-unauthenticated operation must be an explicit `--allow-unauthenticated`
-choice backed by a recorded network-control decision. `/firmware/` still
-uses the private-IP allowlist rather than SEC-016's capability key.
+*Current deployment (2026-08-06):* read-only dashboard access is intentionally
+open on the home network through `--allow-unauthenticated-read`. Location
+mapping writes require Basic auth. `/firmware/` requires Basic auth or the
+SEC-016 capability key in addition to the private-IP restriction.
 
 **SEC-010 — Path traversal defense** `MUST`
 Static file serving (firmware, dashboard assets) resolves paths and rejects
@@ -141,14 +140,15 @@ and key-confusion bugs in config/OTA parsing.
 capability key supplied as a `?key=` query parameter, compared in constant
 time. The key comes from the hub's `FIRMWARE_DOWNLOAD_KEY` environment
 value; the OTA staging CLI embeds it in manifest URLs, and devices carry it
-in `secrets.h`. Rotation: set a new key, restage active releases, restart
-the dashboard, roll device secrets at next flash. Accepted residual risk:
-the key appears in staged manifests on hub disk and in device flash — it
+in the signed OTA command URL. The HTTP client needs no firmware change to
+use the query string. Rotation: set a new key, restage active releases, and
+restart the dashboard. Accepted residual risk:
+the key appears in staged manifests and OTA commands — it
 guards firmware *distribution* only; firmware *authenticity* rests entirely
 on SEC-005/SEC-006.
 *Why this is a MUST, not polish (noted 2026-07-05):* staged firmware images
 have `secrets.h` compiled in — a downloadable `firmware.bin` leaks the WiFi
 password and MQTT credentials to anyone who can fetch it and run `strings`.
-The current implementation gates `/firmware/` by private-IP allowlist only,
-which does not stop a LAN guest. Open hardening item there; the rebuild
-implements this key.
+The implementation requires a constant-time-checked capability key and does
+not record query strings in dashboard access logs. It was activated on the
+live dashboard on 2026-08-06 with the key in the protected service environment.

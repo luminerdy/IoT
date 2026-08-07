@@ -63,6 +63,11 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--base-url", default="http://iot-pi.local:8000", help="Base dashboard URL reachable by ESP32.")
     parser.add_argument(
+        "--firmware-download-key",
+        default=os.getenv("FIRMWARE_DOWNLOAD_KEY"),
+        help="Firmware download capability key (defaults to FIRMWARE_DOWNLOAD_KEY).",
+    )
+    parser.add_argument(
         "--ota-cooldown-seconds",
         type=int,
         default=86400,
@@ -147,7 +152,12 @@ def maybe_trigger_deployment(
         return
 
     try:
-        command = command_from_manifest(args.firmware_dir, desired_version, args.base_url)
+        command = command_from_manifest(
+            args.firmware_dir,
+            desired_version,
+            args.base_url,
+            args.firmware_download_key,
+        )
     except Exception as exc:
         update_deployment_attempt(conn, attempt_id, status="failed", message=str(exc))
         LOG.exception("Cannot publish OTA for %s", device_id)

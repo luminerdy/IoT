@@ -76,9 +76,10 @@ the dashboard renders it, then the string appears as literal text and no
 script executes.
 
 **AC-014** (SEC-009)
-Given a client on the LAN without credentials, when it requests any
-dashboard or firmware URL, then it receives 401/403 (or connection refused,
-per the chosen mechanism) — verified from a second machine.
+Given a client without credentials, `POST /api/locations` returns 401 while
+read-only dashboard routes remain available only when the explicit
+`--allow-unauthenticated-read` deployment option is set. Firmware URLs still
+require SEC-016 authorization.
 
 **AC-015** (SEC-010, TEST-021)
 Given requests for `/assets/../../etc/passwd`, `%2e%2e` variants, and a
@@ -87,9 +88,9 @@ out-of-root file content is ever served.
 
 **AC-016** (SEC-009) *(added 2026-07-02)*
 Given `DASHBOARD_USERNAME`/`DASHBOARD_PASSWORD` are unset, when the
-dashboard is started with a non-loopback bind and without
-`--allow-unauthenticated`, then it exits with an error citing SEC-009; a
-loopback bind starts normally.
+dashboard is started, then it exits with an error citing SEC-009 because admin
+writes cannot be enabled safely. With credentials set, read routes require
+authentication unless `--allow-unauthenticated-read` is explicitly supplied.
 
 **AC-017** (SEC-016) *(added 2026-07-02)*
 Given a configured `FIRMWARE_DOWNLOAD_KEY`, then `/firmware/…?key=<correct>`
@@ -178,8 +179,9 @@ local archive predates the restic snapshot, both are current for the day, and
 a restored database copy passes `PRAGMA integrity_check`.
 
 **AC-041** (NFR-007, DATA-005)
-Given readings older than the retention window, when the retention job runs,
-then they are deleted and the dashboard/history APIs still work.
+Given historical readings, deployment attempts, and system metrics, when
+scheduled database maintenance runs, then all rows remain present, integrity
+checks pass, capacity is reported, and the dashboard/history APIs still work.
 
 **AC-042** (NFR-008)
 Given a clean Raspberry Pi OS image and the install docs, when a new

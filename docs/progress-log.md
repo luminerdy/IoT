@@ -934,3 +934,57 @@ Use this file for dated accomplishments and important observations. Keep future 
 - Final dashboard verification showed 23 devices online, 0 stale, 0 unmapped,
   and all 23 on `0.1.6-recovery`. Mosquitto, collector, and dashboard services
   remained active with no recent warning-level logs.
+
+# 2026-08-06
+
+## Firmware Download Capability Key
+
+- Implemented SEC-016 capability-key protection for `/firmware/` downloads;
+  missing, wrong, or duplicate keys receive HTTP 401 and the configured key is
+  compared in constant time.
+- Required `FIRMWARE_DOWNLOAD_KEY` at dashboard startup and added it to the
+  systemd environment installer without exposing the value in tracked files.
+- Updated OTA staging and manifest reconstruction to add or preserve the
+  URL-encoded capability key. Removed secret-bearing OTA payloads from CLI
+  success output and removed query strings from dashboard access logs.
+- Added live HTTP route tests plus OTA URL construction/preservation tests.
+  All 39 Python tests passed. A temporary LAN listener returned 401 for missing
+  and wrong keys, returned 200 for the correct key, and served bytes matching
+  the staged production artifact. No OTA command or firmware update was sent.
+- Installed the generated capability key in `/etc/iot-home/iot-home.env`, mode
+  `0600`, and restarted the dashboard. Live port `8000` returned HTTP 401 for
+  missing and wrong keys and HTTP 200 for the correct key; the downloaded bytes
+  matched the staged `0.1.6-recovery` artifact. Mosquitto, collector, and
+  dashboard remained active, and the USB-connected `Sunroom Test` bench device
+  remained online on Wi-Fi. No OTA command or firmware update was sent.
+
+## Authenticated Dashboard Writes And Resource Handling
+
+- Added constant-time HTTP Basic authentication for `POST /api/locations` and
+  an explicit `--allow-unauthenticated-read` deployment option so normal
+  dashboard viewing remains open on the home network by policy.
+- Added username/password fields to Manage Devices; credentials are sent only
+  on mapping writes. Generated credentials are stored outside the repository
+  in the root-owned service environment and a user-readable mode-`0600` local
+  credentials file.
+- Serialized location-file read/modify/write operations to prevent lost
+  concurrent updates.
+- Removed per-request schema initialization and explicitly close every
+  per-request SQLite connection; schema initialization remains at startup.
+- Added Basic-auth and live HTTP tests, including eight concurrent mapping
+  writes with all updates preserved.
+- Deployed the updated dashboard with `--allow-unauthenticated-read`. Live
+  verification returned 200 for an unauthenticated read, 401 for missing and
+  wrong write credentials, and reached normal 400 input validation with valid
+  credentials. Basic-authenticated firmware download returned the exact staged
+  production bytes. All three core services remained active with no warning
+  logs, and the USB bench device remained online; no OTA command was sent.
+
+## Historical Data Preservation Decision
+
+- Rejected the proposed 90-day telemetry pruning plan. Readings, deployment
+  attempts, and system metrics must be preserved indefinitely.
+- Reframed the next database milestone as integrity checks, backup validation,
+  capacity/free-space monitoring, alerts, and safe optimization without row
+  deletion. Any future lossless archival requires explicit approval plus copy,
+  integrity, row-count, and restore verification before live rows move.

@@ -24,8 +24,10 @@ Manifest generation, SHA-256 correctness, signature verifiable with the
 public key via `cryptography`, path-safe version labels, `buildNumber`
 inclusion in signed material (SEC-006), stage-only mode.
 
-**TEST-005 — Retention job** `MUST`
-Prunes only rows older than the window; idempotent.
+**TEST-005 — Preservation maintenance** `MUST`
+Maintenance preserves every historical row, reports database/storage capacity,
+and is idempotent. Any future archive test must prove copied row counts and
+integrity before an explicitly approved live-table removal step.
 
 **TEST-006 — Migrations** `MUST`
 Fresh DB and each prior schema version migrate to current; version recorded.

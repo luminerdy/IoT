@@ -24,14 +24,23 @@ run side by side (different systemd units / DB file) during migration.
 > fleet-reconciliation feature (FR-046/DATA-010/AC-045).
 > **Consequence for the rebuild:** preserve the deployed OTA signature
 > contract v2 (API-013); do not regress to the superseded 2026-07-02 draft.
-> Items still open against this spec: `/firmware/` capability-key protection
-> (SEC-016 — images embed WiFi/MQTT secrets), dashboard startup refusal or an
-> explicit `--allow-unauthenticated` path (SEC-009/AC-016), TLS +
-> per-device MQTT credentials (SEC-001/002), seq-mandatory collector
+> Items still open against this spec: TLS + per-device MQTT credentials
+> (SEC-001/002), seq-mandatory collector
 > validation and topic/payload identity checks (FR-021/FR-022), database
-> migrations and partial unique index (DATA-001/DATA-006), retention
-> automation (DATA-005), restic exclude verification for the signing key
-> (DATA-007), and deployment-attempt retention (DATA-010).
+> migrations and partial unique index (DATA-001/DATA-006), preservation and
+> capacity monitoring (DATA-005), and restic exclude verification for the
+> signing key (DATA-007).
+>
+> **Status (2026-08-06):** SEC-016 capability-key firmware downloads and the
+> chosen SEC-009 policy are implemented and live. Read-only dashboard routes
+> are explicitly open on the home LAN; location writes require Basic auth;
+> firmware downloads require Basic auth or a capability key. Location updates
+> are serialized, per-request SQLite connections close explicitly, and schema
+> initialization runs only at startup. The next prioritized
+> milestones are lossless data preservation/capacity monitoring, CI
+> lint/coverage/secret scanning, the OTA publisher/ACL decision and ACL matrix
+> tests, migrations, ArduinoJson plus
+> native firmware tests, then NVS-provisioned per-device credentials and TLS.
 
 ## R0 — Foundations (no behavior change)
 
@@ -50,7 +59,7 @@ run side by side (different systemd units / DB file) during migration.
 ## R1 — Core pipeline (MVP part 1)
 
 - Rebuild collector against FR-020…FR-025 with migrations (DATA-006),
-  dedupe index (DATA-001), retention job (DATA-005).
+  dedupe index (DATA-001), preservation/capacity job (DATA-005).
 - Shared MQTT client helper (NFR-009); CLI contracts API-030/031.
 - Simulator updated (no retained telemetry).
 - Tests: TEST-001/002/003/005/006/020.
@@ -96,7 +105,7 @@ run side by side (different systemd units / DB file) during migration.
 - Rotating views, floorplan, suspect-reading flags (FR-034…FR-036) on the
   static-asset UI.
 - Summary stats (FR-033), device mapping admin, ops polish, backup schedule
-  and retention automation.
+  and preservation/capacity automation.
 
 **Exit:** AC-011 extended views verified on the 1080p wall display; AC-040.
 
@@ -126,7 +135,7 @@ firmware/
   test/                     # native unit tests
 scripts/ (install_systemd_services.sh, add_mqtt_device_user.sh,
           configure_mosquitto_tls_acl.sh, backup_sqlite.sh,
-          retention hooks)
+          preservation/capacity hooks)
 deploy/systemd/ (*.service.template + generator)
 tests/
 docs/                       # see §13

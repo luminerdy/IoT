@@ -1,6 +1,6 @@
 # Session Handoff
 
-Last updated: 2026-08-05
+Last updated: 2026-08-06
 
 ## Pi3 External Watchdog
 
@@ -31,10 +31,18 @@ Last updated: 2026-08-05
 ## Current State
 
 The local-first IoT stack is running on PiServer. Mosquitto, the collector, and
-the dashboard are active and enabled. The 2026-08-05 dashboard check reports
-23 online, non-stale records on `0.1.6-recovery`: 22 active mapped devices and
-one online `UNMAPPED` device, consistent with the temporarily retired
-`AtticChimney` reporting again.
+the dashboard are active and enabled. The active mapped fleet remains on
+`0.1.6-recovery`. The USB-connected `Sunroom Test` bench device is present on
+`/dev/ttyUSB0` and reporting over Wi-Fi.
+
+Firmware downloads on live port `8000` now require a constant-time-checked
+capability key or dashboard Basic auth. Missing/wrong keys return 401; a keyed
+download was verified byte-for-byte against the staged production artifact.
+Read-only dashboard access remains explicitly open on the home LAN, while
+`POST /api/locations` requires separate dashboard credentials. Mapping updates
+are locked against concurrent lost updates, request database connections close
+explicitly, and schema initialization runs only at startup. Credentials remain
+local in protected environment files and are not tracked.
 
 ## Recovery Firmware Bench State
 
@@ -85,24 +93,33 @@ Bench validation completed:
 
 ## Pick Up Next
 
-1. Monitor the Pi3 watchdog at its production 10-minute failure threshold and
-   investigate any repeated relay recoveries.
-2. Decide whether to remap or re-retire the returned `UNMAPPED` device.
-3. Continue normal fleet monitoring and replace retired `AtticChimney` when
-   attic access is safe.
+1. Implement lossless database preservation/capacity monitoring with integrity
+   checks, tests, and a systemd timer. Do not prune historical rows; any future
+   archive requires explicit approval and restore verification.
+2. Add Ruff, coverage, gitleaks, and current-tree identifier scanning to CI.
+3. Resolve the collector auto-OTA/ACL contract and add an ACL matrix test.
+4. Then address migrations, ArduinoJson/native firmware tests, NVS-provisioned
+   per-device credentials/TLS, and dashboard static-asset extraction.
+5. Continue watchdog/fleet/attic monitoring and decide whether to remap or
+   re-retire the returned `UNMAPPED` device.
 
 ## Working Tree
 
-The recovery firmware, deployment tracking, and external watchdog work are
-being prepared for publication on the existing GitHub branch and PR.
+Today’s tracked capability-key, authenticated-write, tests, deployment unit,
+spec, and documentation changes are intended for the existing
+`agent/disable-iot-led` branch and draft PR #4.
+
+`AGENTS.md` remains local/untracked because it identifies the local machine and
+workspace. `IoT-code-review.md` remains local/untracked because it contains
+review context and identifiers that should not be added to the sanitized public
+repository. Its accepted actions are captured in tracked specs/status docs.
 
 ## Verification
 
 ```bash
 cd /home/scotty/IoT
-.venv/bin/pio run -d firmware
 .venv/bin/python -m pytest -q
-.venv/bin/pio check -d firmware
 curl -fsS http://127.0.0.1:8000/api/latest
+systemctl is-active mosquitto.service iot-home-collector.service iot-home-dashboard.service
 git status --short
 ```

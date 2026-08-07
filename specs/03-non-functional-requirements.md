@@ -28,9 +28,11 @@ A sensor recovers from power loss, WiFi loss, broker restart, and failed OTA
 without human intervention (FR-011, FR-014). A power-cycle is never required
 except for hardware failure.
 
-**NFR-007 — Data retention** `MUST` `[CHANGE]`
-Raw readings are retained 90 days (configurable), pruned by a scheduled job.
-The database does not grow unbounded. (Current system has no retention.)
+**NFR-007 — Data preservation** `MUST`
+Raw readings, deployment history, and system metrics are retained indefinitely;
+routine maintenance MUST NOT delete historical data. Database size and free
+storage are monitored. Any future archival design must be lossless,
+restore-verified, and explicitly approved before records leave the live database.
 
 **NFR-008 — Reproducible deployment** `MUST` `[CHANGE]`
 A fresh Pi reaches production state via a documented, parameterized install

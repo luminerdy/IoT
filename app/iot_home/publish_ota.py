@@ -10,6 +10,7 @@ import subprocess
 import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
+from urllib.parse import quote, urlsplit, urlunsplit
 
 import paho.mqtt.client as mqtt
 
@@ -39,6 +40,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--firmware-bin", type=Path, default=DEFAULT_FIRMWARE_BIN, help="Built firmware.bin path.")
     parser.add_argument("--firmware-dir", type=Path, default=DEFAULT_FIRMWARE_DIR, help="OTA firmware staging directory.")
     parser.add_argument("--base-url", default="http://iot-pi.local:8000", help="Base dashboard URL reachable by ESP32.")
+    parser.add_argument(
+        "--firmware-download-key",
+        default=os.getenv("FIRMWARE_DOWNLOAD_KEY"),
+        help="Firmware download capability key (defaults to FIRMWARE_DOWNLOAD_KEY).",
+    )
     parser.add_argument("--broker", default="localhost", help="MQTT broker host.")
     parser.add_argument("--port", type=int, default=1883, help="MQTT broker port.")
     parser.add_argument("--client-id", default="iot-pi-ota-publisher", help="MQTT client ID.")
@@ -66,6 +72,21 @@ def parse_args() -> argparse.Namespace:
 def validate_version(version: str) -> None:
     if not version or "/" in version or "\\" in version or version in {".", ".."}:
         raise SystemExit("version must be a simple path-safe label")
+
+
+def firmware_download_url(base_url: str, version: str, download_key: str | None) -> str:
+    if not download_key:
+        raise ValueError("FIRMWARE_DOWNLOAD_KEY is required to create an OTA download URL")
+    encoded_key = quote(download_key, safe="")
+    return f"{base_url.rstrip('/')}/firmware/{version}/firmware.bin?key={encoded_key}"
+
+
+def replace_firmware_url_base(url: str, base_url: str) -> str:
+    parsed = urlsplit(url)
+    if not parsed.query:
+        raise ValueError("staged OTA manifest URL is missing its firmware download capability key")
+    base = urlsplit(base_url.rstrip("/"))
+    return urlunsplit((base.scheme, base.netloc, parsed.path, parsed.query, ""))
 
 
 def sha256_file(path: Path) -> str:
@@ -148,7 +169,7 @@ def stage_firmware(args: argparse.Namespace) -> dict:
         signing_key=args.signing_key,
     )
     rollout_id = args.rollout_id or f"{datetime.now(UTC).strftime('%Y%m%dT%H%M%SZ')}-{args.version}"
-    firmware_url = f"{args.base_url.rstrip('/')}/firmware/{args.version}/firmware.bin"
+    firmware_url = firmware_download_url(args.base_url, args.version, args.firmware_download_key)
 
     command = {
         "command": "ota_update",
@@ -170,7 +191,12 @@ def stage_firmware(args: argparse.Namespace) -> dict:
     return command
 
 
-def command_from_manifest(firmware_dir: Path, version: str, base_url: str | None = None) -> dict:
+def command_from_manifest(
+    firmware_dir: Path,
+    version: str,
+    base_url: str | None = None,
+    download_key: str | None = None,
+) -> dict:
     validate_version(version)
     manifest_path = firmware_dir / version / "manifest.json"
     if not manifest_path.is_file():
@@ -187,7 +213,14 @@ def command_from_manifest(firmware_dir: Path, version: str, base_url: str | None
     if command["version"] != version:
         raise ValueError(f"manifest version {command['version']} does not match requested version {version}")
     if base_url:
-        command["url"] = f"{base_url.rstrip('/')}/firmware/{version}/firmware.bin"
+        if urlsplit(command["url"]).query:
+            command["url"] = replace_firmware_url_base(command["url"], base_url)
+        else:
+            command["url"] = firmware_download_url(
+                base_url,
+                version,
+                download_key or os.getenv("FIRMWARE_DOWNLOAD_KEY"),
+            )
     return command
 
 
@@ -211,7 +244,7 @@ def publish_command(args: argparse.Namespace, command: dict) -> None:
         raise SystemExit(f"publish to {topic} did not complete")
     if result.rc != mqtt.MQTT_ERR_SUCCESS:
         raise SystemExit(f"publish to {topic} failed with MQTT result code {result.rc}")
-    print(f"published OTA command on {topic}: {payload.decode('utf-8')}")
+    print(f"published OTA command on {topic} for rollout {command['rolloutId']}")
 
 
 def main() -> None:

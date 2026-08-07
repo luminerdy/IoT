@@ -1,4 +1,5 @@
 import sqlite3
+import threading
 from contextlib import closing
 
 import pytest
@@ -48,6 +49,58 @@ def test_fresh_database_migrates_to_current_and_is_idempotent(tmp_path):
 
     assert first_version == CURRENT_SCHEMA_VERSION == 2
     assert [tuple(row) for row in first_schema] == [tuple(row) for row in second_schema]
+
+
+def test_concurrent_start_skips_migration_completed_while_waiting_for_lock(tmp_path):
+    db_path = tmp_path / "iot.db"
+    waiting_for_lock = threading.Event()
+    continue_migration = threading.Event()
+    errors: list[Exception] = []
+
+    class PausingConnection:
+        def __init__(self, conn: sqlite3.Connection):
+            self.conn = conn
+            self.paused = False
+
+        @property
+        def in_transaction(self) -> bool:
+            return self.conn.in_transaction
+
+        def execute(self, sql: str, parameters=()):
+            if sql == "BEGIN IMMEDIATE" and not self.paused:
+                self.paused = True
+                waiting_for_lock.set()
+                assert continue_migration.wait(timeout=5)
+            return self.conn.execute(sql, parameters)
+
+        def commit(self) -> None:
+            self.conn.commit()
+
+        def rollback(self) -> None:
+            self.conn.rollback()
+
+    def migrate_from_stale_version() -> None:
+        try:
+            with closing(connect(db_path)) as conn:
+                apply_migrations(PausingConnection(conn))
+        except Exception as exc:  # pragma: no cover - asserted in the parent thread
+            errors.append(exc)
+
+    worker = threading.Thread(target=migrate_from_stale_version)
+    worker.start()
+    assert waiting_for_lock.wait(timeout=5)
+
+    with closing(connect(db_path)) as conn:
+        init_db(conn)
+
+    continue_migration.set()
+    worker.join(timeout=5)
+
+    assert not worker.is_alive()
+    assert errors == []
+    with closing(connect(db_path)) as conn:
+        assert schema_version(conn) == CURRENT_SCHEMA_VERSION
+        init_db(conn)
 
 
 def test_version_one_migration_preserves_legacy_duplicates_and_indexes_canonical_row(

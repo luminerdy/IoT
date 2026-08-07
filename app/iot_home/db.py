@@ -138,12 +138,28 @@ def apply_migrations(conn: sqlite3.Connection, target_version: int | None = None
             continue
         try:
             conn.execute("BEGIN IMMEDIATE")
+            locked_version = int(conn.execute("PRAGMA user_version").fetchone()[0])
+            if locked_version > CURRENT_SCHEMA_VERSION:
+                raise RuntimeError(
+                    f"database schema {locked_version} is newer than supported "
+                    f"{CURRENT_SCHEMA_VERSION}"
+                )
+            if locked_version >= version:
+                conn.commit()
+                current_version = locked_version
+                continue
+            if locked_version != version - 1:
+                raise RuntimeError(
+                    f"database schema changed unexpectedly from {current_version} "
+                    f"to {locked_version} before migration {version}"
+                )
             sql = path.read_text(encoding="utf-8")
             for statement in migration_statements(sql):
                 conn.execute(statement)
             validate_schema(conn, version)
             conn.execute(f"PRAGMA user_version = {version}")
             conn.commit()
+            current_version = version
         except Exception as exc:
             conn.rollback()
             raise RuntimeError(f"database migration {version} ({path.name}) failed: {exc}") from exc

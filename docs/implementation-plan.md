@@ -183,7 +183,7 @@ Priority 3: Operations And Data Protection
   the DATA-001 partial unique dedupe index. Done and live at schema version 2 on
   2026-08-07 with lossless production-backup and live comparisons. The
   concurrent-start race found during activation is fixed and tested in
-  `cacfceb`; one privileged collector restart remains to load that fix.
+  `cacfceb`; the collector was restarted with the fix and reverified.
 - Add a compact operational runbook covering service status, logs, OTA rollout, config publish, and sensor replacement. Done in `docs/operations-runbook.md` on 2026-07-05.
 - Decide how much local runtime state should stay JSON files versus moving to SQLite tables.
 

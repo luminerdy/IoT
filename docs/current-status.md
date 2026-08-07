@@ -136,9 +136,9 @@ Status: Phases 0 through 4 are complete for the current local-first system. Sign
   collector attempt exposed a concurrent-start race, then systemd restarted it
   successfully five seconds later. Commit `cacfceb` fixes the race by checking
   the schema version again after acquiring the migration write lock, with a
-  deterministic regression test. The current services have remained healthy;
-  a privileged collector restart is still needed to load that race fix into the
-  already-running process.
+  deterministic regression test. The collector was restarted at 15:14 CDT to
+  load the fix, reconnected and subscribed immediately, and produced no warning,
+  traceback, or migration error.
 - Created and restore-verified fresh post-migration backup
   `data/backups/iot-20260807T193918Z.sqlite.gz`. Its snapshot contains 243,328
   readings, 23 devices, 0 deployment attempts, 395 system metrics, 503 preserved
@@ -148,8 +148,8 @@ Status: Phases 0 through 4 are complete for the current local-first system. Sign
 
 The latest dashboard API check on 2026-08-07 shows 22 active mapped devices
 online and non-stale on `0.1.6-recovery`. The additional `UNMAPPED` record
-associated with the temporarily retired `AtticChimney` remains marked online
-but is stale. The dashboard code includes the dedicated Attic graph group,
+associated with the temporarily retired `AtticChimney` is also online and
+currently non-stale. The dashboard code includes the dedicated Attic graph group,
 alphabetical device cards, hottest-first Latest Readings, and 75 F / 100 F
 graph references.
 
@@ -166,21 +166,17 @@ constants and direct production MQTT port were then restored and the exact
 production build was reflashed and reverified on `Sunroom Test`.
 
 - Live fleet count: 22 active mapped devices online, 0 offline, and 0 stale at
-  the latest check on 2026-08-07. One additional `UNMAPPED` record is marked
-  online but stale, consistent with the temporarily retired `AtticChimney`.
+  the latest check on 2026-08-07. One additional `UNMAPPED` record associated
+  with the temporarily retired `AtticChimney` is online and currently non-stale.
 - Recovery firmware count: 22 active devices on `0.1.6-recovery` build `2026072401`, plus the temporarily retired `AtticChimney` device on the same build.
 - Previous firmware count: 0 devices.
 - Remaining old firmware count: 0 devices on `0.1.3-signed-ota`.
 - `Sunroom` / `esp32-device-id`: online again after wire replacement; current sequence is increasing normally.
 - Current suspect humidity flag: `Porch` at `99.9%`.
-- `UNMAPPED` count: 1 online-but-stale record at the latest check on 2026-08-07.
+- `UNMAPPED` count: 1 online and non-stale record at the latest check on 2026-08-07.
 
 ## Active Blockers
 
-- The live database migration is complete and healthy, but reloading the
-  concurrent-start fix requires `sudo systemctl restart
-  iot-home-collector.service`. Non-interactive service control is not authorized
-  on PiServer, so this one privileged command remains for the operator.
 - MasterBedroom completed the `0.1.6-recovery` rollout in an isolated acknowledged attempt. Its power supply was replaced by the operator before the 2026-08-04 check; it is currently reporting normally, so the prior reconnect issue is no longer active unless it recurs.
 - `BunkHouse` also received replacement power before the 2026-08-04 check and is currently online and reporting normally; its prior long-offline issue is no longer active unless it recurs.
 - `AtticChimney` stopped reporting and was temporarily retired from the dashboard fleet on 2026-08-04 until it is safe to enter the attic and replace it. Historical readings were preserved.
@@ -190,23 +186,19 @@ production build was reflashed and reverified on `Sunroom Test`.
 
 ## Next Actions
 
-1. Run `sudo systemctl restart iot-home-collector.service` to load commit
-   `cacfceb`, then verify the collector reconnects, schema version remains 2,
-   integrity remains `ok`, and fresh telemetry continues. The backup, live
-   migration, lossless comparisons, and regression fix are complete.
-2. Replace firmware substring JSON parsing with ArduinoJson, add native
+1. Replace firmware substring JSON parsing with ArduinoJson, add native
    manifest-validation tests,
    and USB-bench the exact build before any OTA rollout.
-3. Design and bench NVS-provisioned per-device MQTT credentials and TLS, then
+2. Design and bench NVS-provisioned per-device MQTT credentials and TLS, then
    migrate incrementally before retiring the shared credential.
-4. Extract dashboard HTML/CSS/JavaScript into static assets after the security
+3. Extract dashboard HTML/CSS/JavaScript into static assets after the security
    and data milestones above.
-5. Monitor the Pi3 watchdog with its production threshold of 10 consecutive
+4. Monitor the Pi3 watchdog with its production threshold of 10 consecutive
    one-minute failures; investigate repeated recovery cycles rather than
    relying on them to conceal a fault.
-6. Decide whether to remap or re-retire the online `UNMAPPED` device that
+5. Decide whether to remap or re-retire the online `UNMAPPED` device that
    returned after the 2026-08-05 power-cycle test.
-7. Keep the USB bench device on `/dev/ttyUSB0` for firmware validation; replace
+6. Keep the USB bench device on `/dev/ttyUSB0` for firmware validation; replace
     retired `AtticChimney` only when attic access is safe, continue attic heat
     monitoring, upload the house image, and keep periodic backup restore checks.
 

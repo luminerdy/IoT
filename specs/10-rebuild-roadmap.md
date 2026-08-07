@@ -40,8 +40,8 @@ run side by side (different systemd units / DB file) during migration.
 > validation, and the DATA-001 partial unique index were implemented and
 > validated losslessly against production backup copies on 2026-08-07. The live
 > database is now schema version 2; the concurrent-start race found during
-> activation is fixed and regression-tested, with one privileged collector
-> restart remaining to load the fix.
+> activation is fixed, regression-tested, loaded by a collector restart, and
+> live-verified.
 > The next code milestone is ArduinoJson plus manifest-validation native tests,
 > then NVS-provisioned per-device credentials and TLS. The Python 80% gate and
 > TEST-010/011 firmware native tests were also completed on 2026-08-07.

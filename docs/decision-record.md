@@ -265,5 +265,5 @@ before NTP synchronization.
 **Status:** Accepted and live at schema version 2. Production-copy and live
 comparisons preserved all historical rows and values. A concurrent-start race
 observed during activation was fixed in `cacfceb` by re-checking schema version
-under the migration write lock; the running collector still needs one
-privileged restart to load that fix.
+under the migration write lock. The collector was restarted with the fix and
+passed schema, integrity, log, and telemetry verification.

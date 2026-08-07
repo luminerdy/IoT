@@ -93,10 +93,8 @@ Bench validation completed:
 
 ## Pick Up Next
 
-1. Run the remaining privileged collector restart documented below, verify the
-   fixed process and live schema, then continue with ArduinoJson
-   manifest-validation tests, NVS-provisioned per-device credentials/TLS, and
-   dashboard static-asset extraction.
+1. Continue with ArduinoJson manifest-validation tests, NVS-provisioned
+   per-device credentials/TLS, and dashboard static-asset extraction.
 2. Continue watchdog/fleet/attic monitoring and decide whether to remap or
    re-retire the returned `UNMAPPED` device.
 
@@ -146,19 +144,15 @@ Simultaneous dashboard and collector starts at 12:46 CDT exposed a migration
 race: one collector attempt saw the column created by the other process and
 failed, then systemd restarted it successfully five seconds later. Commit
 `cacfceb` re-checks `PRAGMA user_version` under the migration write lock, and a
-deterministic concurrent-start test passes. The collector is healthy but still
-has its pre-fix Python module loaded. Non-interactive sudo is unavailable, so
-the operator must run the following once, after which the listed verification
-should be repeated:
-
-```bash
-sudo systemctl restart iot-home-collector.service
-```
+deterministic concurrent-start test passes. The collector was restarted at
+15:14 CDT to load the fix; it reconnected and subscribed immediately without a
+warning, traceback, or migration error. Post-restart schema, integrity, row
+preservation, and fresh telemetry checks all passed.
 
 The final 2026-08-07 read-only API check showed all 22 active mapped devices
 online and non-stale on deployed `0.1.6-recovery`. The separate `UNMAPPED`
-record associated with retired `AtticChimney` is marked online but stale. All
-three core services remain active and enabled.
+record associated with retired `AtticChimney` is also online and currently
+non-stale. All three core services remain active and enabled.
 
 ## Verification
 

@@ -26,6 +26,11 @@
   acquiring each migration write lock. A deterministic regression test now
   proves that a second starter skips migrations completed while it waited. The
   full suite has 114 passing tests at 91.9% branch-aware coverage.
+- Restarted the collector at 15:14 CDT to load the concurrent-start fix. It
+  reconnected and subscribed immediately with no warning, traceback, or
+  migration error. Post-restart integrity remained `ok`, schema remained at
+  version 2, all 503 legacy exemptions remained preserved, and fresh telemetry
+  continued.
 - Created and restore-verified fresh backup
   `data/backups/iot-20260807T193918Z.sqlite.gz`. A separate version-0 backup from
   before the live migration was also re-migrated with the fixed code: all

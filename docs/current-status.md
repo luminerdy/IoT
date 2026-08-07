@@ -1,6 +1,6 @@
 # Current Status
 
-Last updated: 2026-08-05
+Last updated: 2026-08-07
 
 This is the first file to read after a reboot, context switch, or long pause.
 
@@ -101,13 +101,47 @@ Status: Phases 0 through 4 are complete for the current local-first system. Sign
   OTA staging and command reconstruction now include the key in the download
   URL, missing or incorrect keys receive HTTP 401, and query strings are
   omitted from access logs so the key is not logged.
+- Added lossless database preservation and capacity monitoring. The daily
+  maintenance validates the live database and newest compressed backup, runs
+  `PRAGMA optimize`, proves preserved-table row counts are unchanged, and
+  alerts through a failed systemd run on backup freshness or storage limits.
+  The timer is installed and enabled; its first live oneshot passed on
+  2026-08-07.
+- Added CI safeguards for Ruff lint/format, pytest coverage reporting, gitleaks,
+  and hash-only current-tree identifier scanning. The expanded 113-test Python
+  suite measures 92.1% with branch coverage enabled, and CI now enforces the
+  required 80% floor.
+- Extracted firmware sensor filtering and publish policy into an
+  Arduino-independent C++ library. Six PlatformIO native tests now cover median
+  filtering, plausibility bounds, outlier confirmation, rolling windows,
+  interval publishing, and confirmed-change publishing. The local candidate is
+  version `0.1.7-testable-core`, build `2026080701`; the ESP32 target compiles,
+  but this candidate has not been USB-bench validated, staged, or deployed.
+- Kept OTA command authority operator-only by removing collector `--auto-ota`
+  and its MQTT publish path. Desired-version reconciliation still records one
+  `detected` attempt per cooldown window. Added TEST-023, which validates the
+  tracked per-device ACL with two device users, the read-only collector, and
+  admin against an isolated Mosquitto broker. No live ACL was changed.
+- Added packaged, numbered SQLite migrations with transactional
+  `PRAGMA user_version` tracking. Version 2 replaces the collector's
+  check-before-insert dedupe with a partial unique index and correctly exempts
+  pre-NTP sentinel readings. It preserves historical duplicate rows through a
+  migration-only marker while indexing one canonical row per key.
+- Validated the migration against a SQLite online-backup copy of production:
+  integrity remained `ok`; all 242,291 readings and all original reading
+  values were unchanged; device, deployment-attempt, and system-metric rows
+  were unchanged; 503 extra legacy copies were marked; and no indexed duplicate
+  groups remained. The live database is still schema version 0 because no
+  service was restarted and no production schema change was authorized.
 
 ## Live Dashboard State
 
-The latest dashboard API check on 2026-08-05 shows 22 active mapped devices and
-one online `UNMAPPED` device, all online and non-stale on `0.1.6-recovery`. The
-dashboard code includes the dedicated Attic graph group, alphabetical device
-cards, hottest-first Latest Readings, and 75 F / 100 F graph references.
+The latest dashboard API check on 2026-08-07 shows 22 active mapped devices
+online and non-stale on `0.1.6-recovery`. The additional `UNMAPPED` record
+associated with the temporarily retired `AtticChimney` remains marked online
+but is stale. The dashboard code includes the dedicated Attic graph group,
+alphabetical device cards, hottest-first Latest Readings, and 75 F / 100 F
+graph references.
 
 Firmware `0.1.6-recovery` build `2026072401` passed the USB bench gate on
 2026-07-25. It replaces the blocking initial WiFi loop with bounded reconnect
@@ -122,15 +156,14 @@ constants and direct production MQTT port were then restored and the exact
 production build was reflashed and reverified on `Sunroom Test`.
 
 - Live fleet count: 22 active mapped devices online, 0 offline, and 0 stale at
-  the latest check on 2026-08-05. One additional online device has returned as
-  `UNMAPPED`, consistent with the temporarily retired `AtticChimney` reporting
-  again.
+  the latest check on 2026-08-07. One additional `UNMAPPED` record is marked
+  online but stale, consistent with the temporarily retired `AtticChimney`.
 - Recovery firmware count: 22 active devices on `0.1.6-recovery` build `2026072401`, plus the temporarily retired `AtticChimney` device on the same build.
 - Previous firmware count: 0 devices.
 - Remaining old firmware count: 0 devices on `0.1.3-signed-ota`.
 - `Sunroom` / `esp32-device-id`: online again after wire replacement; current sequence is increasing normally.
 - Current suspect humidity flag: `Porch` at `99.9%`.
-- `UNMAPPED` count: 1 online device at the latest check on 2026-08-05.
+- `UNMAPPED` count: 1 online-but-stale record at the latest check on 2026-08-07.
 
 ## Active Blockers
 
@@ -143,29 +176,23 @@ production build was reflashed and reverified on `Sunroom Test`.
 
 ## Next Actions
 
-1. Add lossless database preservation and capacity monitoring: integrity and
-   backup checks, database/free-space alerts, `PRAGMA optimize`, tests, and a
-   systemd timer. Do not delete readings, deployment attempts, or system
-   metrics. Any future archival requires explicit approval and restore proof.
-2. Add CI safeguards: Ruff lint/format, coverage reporting, gitleaks, and a
-   current-tree local-identifier scan with an intentional historical baseline.
-3. Resolve the dormant collector `--auto-ota` versus MQTT ACL contract; retain
-   operator-controlled rollout authority or use a dedicated temporary OTA
-   identity, then add an automated ACL matrix test.
-4. Introduce numbered database migrations and complete the DATA-001 partial
-   dedupe index before larger schema changes.
-5. Replace firmware substring JSON parsing with ArduinoJson, add native tests,
+1. In an approved maintenance window, create and verify a fresh backup, deploy
+   the migration-capable collector, then verify schema version 2, integrity,
+   row preservation, collector logs, and fresh telemetry. The migration has
+   already passed against a production copy; it has not touched the live DB.
+2. Replace firmware substring JSON parsing with ArduinoJson, add native
+   manifest-validation tests,
    and USB-bench the exact build before any OTA rollout.
-6. Design and bench NVS-provisioned per-device MQTT credentials and TLS, then
+3. Design and bench NVS-provisioned per-device MQTT credentials and TLS, then
    migrate incrementally before retiring the shared credential.
-7. Extract dashboard HTML/CSS/JavaScript into static assets after the security
+4. Extract dashboard HTML/CSS/JavaScript into static assets after the security
    and data milestones above.
-8. Monitor the Pi3 watchdog with its production threshold of 10 consecutive
+5. Monitor the Pi3 watchdog with its production threshold of 10 consecutive
    one-minute failures; investigate repeated recovery cycles rather than
    relying on them to conceal a fault.
-9. Decide whether to remap or re-retire the online `UNMAPPED` device that
+6. Decide whether to remap or re-retire the online `UNMAPPED` device that
    returned after the 2026-08-05 power-cycle test.
-10. Keep the USB bench device on `/dev/ttyUSB0` for firmware validation; replace
+7. Keep the USB bench device on `/dev/ttyUSB0` for firmware validation; replace
     retired `AtticChimney` only when attic access is safe, continue attic heat
     monitoring, upload the house image, and keep periodic backup restore checks.
 

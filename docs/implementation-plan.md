@@ -152,7 +152,11 @@ Priority 1: Fleet Stability
 - Watch recovered/replaced devices across normal 10-minute report intervals.
 - Monitor the three attic sensors during the 2026-07-11 afternoon heat window. If `Attic` repeats the 2026-07-10 outage near the prior 137.5 F peak, inspect its power supply, regulator, wiring, and enclosure before considering firmware changes.
 - Fix retained telemetry pollution by stopping retained telemetry publishes and/or deduping collector inserts on `(device_id, seq, datetime)`. Done for the 21 mapped devices with firmware `0.1.4-antirollback` and the live collector/database deployment on 2026-07-04.
-- Use collector-side desired firmware version checking to record deployment attempts on version mismatch; enable `--auto-ota` only after the exact staged firmware build has passed bench ESP32 validation.
+- Use collector-side desired firmware version checking to record deployment
+  attempts on version mismatch while keeping OTA publication operator-only.
+  Done on 2026-08-07: `--auto-ota` was removed, the collector retains no
+  command publisher path, and the admin-authenticated OTA CLI remains the
+  distribution mechanism after bench validation.
 - Keep retained MQTT config/status state, SQLite device rows, and `config/locations.json` clean when devices are removed, replaced, or renamed.
 - Add a simple operator checklist for adding/replacing a sensor. Done in `docs/operations-runbook.md` on 2026-07-05.
 
@@ -171,6 +175,15 @@ Priority 3: Operations And Data Protection
 
 - Add SQLite backup/export workflow. Done; the local SQLite backup runs daily at 02:05 before the 02:15 restic/S3 backup.
 - Add restore verification for at least one backup. Done for both local SQLite backup and latest restic S3 snapshot; reverified on 2026-07-08.
+- Add lossless scheduled database maintenance that verifies live and backup
+  integrity, preserves row counts, runs `PRAGMA optimize`, and alerts on stale
+  backups or storage thresholds. Done on 2026-08-07 with a daily systemd timer
+  and focused tests.
+- Replace ad hoc schema creation with numbered forward-only migrations and add
+  the DATA-001 partial unique dedupe index. Implemented locally on 2026-08-07
+  and validated losslessly against a production backup copy. Live deployment
+  remains gated on a fresh verified backup and explicit collector-restart
+  approval.
 - Add a compact operational runbook covering service status, logs, OTA rollout, config publish, and sensor replacement. Done in `docs/operations-runbook.md` on 2026-07-05.
 - Decide how much local runtime state should stay JSON files versus moving to SQLite tables.
 
@@ -184,6 +197,17 @@ Priority 4: Security Hardening Without Fleet Disruption
 - Stage MQTT TLS and per-device ACL migration on the bench device first.
 - Add per-device credentials only after bench validation.
 - Decide whether the public GitHub history needs a full rewrite or whether the current sanitized tip is sufficient.
+- Keep existing public history without a rewrite and block new current-tree
+  identifier residue with a hash-only baseline. Done in DR-021 on 2026-08-07.
+- Expand Python coverage from the measured 52.6% baseline to the required 80%
+  gate. Done on 2026-08-07: 113 tests measure 92.1% with branch coverage, and
+  CI enforces an 80% floor.
+- Add the TEST-023 broker ACL matrix. Done on 2026-08-07 against an isolated
+  Mosquitto broker using the same tracked per-device ACL installed by the TLS
+  setup script; no live broker configuration was changed.
+- Extract firmware filter and publish-policy logic for native host tests. Done
+  on 2026-08-07 with six passing PlatformIO native cases for TEST-010/011;
+  TEST-012 manifest validation remains paired with the ArduinoJson milestone.
 
 Acceptance criteria:
 

@@ -70,8 +70,13 @@ integer, FR-012) injected at build time via build flags.
 On every push/PR: (1) ruff lint + format check, (2) pytest with coverage
 gate (TEST-040), (3) **firmware compile** via `platformio run` (not just
 `check`), (4) firmware native unit tests, (5) secret/identifier scan
-(SEC-014). Current CI compiles firmware but still needs ruff, coverage,
-native firmware tests, and secret/identifier scanning.
+(SEC-014).
+*Implementation status (2026-08-07):* Ruff lint/format, pytest coverage
+reporting, gitleaks, and a hash-only current-tree identifier baseline are now
+configured. The 113-test Python suite measures 92.1% with branch coverage and
+enforces TEST-040's normative 80% floor. PlatformIO native tests cover the
+extracted sensor filter and publish policy (TEST-010/011); TEST-012 remains
+paired with the ArduinoJson manifest-validation milestone.
 
 **TECH-021 — Reproducible firmware builds** `SHOULD`
 CI archives the built `firmware.bin` + its SHA-256 per commit so a staged

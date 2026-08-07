@@ -60,19 +60,10 @@ PYTHONPATH=app python3 -m iot_home.collector \
   --desired-firmware-version 0.1.5-led-off
 ```
 
-With only `--desired-firmware-version`, the collector records the mismatch and optional `localIp` metadata but does not publish an OTA command.
-
-After the exact firmware build has passed the USB-connected `Bench Device` validation, automatic OTA publish can be enabled for a staged manifest:
-
-```bash
-cd /home/scotty/IoT
-MQTT_USERNAME=iot-admin MQTT_PASSWORD='<admin-password>' PYTHONPATH=app python3 -m iot_home.collector \
-  --desired-firmware-version 0.1.5-led-off \
-  --auto-ota \
-  --base-url http://<pi-lan-ip>:8000
-```
-
-The collector uses `data/firmware/{version}/manifest.json`, publishes to `home/sensors/{deviceId}/command`, and suppresses repeat attempts for the same device/version during the cooldown window.
+The collector records the mismatch and optional `localIp` metadata but never
+publishes an OTA command. It suppresses repeat attempt records for the same
+device/version during the cooldown window. After the exact firmware build has
+passed USB bench validation, use the operator-only OTA command below.
 
 ## Watch OTA Status
 

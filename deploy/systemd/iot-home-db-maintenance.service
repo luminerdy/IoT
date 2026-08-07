@@ -1,0 +1,16 @@
+[Unit]
+Description=IoT Home lossless database maintenance and capacity check
+Documentation=file:/home/scotty/IoT/docs/operations-runbook.md
+After=iot-home-sqlite-backup.service
+
+[Service]
+Type=oneshot
+User=scotty
+Group=scotty
+WorkingDirectory=/home/scotty/IoT
+Environment=PYTHONPATH=/home/scotty/IoT/app
+ExecStart=/usr/bin/python3 -m iot_home.db_maintenance --db /home/scotty/IoT/data/iot.db --backup-dir /home/scotty/IoT/data/backups
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ReadWritePaths=/home/scotty/IoT/data

@@ -1,5 +1,65 @@
 # Progress Log
 
+## 2026-08-07
+
+- Replaced ad hoc SQLite schema initialization with packaged forward-only
+  migrations `001` and `002`, transactionally tracked through
+  `PRAGMA user_version`.
+- Added DATA-001 database-enforced dedupe. The partial unique index ignores the
+  pre-NTP sentinel and migration-only legacy exemptions; collector inserts use
+  the index conflict path rather than a check-before-insert query. Telemetry
+  validation now requires integer `seq` as specified by FR-021.
+- Audited production read-only and found 503 historical extra rows across 486
+  non-sentinel duplicate keys. DR-023 preserves all of them: migration marks
+  only extra copies, retains the lowest-ID canonical row in the index, and
+  gives every future row a non-exempt default.
+- Applied the migrations only to an online-backup scratch copy. It reached
+  schema version 2 with integrity `ok`; exact comparisons found no removed,
+  added, or changed original reading values and no changes to devices,
+  deployment attempts, or system metrics. The live schema remains unchanged.
+- Added CI Ruff lint and formatting checks, pytest coverage reporting and
+  artifact upload, gitleaks, and a custom current-tree identifier scan.
+- Removed collector `--auto-ota` and its command-publishing code. Firmware
+  mismatches still create cooldown-limited `detected` deployment attempts;
+  staged OTA publication remains an explicit admin-authenticated operator
+  action under DR-022.
+- Added a canonical per-device Mosquitto ACL and TEST-023 integration matrix.
+  The test starts an isolated broker and verifies actual read/write behavior
+  for two device identities, the read-only collector, and admin. The TLS setup
+  script installs this same ACL; no live broker configuration was changed.
+- Recorded an initial 52.6% branch-aware Python coverage baseline, then added
+  collector, dashboard HTTP/security, config publisher, and OTA staging/
+  publishing tests. The 113-test suite now measures 92.1%, and CI enforces the
+  normative 80% floor.
+- Extracted sensor filtering and publish policy into a pure C++ firmware
+  library. Six PlatformIO native tests cover TEST-010/011, and both the native
+  suite and ESP32 compile pass. Assigned the changed binary a distinct local
+  identity, `0.1.7-testable-core` build `2026080701`, to avoid reusing the
+  deployed anti-rollback identity. The candidate has not been USB-bench tested,
+  staged, or deployed. OTA manifest-native coverage remains tied to the later
+  ArduinoJson refactor.
+- Added a hash-only baseline for existing private-IP, MAC, device-ID, `.local`,
+  and installed-hostname findings. New findings fail without printing matched
+  values, and baseline regeneration is never automatic.
+- Accepted DR-021: preserve existing Git history for now, scan new commits with
+  gitleaks, and require explicit security review for identifier-baseline changes.
+- Added lossless SQLite maintenance that checks live integrity, restore-checks
+  the newest compressed local backup, runs `PRAGMA optimize`, and proves that
+  row counts in `readings`, `deployment_attempts`, and `system_metrics` do not
+  change.
+- Added explicit alerts for backup age, database size, filesystem free bytes,
+  and filesystem free percentage. The command returns distinct alert and
+  critical-failure exit statuses for systemd/journal visibility.
+- Added a hardened oneshot service and daily 03:05 America/Chicago timer, plus
+  a dedicated installer that does not rewrite application credentials or
+  restart the collector/dashboard.
+- Installed and enabled the live timer. Its first systemd-triggered oneshot
+  completed successfully, and the next randomized run is scheduled for
+  2026-08-08 at 03:09:59 CDT.
+- Added focused preservation, capacity-alert, and missing-backup tests. A live
+  manual check passed with 241,624 readings, 351 system metrics, a restore-valid
+  current backup, a roughly 62 MB database, and 90.3% filesystem free space.
+
 ## 2026-08-05
 
 - Fixed the Pi3 watchdog's initial-cooldown bug so the first qualified recovery
@@ -160,7 +220,10 @@ Use this file for dated accomplishments and important observations. Keep future 
 ### Version Mismatch OTA Trigger
 
 - Added optional collector-side desired firmware version checking. When a device reports a different `firmwareVersion`, the collector records a `deployment_attempts` row with the stable device ID, current version, target version, and optional reported `localIp`.
-- Added opt-in collector `--auto-ota` publishing from an already staged `data/firmware/{version}/manifest.json`, with a cooldown to avoid repeated commands for the same device/version.
+- Added opt-in collector `--auto-ota` publishing from an already staged
+  `data/firmware/{version}/manifest.json`, with a cooldown to avoid repeated
+  commands for the same device/version. Superseded by DR-022 on 2026-08-07;
+  collector OTA publishing was removed in favor of operator-only authority.
 - Updated ESP32 status and telemetry payloads to include `localIp` as diagnostic metadata.
 - Verified the code path with `.venv/bin/python -m pytest` and confirmed the firmware still builds with `.venv/bin/pio run -d firmware`.
 - USB-flashed the exact build to the local `Bench Device` ESP32 first and verified it came back online over MQTT with `firmwareVersion` and `localIp` in the status payload.

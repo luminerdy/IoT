@@ -15,6 +15,8 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
   "pytest>=8,<9",
+  "pytest-cov>=6,<7",
+  "ruff>=0.8,<1",
 ]
 
 [tool.setuptools]
@@ -23,6 +25,28 @@ package-dir = {"" = "app"}
 [tool.setuptools.packages.find]
 where = ["app"]
 
+[tool.setuptools.package-data]
+iot_home = ["migrations/*.sql"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["app", "."]
+addopts = "--cov=iot_home --cov-report=term-missing --cov-report=xml --cov-fail-under=80"
+
+[tool.coverage.run]
+branch = true
+omit = ["app/iot_home/simulator.py"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+exclude_also = [
+  "if __name__ == .__main__.:",
+]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I"]

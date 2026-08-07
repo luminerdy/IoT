@@ -1,6 +1,6 @@
 # Session Handoff
 
-Last updated: 2026-08-06
+Last updated: 2026-08-07
 
 ## Pi3 External Watchdog
 
@@ -93,36 +93,70 @@ Bench validation completed:
 
 ## Pick Up Next
 
-1. Implement lossless database preservation/capacity monitoring with integrity
-   checks, tests, and a systemd timer. Do not prune historical rows; any future
-   archive requires explicit approval and restore verification.
-2. Add Ruff, coverage, gitleaks, and current-tree identifier scanning to CI.
-3. Resolve the collector auto-OTA/ACL contract and add an ACL matrix test.
-4. Then address migrations, ArduinoJson/native firmware tests, NVS-provisioned
+1. Deploy the already production-copy-validated database migrations only in an
+   approved maintenance window after a fresh verified backup, then continue
+   with ArduinoJson manifest-validation tests and NVS-provisioned
    per-device credentials/TLS, and dashboard static-asset extraction.
-5. Continue watchdog/fleet/attic monitoring and decide whether to remap or
+2. Continue watchdog/fleet/attic monitoring and decide whether to remap or
    re-retire the returned `UNMAPPED` device.
 
 ## Working Tree
 
-Today’s capability-key, authenticated-write, tests, deployment unit, spec, and
-documentation changes were published to `agent/disable-iot-led` in commit
-`6c4f8fd` and added to draft PR #4. GitHub Python and firmware checks passed.
+The capability-key and authenticated-write batch was published in commit
+`6c4f8fd` and added to draft PR #4. The current branch tip is `a9b5a80`; the
+database-maintenance, migration/dedupe, CI safeguards, coverage expansion,
+firmware native-test, ACL matrix, operator-only OTA authority, spec, and
+documentation work remains local and uncommitted. No fleet command, service
+restart, live ACL change, live schema change, or firmware deployment was
+performed for this work.
 
 `AGENTS.md` remains local/untracked because it identifies the local machine and
 workspace. `IoT-code-review.md` remains local/untracked because it contains
 review context and identifiers that should not be added to the sanitized public
 repository. Its accepted actions are captured in tracked specs/status docs.
 
-Tomorrow, start with the ordered `Pick Up Next` list above. Historical rows
-must not be pruned; the first database milestone is preservation, integrity,
-capacity/free-space monitoring, and alerts only.
+The lossless database milestone is implemented with focused tests and a live
+systemd run. `iot-home-db-maintenance.timer` is enabled and waiting; its first
+oneshot passed and its next run is scheduled for 2026-08-08 at 03:09:59 CDT.
+Historical rows must not be pruned; any future archival still requires explicit
+approval and restore verification. Continue with the ordered `Pick Up Next`
+list above.
+
+The Python suite now has 113 passing tests at 92.1% branch-aware coverage, with
+an enforced 80% CI floor. Six PlatformIO native tests cover the extracted
+sensor-filter and publish-policy logic. Local firmware candidate
+`0.1.7-testable-core` build `2026080701` compiles for ESP32, but it has not been
+USB-bench validated, staged, or deployed. ArduinoJson-based OTA manifest native
+tests remain part of the later SEC-015 milestone.
+
+DR-022 resolves the collector/ACL conflict: desired-version mismatches are
+recorded, but the collector has no OTA publish option or command authority.
+`iot_home.publish_ota` remains the explicit admin-authenticated path after the
+bench gate. TEST-023 passes against an isolated broker using the same tracked
+per-device ACL installed by the TLS setup script. The live Mosquitto listener,
+credentials, services, and fleet were not changed.
+
+Numbered migrations `001` and `002` now replace ad hoc schema initialization
+and record version 2 in `PRAGMA user_version`. The dedupe migration preserves
+all pre-index rows by marking only historical extra copies and indexing one
+canonical row per key; future non-sentinel duplicates are rejected atomically.
+A production backup copy migrated with integrity `ok`, 242,291 readings and all
+original values unchanged, 503 legacy exemptions, and no remaining indexed
+duplicate groups. The live DB remains at version 0; deploy only after a fresh
+verified backup and explicit approval to restart the collector.
+
+The final 2026-08-07 read-only API check showed all 22 active mapped devices
+online and non-stale on deployed `0.1.6-recovery`. The separate `UNMAPPED`
+record associated with retired `AtticChimney` is marked online but stale. All
+three core services remain active and enabled.
 
 ## Verification
 
 ```bash
 cd /home/scotty/IoT
 .venv/bin/python -m pytest -q
+.venv/bin/pio test -d firmware -e native
+.venv/bin/pio run -d firmware
 curl -fsS http://127.0.0.1:8000/api/latest
 systemctl is-active mosquitto.service iot-home-collector.service iot-home-dashboard.service
 git status --short

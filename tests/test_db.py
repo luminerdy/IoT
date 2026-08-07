@@ -1,3 +1,5 @@
+from contextlib import closing
+
 from iot_home.db import (
     connect,
     init_db,
@@ -14,7 +16,7 @@ from iot_home.db import (
 
 def test_record_and_read_latest_system_metric(tmp_path):
     db_path = tmp_path / "iot.db"
-    with connect(db_path) as conn:
+    with closing(connect(db_path)) as conn:
         init_db(conn)
         record_system_metric(conn, "pi_cpu_temperature_f", 121.5)
         record_system_metric(conn, "pi_cpu_temperature_f", 123.1)
@@ -26,7 +28,7 @@ def test_record_and_read_latest_system_metric(tmp_path):
 
 def test_record_telemetry_updates_latest_device_state(tmp_path):
     db_path = tmp_path / "iot.db"
-    with connect(db_path) as conn:
+    with closing(connect(db_path)) as conn:
         init_db(conn)
         record_telemetry(
             conn,
@@ -56,7 +58,7 @@ def test_record_telemetry_updates_latest_device_state(tmp_path):
 
 def test_record_telemetry_tracks_valid_last_ip(tmp_path):
     db_path = tmp_path / "iot.db"
-    with connect(db_path) as conn:
+    with closing(connect(db_path)) as conn:
         init_db(conn)
         record_telemetry(
             conn,
@@ -66,6 +68,7 @@ def test_record_telemetry_tracks_valid_last_ip(tmp_path):
                 "temperature": 72.4,
                 "humidity": 45.2,
                 "localIp": "192.168.1.25",
+                "seq": 1,
             },
         )
 
@@ -85,7 +88,7 @@ def test_record_telemetry_dedupes_repeated_device_seq_datetime(tmp_path):
         "seq": 7,
     }
 
-    with connect(db_path) as conn:
+    with closing(connect(db_path)) as conn:
         init_db(conn)
         record_telemetry(conn, payload)
         record_telemetry(conn, {**payload, "temperature": 73.0, "humidity": 46.0})
@@ -107,7 +110,7 @@ def test_record_telemetry_records_new_seq_for_same_device_datetime(tmp_path):
         "seq": 7,
     }
 
-    with connect(db_path) as conn:
+    with closing(connect(db_path)) as conn:
         init_db(conn)
         record_telemetry(conn, payload)
         record_telemetry(conn, {**payload, "seq": 8})
@@ -119,7 +122,7 @@ def test_record_telemetry_records_new_seq_for_same_device_datetime(tmp_path):
 
 def test_status_without_timestamp_preserves_last_seen(tmp_path):
     db_path = tmp_path / "iot.db"
-    with connect(db_path) as conn:
+    with closing(connect(db_path)) as conn:
         init_db(conn)
         record_telemetry(
             conn,
@@ -128,6 +131,7 @@ def test_status_without_timestamp_preserves_last_seen(tmp_path):
                 "datetime": "2026-06-30T12:00:00Z",
                 "temperature": 70,
                 "humidity": 40,
+                "seq": 1,
             },
         )
         record_status(conn, {"deviceId": "esp32-one", "status": "offline"})
@@ -140,7 +144,7 @@ def test_status_without_timestamp_preserves_last_seen(tmp_path):
 
 def test_record_deployment_attempt_and_recent_check(tmp_path):
     db_path = tmp_path / "iot.db"
-    with connect(db_path) as conn:
+    with closing(connect(db_path)) as conn:
         init_db(conn)
         attempt_id = record_deployment_attempt(
             conn,
@@ -151,7 +155,9 @@ def test_record_deployment_attempt_and_recent_check(tmp_path):
             status="detected",
         )
 
-        row = conn.execute("SELECT * FROM deployment_attempts WHERE id = ?", (attempt_id,)).fetchone()
+        row = conn.execute(
+            "SELECT * FROM deployment_attempts WHERE id = ?", (attempt_id,)
+        ).fetchone()
         recent = recent_deployment_attempt_exists(conn, "esp32-one", "0.1.4", 3600)
 
     assert row["device_id"] == "esp32-one"
@@ -164,7 +170,7 @@ def test_record_deployment_attempt_and_recent_check(tmp_path):
 
 def test_reading_history_bounds_limit_and_hours(tmp_path):
     db_path = tmp_path / "iot.db"
-    with connect(db_path) as conn:
+    with closing(connect(db_path)) as conn:
         init_db(conn)
         record_telemetry(
             conn,
@@ -173,6 +179,7 @@ def test_reading_history_bounds_limit_and_hours(tmp_path):
                 "datetime": "2026-06-30T12:00:00Z",
                 "temperature": 70,
                 "humidity": 40,
+                "seq": 1,
             },
         )
 

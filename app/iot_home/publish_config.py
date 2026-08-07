@@ -10,7 +10,6 @@ import paho.mqtt.client as mqtt
 
 from iot_home.mqtt_schema import CONFIG_TOPIC
 
-
 DEFAULT_REPORT_INTERVAL_SECONDS = 600
 DEFAULT_CHANGE_THRESHOLD_F = 1.0
 MIN_REPORT_INTERVAL_SECONDS = 10
@@ -20,7 +19,9 @@ MAX_CHANGE_THRESHOLD_F = 10.0
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Publish retained runtime config for an ESP32 sensor.")
+    parser = argparse.ArgumentParser(
+        description="Publish retained runtime config for an ESP32 sensor."
+    )
     parser.add_argument("device_id", help="Device ID, for example esp32-device-id.")
     parser.add_argument("--broker", default="localhost", help="MQTT broker host.")
     parser.add_argument("--port", type=int, default=1883, help="MQTT broker port.")
@@ -105,7 +106,10 @@ def main() -> None:
     if args.username:
         client.username_pw_set(args.username, args.password)
     if args.tls:
-        client.tls_set(ca_certs=str(args.ca_cert) if args.ca_cert else None, tls_version=ssl.PROTOCOL_TLS_CLIENT)
+        client.tls_set(
+            ca_certs=str(args.ca_cert) if args.ca_cert else None,
+            tls_version=ssl.PROTOCOL_TLS_CLIENT,
+        )
     client.connect(args.broker, args.port, keepalive=60)
     client.loop_start()
     result = client.publish(topic, payload, qos=1, retain=True)

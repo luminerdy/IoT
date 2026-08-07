@@ -11,8 +11,6 @@ import subprocess
 import time
 import urllib.error
 import urllib.request
-from datetime import UTC, datetime
-
 
 LOG = logging.getLogger("pi-watchdog")
 

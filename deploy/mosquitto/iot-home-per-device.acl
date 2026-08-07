@@ -1,0 +1,16 @@
+# Device usernames must equal their device IDs.
+pattern write home/sensors/%u/telemetry
+pattern write home/sensors/%u/status
+pattern write home/sensors/%u/response
+pattern write home/sensors/%u/ota/status
+pattern read home/sensors/%u/config
+pattern read home/sensors/%u/command
+
+# The collector records telemetry/status and has no command authority.
+user iot-collector
+topic read home/sensors/+/telemetry
+topic read home/sensors/+/status
+
+# Operator tools are the only MQTT command/config publishers.
+user iot-admin
+topic readwrite home/#

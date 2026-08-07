@@ -12,8 +12,8 @@ device-ID pattern (SEC-012), topic/payload identity mismatch (FR-022).
 
 **TEST-002 — Persistence & dedupe** `MUST`
 `record_telemetry`/`record_status` upsert behavior, last-seen preservation,
-unique-index dedupe (FR-024), history clamping (already partly covered —
-extend the existing `tests/test_db.py`).
+unique-index dedupe, sentinel exemption, preserved legacy-duplicate handling
+(FR-024), and history clamping.
 
 **TEST-003 — Location & floorplan config** `MUST`
 Valid/invalid `locations.json` and `floorplan.json` parsing (DATA-003),
@@ -31,6 +31,9 @@ integrity before an explicitly approved live-table removal step.
 
 **TEST-006 — Migrations** `MUST`
 Fresh DB and each prior schema version migrate to current; version recorded.
+Migration tests also prove idempotence, transaction rollback on incompatible
+legacy schemas, rejection of newer unknown versions, and value preservation for
+pre-existing telemetry columns.
 
 **TEST-007 — Dashboard presentation contract** `SHOULD` (R5)
 Inspect the generated dashboard page for the location sort, hottest-first
@@ -71,6 +74,10 @@ Golden-file JSON shape tests for `/api/latest`, `/api/history`,
 **TEST-023 — Broker ACL matrix** `SHOULD`
 Scripted matrix using two device users + collector + admin: each identity
 attempts each topic verb; assert allow/deny per SEC-003 (AC-033).
+*Implemented 2026-08-07:* pytest launches a temporary authenticated Mosquitto
+broker with `deploy/mosquitto/iot-home-per-device.acl`, verifies actual message
+delivery for reads and broker forwarding for writes, then shuts it down. CI
+installs Mosquitto solely for this isolated test.
 
 ## 11.4 Hardware bench validation (manual, gated)
 
@@ -98,6 +105,10 @@ gate for the HTTP handler and validation modules is not natively enforceable
 by coverage tooling; those modules are instead reviewed at report level with
 a ≥ 85 % target. Network-bound service loops (`main()` connect loops,
 simulator) are covered by TEST-020 integration tests, not unit coverage.
+*Implementation note (2026-08-07):* the 113-test suite measures 92.1% with
+branch coverage enabled, and CI enforces the required 80% floor. Collector,
+dashboard HTTP/security, config-publisher, and OTA staging/publishing paths are
+included in the expanded coverage.
 
 **TEST-041 — Static analysis** `MUST`
 ruff (lint + format) for Python; `platformio check` retained for firmware

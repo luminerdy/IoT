@@ -155,15 +155,16 @@ reach a terminal OTA state and return online on the target version.
 **AC-045** (FR-046, DATA-010) *(added 2026-07-05)*
 Given a desired firmware version configured and a device reporting an
 older version, then exactly one deployment attempt is recorded per cooldown
-window; with `--auto-ota` enabled, the staged signed manifest for the
-desired version is published to that device's command topic and the attempt
-records `published` (or `failed` with a reason); without `--auto-ota`,
-nothing is published.
+window and nothing is published to the command topic. Publishing remains a
+separate operator action through the admin-authenticated OTA CLI after the
+bench gate.
 
 **AC-033** (SEC-003)
 Given a client authenticated with device-A credentials, when it publishes to
-device-B's `command` topic, then the broker denies it (verified by ACL test,
-TEST-023).
+device-B's `command` topic, then the broker denies it. The complete TEST-023
+matrix also proves device users are confined to their own subtree, the
+collector is read-only on telemetry/status, and only admin can write
+config/command.
 
 ## Operations
 

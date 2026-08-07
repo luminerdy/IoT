@@ -10,10 +10,10 @@ import mimetypes
 import os
 import threading
 from contextlib import closing
+from datetime import UTC, datetime
 from html import escape
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from datetime import UTC, datetime
 from urllib.parse import parse_qs, unquote, urlparse
 
 from iot_home.db import (
@@ -25,7 +25,12 @@ from iot_home.db import (
     reading_history,
 )
 from iot_home.floorplan import DEFAULT_FLOORPLAN_PATH, load_floorplan
-from iot_home.locations import DEFAULT_LOCATIONS_PATH, load_locations, mapped_location, save_locations
+from iot_home.locations import (
+    DEFAULT_LOCATIONS_PATH,
+    load_locations,
+    mapped_location,
+    save_locations,
+)
 
 
 def parse_args() -> argparse.Namespace:
@@ -1894,9 +1899,7 @@ class Handler(BaseHTTPRequestHandler):
             else:
                 sampled_at = parse_utc(row["created_at"])
                 age_seconds = (
-                    int((datetime.now(UTC) - sampled_at).total_seconds())
-                    if sampled_at
-                    else None
+                    int((datetime.now(UTC) - sampled_at).total_seconds()) if sampled_at else None
                 )
                 result = {
                     "temperatureF": row["value"],
@@ -1919,9 +1922,9 @@ class Handler(BaseHTTPRequestHandler):
                 return
             with closing(connect(self.db_path)) as conn:
                 rows = latest_readings(conn)
-            payload = json.dumps(
-                location_payload(rows, self.stale_seconds, self.locations)
-            ).encode("utf-8")
+            payload = json.dumps(location_payload(rows, self.stale_seconds, self.locations)).encode(
+                "utf-8"
+            )
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(payload)))
@@ -2037,7 +2040,9 @@ def main() -> None:
     if not args.firmware_download_key:
         raise SystemExit("FIRMWARE_DOWNLOAD_KEY is required to serve firmware (SEC-016)")
     if not args.username or not args.password:
-        raise SystemExit("DASHBOARD_USERNAME and DASHBOARD_PASSWORD are required for admin writes (SEC-009)")
+        raise SystemExit(
+            "DASHBOARD_USERNAME and DASHBOARD_PASSWORD are required for admin writes (SEC-009)"
+        )
     with closing(connect(args.db)) as conn:
         init_db(conn)
 

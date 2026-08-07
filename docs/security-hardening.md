@@ -79,7 +79,12 @@ Configure a parallel TLS listener on port `8883`:
 scripts/configure_mosquitto_tls_acl.sh
 ```
 
-This leaves the existing listener alone and adds ACL rules for device-style usernames. Add per-device users before migrating a sensor:
+This installs the reviewed
+`deploy/mosquitto/iot-home-per-device.acl` at a separate broker path and enables
+per-listener settings so it does not replace the interim shared-fleet ACL on
+1883. The same ACL is exercised in CI against an isolated broker with two
+devices, the read-only collector, and the admin publisher. Add per-device users
+before migrating a sensor:
 
 ```bash
 scripts/add_mqtt_device_user.sh esp32-device-id

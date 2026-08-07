@@ -226,9 +226,9 @@ implemented upstream)*
 The collector MAY compare each device's reported `firmwareVersion` against
 an operator-configured desired version. On mismatch it records a deployment
 attempt (DATA-010) with device ID, from/to versions, and the optional
-observed IP. Automatic OTA publishing is strictly opt-in (`--auto-ota`) and
-constrained: it publishes only a previously staged, signed manifest for the
-desired version; it respects a per-device/per-version cooldown (default
-24 h); and the target version MUST already have passed the bench gate
-(TEST-030/TEST-043) — auto-OTA automates distribution, never validation.
-Observed IP addresses are diagnostic metadata only, never device identity.
+observed IP, respecting a per-device/per-version cooldown (default 24 h).
+The collector MUST NOT publish OTA commands or hold MQTT command-topic write
+authority. After the exact target build passes the bench gate
+(TEST-030/TEST-043), an operator uses the dedicated OTA publisher with admin
+credentials. Observed IP addresses are diagnostic metadata only, never device
+identity.

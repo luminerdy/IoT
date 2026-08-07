@@ -15,14 +15,20 @@ Table `readings`: append-only telemetry.
 | rssi | INTEGER | dBm |
 | status | TEXT | device-reported status |
 | seq | INTEGER | device publish sequence |
+| legacy_dedupe_exempt | INTEGER NOT NULL | `1` only for extra pre-index duplicate rows preserved by migration; new rows default to `0` |
 | created_at | TEXT NOT NULL | hub receive time, UTC |
 
 Indexes: `(device_id, created_at DESC)`, `(created_at DESC)`, and a
 **partial UNIQUE index on `(device_id, seq, datetime)` excluding rows where
-`datetime` is the pre-NTP sentinel** to enforce FR-024 dedupe with the
-FR-015 exemption. `[CHANGE]` `seq` is required at ingest (FR-021); SQLite
-treats NULLs as distinct in unique indexes, so a NULL `seq` would silently
-disable de-duplication — validation prevents such rows from ever arriving.
+`datetime` is the pre-NTP sentinel or `legacy_dedupe_exempt=1`** to enforce
+FR-024 dedupe with the FR-015 exemption while preserving every row that
+predates database enforcement. Migration marks all but the lowest-ID row in
+each historical duplicate key as legacy-exempt; one canonical row remains in
+the index, so every future copy conflicts and is ignored. New inserts cannot
+request this migration-only exemption. `[CHANGE]` `seq` is required at ingest
+(FR-021); SQLite treats NULLs as distinct in unique indexes, so a NULL `seq`
+would silently disable de-duplication — validation prevents such rows from ever
+arriving.
 
 **DATA-002 — Device registry** `MUST`
 Table `devices`: one row per device — location, firmware_version,
@@ -56,6 +62,8 @@ Schema changes ship as numbered, forward-only migration scripts applied
 automatically at collector startup, with the schema version stored in the
 database (`PRAGMA user_version` or a `schema_version` table). `CREATE TABLE
 IF NOT EXISTS` on every request is not schema management.
+*Implementation note (2026-08-07):* packaged migrations `001` and `002` use
+`PRAGMA user_version`; each migration and version update is one transaction.
 
 **DATA-007 — Backups** `MUST`
 Daily online backup (FR-044): `sqlite3 .backup` → integrity check → gzip →

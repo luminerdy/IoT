@@ -16,7 +16,6 @@ import paho.mqtt.client as mqtt
 
 from iot_home.mqtt_schema import COMMAND_TOPIC
 
-
 DEFAULT_FIRMWARE_BIN = Path("firmware/.pio/build/esp32dev/firmware.bin")
 DEFAULT_FIRMWARE_DIR = Path("data/firmware")
 DEFAULT_SIGNING_KEY = Path("data/keys/ota_signing_key.pem")
@@ -37,9 +36,20 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Stage and publish a local OTA update command.")
     parser.add_argument("device_id", help="Device ID, for example esp32-device-id.")
     parser.add_argument("version", help="Firmware version label to stage, for example 0.2.0-local.")
-    parser.add_argument("--firmware-bin", type=Path, default=DEFAULT_FIRMWARE_BIN, help="Built firmware.bin path.")
-    parser.add_argument("--firmware-dir", type=Path, default=DEFAULT_FIRMWARE_DIR, help="OTA firmware staging directory.")
-    parser.add_argument("--base-url", default="http://iot-pi.local:8000", help="Base dashboard URL reachable by ESP32.")
+    parser.add_argument(
+        "--firmware-bin", type=Path, default=DEFAULT_FIRMWARE_BIN, help="Built firmware.bin path."
+    )
+    parser.add_argument(
+        "--firmware-dir",
+        type=Path,
+        default=DEFAULT_FIRMWARE_DIR,
+        help="OTA firmware staging directory.",
+    )
+    parser.add_argument(
+        "--base-url",
+        default="http://iot-pi.local:8000",
+        help="Base dashboard URL reachable by ESP32.",
+    )
     parser.add_argument(
         "--firmware-download-key",
         default=os.getenv("FIRMWARE_DOWNLOAD_KEY"),
@@ -65,7 +75,11 @@ def parse_args() -> argparse.Namespace:
         required=True,
         help="Monotonic unsigned OTA build number compiled into this firmware.",
     )
-    parser.add_argument("--stage-only", action="store_true", help="Stage firmware and manifest without publishing MQTT.")
+    parser.add_argument(
+        "--stage-only",
+        action="store_true",
+        help="Stage firmware and manifest without publishing MQTT.",
+    )
     return parser.parse_args()
 
 
@@ -122,14 +136,21 @@ def metadata_payload(*, sha256: str, build_number: int, version: str, size: int)
     return f"iot-home-ota-v2\n{sha256}\n{build_number}\n{version}\n{size}\n".encode("utf-8")
 
 
-def sign_metadata(*, sha256: str, build_number: int, version: str, size: int, signing_key: Path) -> str:
+def sign_metadata(
+    *, sha256: str, build_number: int, version: str, size: int, signing_key: Path
+) -> str:
     if build_number <= 0 or build_number > 0xFFFFFFFF:
         raise SystemExit("build number must be between 1 and 4294967295")
     if not signing_key.is_file():
         raise SystemExit(f"OTA signing key not found: {signing_key}")
 
-    with tempfile.NamedTemporaryFile() as payload_file, tempfile.NamedTemporaryFile() as signature_file:
-        payload_file.write(metadata_payload(sha256=sha256, build_number=build_number, version=version, size=size))
+    with (
+        tempfile.NamedTemporaryFile() as payload_file,
+        tempfile.NamedTemporaryFile() as signature_file,
+    ):
+        payload_file.write(
+            metadata_payload(sha256=sha256, build_number=build_number, version=version, size=size)
+        )
         payload_file.flush()
         subprocess.run(
             [
@@ -187,7 +208,9 @@ def stage_firmware(args: argparse.Namespace) -> dict:
         "deviceId": args.device_id,
         "createdAt": datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
     }
-    (release_dir / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+    (release_dir / "manifest.json").write_text(
+        json.dumps(manifest, indent=2) + "\n", encoding="utf-8"
+    )
     return command
 
 
@@ -211,7 +234,9 @@ def command_from_manifest(
     if command["command"] != "ota_update":
         raise ValueError(f"unsupported OTA command in manifest: {command['command']}")
     if command["version"] != version:
-        raise ValueError(f"manifest version {command['version']} does not match requested version {version}")
+        raise ValueError(
+            f"manifest version {command['version']} does not match requested version {version}"
+        )
     if base_url:
         if urlsplit(command["url"]).query:
             command["url"] = replace_firmware_url_base(command["url"], base_url)
@@ -232,7 +257,10 @@ def publish_command(args: argparse.Namespace, command: dict) -> None:
     if args.username:
         client.username_pw_set(args.username, args.password)
     if args.tls:
-        client.tls_set(ca_certs=str(args.ca_cert) if args.ca_cert else None, tls_version=ssl.PROTOCOL_TLS_CLIENT)
+        client.tls_set(
+            ca_certs=str(args.ca_cert) if args.ca_cert else None,
+            tls_version=ssl.PROTOCOL_TLS_CLIENT,
+        )
     client.connect(args.broker, args.port, keepalive=60)
     client.loop_start()
     result = client.publish(topic, payload, qos=1, retain=False)

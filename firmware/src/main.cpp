@@ -13,6 +13,7 @@
 #include <time.h>
 
 #include "ota_public_key.h"
+#include "sensor_core.h"
 #include "secrets.h"
 
 #ifndef FIRMWARE_VERSION
@@ -37,15 +38,6 @@ constexpr unsigned long MIN_REPORT_INTERVAL_MS = 10000;
 constexpr unsigned long MAX_REPORT_INTERVAL_MS = 3600000;
 constexpr float MIN_CHANGE_THRESHOLD_F = 0.1;
 constexpr float MAX_CHANGE_THRESHOLD_F = 10.0;
-constexpr size_t FILTER_WINDOW_SIZE = 5;
-constexpr uint8_t CHANGE_CONFIRMATION_SAMPLES = 3;
-constexpr float MIN_VALID_TEMPERATURE_F = -40.0;
-constexpr float MAX_VALID_TEMPERATURE_F = 140.0;
-constexpr float MIN_VALID_HUMIDITY = 0.0;
-constexpr float MAX_VALID_HUMIDITY = 100.0;
-constexpr float OUTLIER_TEMPERATURE_DELTA_F = 8.0;
-constexpr float OUTLIER_CONFIRMATION_DELTA_F = 2.0;
-constexpr uint8_t OUTLIER_CONFIRMATION_SAMPLES = 3;
 constexpr unsigned long OTA_NO_PROGRESS_TIMEOUT_MS = 15000;
 constexpr size_t TOPIC_LEN = 96;
 constexpr size_t PAYLOAD_LEN = 768;
@@ -86,13 +78,8 @@ uint32_t readErrors = 0;
 uint32_t filteredReadings = 0;
 float lastTemperatureF = NAN;
 float changeThresholdF = DEFAULT_CHANGE_THRESHOLD_F;
-float temperatureWindow[FILTER_WINDOW_SIZE];
-float humidityWindow[FILTER_WINDOW_SIZE];
-size_t sampleCount = 0;
-size_t sampleIndex = 0;
-uint8_t consecutiveTempChangeSamples = 0;
-float candidateOutlierTemperatureF = NAN;
-uint8_t candidateOutlierSamples = 0;
+sensor_core::SensorFilter sensorFilter;
+sensor_core::PublishPolicy publishPolicy;
 
 uint32_t storedBuildNumber()
 {
@@ -336,103 +323,36 @@ void publishStatus(const char *status, bool retained)
   Serial.printf("Published status: %s\n", payload);
 }
 
-float medianOf(const float *values, size_t count)
-{
-  if (count == 0 || count > FILTER_WINDOW_SIZE) {
-    return NAN;
-  }
-
-  float sorted[FILTER_WINDOW_SIZE];
-  for (size_t i = 0; i < count; i++) {
-    sorted[i] = values[i];
-  }
-
-  for (size_t i = 1; i < count; i++) {
-    float current = sorted[i];
-    size_t j = i;
-    while (j > 0 && sorted[j - 1] > current) {
-      sorted[j] = sorted[j - 1];
-      j--;
-    }
-    sorted[j] = current;
-  }
-
-  if (count % 2 == 1) {
-    return sorted[count / 2];
-  }
-  return (sorted[(count / 2) - 1] + sorted[count / 2]) / 2.0f;
-}
-
 void resetSensorFilter()
 {
-  sampleCount = 0;
-  sampleIndex = 0;
-  consecutiveTempChangeSamples = 0;
-  candidateOutlierTemperatureF = NAN;
-  candidateOutlierSamples = 0;
+  sensorFilter.reset();
+  publishPolicy.reset();
 }
 
 bool acceptSensorReading(float temperatureF, float humidity)
 {
-  if (
-    temperatureF < MIN_VALID_TEMPERATURE_F ||
-    temperatureF > MAX_VALID_TEMPERATURE_F ||
-    humidity < MIN_VALID_HUMIDITY ||
-    humidity > MAX_VALID_HUMIDITY
-  ) {
+  sensor_core::ReadingDecision decision = sensorFilter.accept(temperatureF, humidity);
+  if (decision.result == sensor_core::ReadingResult::implausible) {
     filteredReadings++;
     Serial.printf("Filtered implausible reading: temp %.1fF humidity %.1f%%\n", temperatureF, humidity);
     return false;
   }
-
-  if (sampleCount >= 3) {
-    float baselineTemperatureF = medianOf(temperatureWindow, sampleCount);
-    if (fabs(temperatureF - baselineTemperatureF) > OUTLIER_TEMPERATURE_DELTA_F) {
-      if (
-        isnan(candidateOutlierTemperatureF) ||
-        fabs(temperatureF - candidateOutlierTemperatureF) > OUTLIER_CONFIRMATION_DELTA_F
-      ) {
-        candidateOutlierTemperatureF = temperatureF;
-        candidateOutlierSamples = 1;
-      } else {
-        candidateOutlierSamples++;
-      }
-
-      if (candidateOutlierSamples < OUTLIER_CONFIRMATION_SAMPLES) {
-        filteredReadings++;
-        Serial.printf(
-          "Filtered possible temp outlier: temp %.1fF median %.1fF candidateCount=%u\n",
-          temperatureF,
-          baselineTemperatureF,
-          candidateOutlierSamples
-        );
-        return false;
-      }
-    } else {
-      candidateOutlierTemperatureF = NAN;
-      candidateOutlierSamples = 0;
-    }
+  if (decision.result == sensor_core::ReadingResult::pending_outlier) {
+    filteredReadings++;
+    Serial.printf(
+      "Filtered possible temp outlier: temp %.1fF median %.1fF candidateCount=%u\n",
+      temperatureF,
+      decision.baseline_temperature_f,
+      decision.candidate_samples
+    );
+    return false;
   }
-
-  temperatureWindow[sampleIndex] = temperatureF;
-  humidityWindow[sampleIndex] = humidity;
-  sampleIndex = (sampleIndex + 1) % FILTER_WINDOW_SIZE;
-  if (sampleCount < FILTER_WINDOW_SIZE) {
-    sampleCount++;
-  }
-
   return true;
 }
 
 bool filteredSensorReading(float *temperatureF, float *humidity)
 {
-  if (sampleCount == 0) {
-    return false;
-  }
-
-  *temperatureF = medianOf(temperatureWindow, sampleCount);
-  *humidity = medianOf(humidityWindow, sampleCount);
-  return true;
+  return sensorFilter.filtered_reading(temperatureF, humidity);
 }
 
 bool extractNumber(const char *payload, const char *key, float *value)
@@ -992,22 +912,14 @@ bool connectMqtt()
 
 bool shouldPublish(float temperatureF)
 {
-  if (isnan(lastTemperatureF)) {
-    consecutiveTempChangeSamples = 0;
-    return true;
-  }
-  if (millis() - lastReportMs >= reportIntervalMs) {
-    consecutiveTempChangeSamples = 0;
-    return true;
-  }
-
-  if (fabs(temperatureF - lastTemperatureF) >= changeThresholdF) {
-    consecutiveTempChangeSamples++;
-    return consecutiveTempChangeSamples >= CHANGE_CONFIRMATION_SAMPLES;
-  }
-
-  consecutiveTempChangeSamples = 0;
-  return false;
+  return publishPolicy.should_publish(
+    temperatureF,
+    lastTemperatureF,
+    millis(),
+    lastReportMs,
+    reportIntervalMs,
+    changeThresholdF
+  );
 }
 
 void publishTelemetry(float temperatureF, float humidity)
@@ -1062,7 +974,7 @@ void publishTelemetry(float temperatureF, float humidity)
   if (ok) {
     lastTemperatureF = temperatureF;
     lastReportMs = millis();
-    consecutiveTempChangeSamples = 0;
+    publishPolicy.reset();
     clearBootRecoveryReason();
   }
 }

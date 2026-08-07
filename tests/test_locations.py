@@ -1,7 +1,6 @@
 import json
 
 import pytest
-
 from iot_home.locations import load_locations, mapped_location, save_locations
 
 

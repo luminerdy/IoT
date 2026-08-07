@@ -32,6 +32,11 @@ without reverse-engineering behavior from the current code.
 
 ## Amendment log
 
+- **2026-07-10** — attic/dashboard operations update: specified the distinct
+  Attic history group, alphabetical device-card ordering, hottest-first Latest
+  Readings ordering, and 75 F / 100 F graph references; added AC-018 and
+  TEST-007 for traceability.
+
 - **2026-07-08** — operations/admin update: recorded the deployed
   dashboard device mapping admin workflow (`GET/POST /api/locations`),
   the daily 02:05 local SQLite backup schedule, the 02:15 restic/S3

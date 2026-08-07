@@ -1,0 +1,11 @@
+[Unit]
+Description=Run IoT Home database preservation check daily
+
+[Timer]
+OnCalendar=*-*-* 03:05:00 America/Chicago
+Persistent=true
+RandomizedDelaySec=5m
+Unit=iot-home-db-maintenance.service
+
+[Install]
+WantedBy=timers.target

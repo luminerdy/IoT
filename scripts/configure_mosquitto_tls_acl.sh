@@ -3,7 +3,9 @@ set -euo pipefail
 
 cert_dir="${1:-/etc/mosquitto/certs/iot-home}"
 config_path="/etc/mosquitto/conf.d/iot-home-tls-acl.conf"
-acl_path="/etc/mosquitto/aclfile"
+acl_path="/etc/mosquitto/iot-home-per-device.acl"
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+acl_source="${script_dir}/../deploy/mosquitto/iot-home-per-device.acl"
 
 hostname="$(hostname -f 2>/dev/null || hostname)"
 
@@ -57,29 +59,11 @@ CONFIG
   rm -f "${tmp_conf}"
 fi
 
-tmp_acl="$(mktemp)"
-cat > "${tmp_acl}" <<'ACL'
-# Device users should match their device ID, for example esp32-device-id.
-pattern readwrite home/sensors/%u/telemetry
-pattern readwrite home/sensors/%u/status
-pattern readwrite home/sensors/%u/response
-pattern readwrite home/sensors/%u/ota/status
-pattern read home/sensors/%u/config
-pattern read home/sensors/%u/command
-
-user iot-admin
-topic readwrite home/#
-
-user iot-collector
-topic read home/sensors/+/telemetry
-topic read home/sensors/+/status
-ACL
-
-sudo install -o root -g mosquitto -m 0640 "${tmp_acl}" "${acl_path}"
-rm -f "${tmp_acl}"
+sudo install -o root -g mosquitto -m 0640 "${acl_source}" "${acl_path}"
 
 tmp_config="$(mktemp)"
 cat > "${tmp_config}" <<CONFIG
+per_listener_settings true
 listener 8883
 allow_anonymous false
 password_file /etc/mosquitto/passwd

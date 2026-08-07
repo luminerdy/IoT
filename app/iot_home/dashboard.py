@@ -1,18 +1,36 @@
 from __future__ import annotations
 
 import argparse
+import base64
+import binascii
+import hmac
 import ipaddress
 import json
 import mimetypes
+import os
+import threading
+from contextlib import closing
+from datetime import UTC, datetime
 from html import escape
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from datetime import UTC, datetime
 from urllib.parse import parse_qs, unquote, urlparse
 
-from iot_home.db import DEFAULT_DB_PATH, connect, init_db, latest_readings, reading_history
+from iot_home.db import (
+    DEFAULT_DB_PATH,
+    connect,
+    init_db,
+    latest_readings,
+    latest_system_metric,
+    reading_history,
+)
 from iot_home.floorplan import DEFAULT_FLOORPLAN_PATH, load_floorplan
-from iot_home.locations import DEFAULT_LOCATIONS_PATH, load_locations, mapped_location, save_locations
+from iot_home.locations import (
+    DEFAULT_LOCATIONS_PATH,
+    load_locations,
+    mapped_location,
+    save_locations,
+)
 
 
 def parse_args() -> argparse.Namespace:
@@ -37,6 +55,26 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=Path("data/firmware"),
         help="Directory served under /firmware/ for local OTA downloads.",
+    )
+    parser.add_argument(
+        "--firmware-download-key",
+        default=os.getenv("FIRMWARE_DOWNLOAD_KEY"),
+        help="Capability key required by firmware download URLs (defaults to FIRMWARE_DOWNLOAD_KEY).",
+    )
+    parser.add_argument(
+        "--username",
+        default=os.getenv("DASHBOARD_USERNAME"),
+        help="Dashboard write username (defaults to DASHBOARD_USERNAME).",
+    )
+    parser.add_argument(
+        "--password",
+        default=os.getenv("DASHBOARD_PASSWORD"),
+        help="Dashboard write password (defaults to DASHBOARD_PASSWORD).",
+    )
+    parser.add_argument(
+        "--allow-unauthenticated-read",
+        action="store_true",
+        help="Allow dashboard pages and read-only APIs without Basic authentication.",
     )
     parser.add_argument(
         "--floorplan",
@@ -157,6 +195,34 @@ def location_payload(rows: list, stale_seconds: int, locations: dict[str, str]) 
 def valid_client_address(value: str) -> bool:
     client_ip = ipaddress.ip_address(value)
     return client_ip.is_private or client_ip.is_loopback or client_ip.is_link_local
+
+
+def firmware_request_authorized(provided_key: str | None, configured_key: str | None) -> bool:
+    if not provided_key or not configured_key:
+        return False
+    return hmac.compare_digest(provided_key, configured_key)
+
+
+def basic_request_authorized(
+    authorization: str | None,
+    configured_username: str | None,
+    configured_password: str | None,
+) -> bool:
+    if not authorization or not configured_username or not configured_password:
+        return False
+    scheme, separator, encoded = authorization.partition(" ")
+    if not separator or scheme.lower() != "basic":
+        return False
+    try:
+        decoded = base64.b64decode(encoded, validate=True).decode("utf-8")
+    except (binascii.Error, UnicodeDecodeError):
+        return False
+    username, separator, password = decoded.partition(":")
+    if not separator:
+        return False
+    username_matches = hmac.compare_digest(username, configured_username)
+    password_matches = hmac.compare_digest(password, configured_password)
+    return username_matches and password_matches
 
 
 def query_int(query: dict[str, list[str]], name: str, default: int) -> int:
@@ -758,6 +824,17 @@ def page() -> bytes:
     .mapping-status.ok {
       color: var(--green);
     }
+    .mapping-credential {
+      width: 150px;
+      min-height: 34px;
+      padding: 5px 8px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fff;
+      color: #17202a;
+      font: inherit;
+      font-size: 13px;
+    }
     .mapping-table input {
       width: 100%;
       min-height: 34px;
@@ -860,6 +937,7 @@ def page() -> bytes:
       <div class="toolbar">
         <span class="pill" id="connection"><span class="dot"></span> Connecting</span>
         <span class="pill" id="last-refresh">Waiting for data</span>
+        <span class="pill" id="pi-temperature">Pi --</span>
         <span class="pill view-status" id="view-status"></span>
         <button class="toolbar-button" id="rotation-toggle" type="button" aria-pressed="false">Pause Views</button>
         <button class="toolbar-button primary" id="admin-toggle" type="button" aria-pressed="false">Manage Devices</button>
@@ -958,6 +1036,8 @@ def page() -> bytes:
         <h2>Device Mappings</h2>
         <div class="mapping-actions">
           <span class="mapping-status" id="mapping-status">Loaded from local locations file</span>
+          <input class="mapping-credential" id="mapping-username" type="text" autocomplete="username" placeholder="Admin username" aria-label="Admin username">
+          <input class="mapping-credential" id="mapping-password" type="password" autocomplete="current-password" placeholder="Admin password" aria-label="Admin password">
           <button class="toolbar-button" id="mapping-refresh" type="button">Refresh</button>
         </div>
       </div>
@@ -994,6 +1074,7 @@ def page() -> bytes:
       rotationPaused: false,
       adminOpen: false,
       mappings: [],
+      system: null,
     };
     const dashboardViews = [
       {key: "house", label: "House Diagram"},
@@ -1013,12 +1094,17 @@ def page() -> bytes:
       {
         key: "inside",
         label: "Inside",
-        match: (location) => !isOutsideGraphLocation(location) && !isSeparateGraphLocation(location),
+        match: (location) => !isOutsideGraphLocation(location) && !isAtticGraphLocation(location) && !isSeparateGraphLocation(location),
       },
       {
         key: "outside",
         label: "Outside",
         match: isOutsideGraphLocation,
+      },
+      {
+        key: "attic",
+        label: "Attic",
+        match: isAtticGraphLocation,
       },
       {
         key: "separate",
@@ -1165,6 +1251,17 @@ def page() -> bytes:
       setText("avg-rssi", average(rows, "rssi") === null ? "--" : fmt(average(rows, "rssi"), " dBm"));
     }
 
+    function renderSystemMetric(metric) {
+      const element = document.getElementById("pi-temperature");
+      if (!metric || typeof metric.temperatureF !== "number") {
+        element.textContent = "Pi --";
+        element.title = "No Raspberry Pi temperature sample available";
+        return;
+      }
+      element.textContent = `Pi ${metric.temperatureF.toFixed(1)} F`;
+      element.title = `CPU temperature sampled ${metric.ageSeconds ?? "?"} seconds ago`;
+    }
+
     function renderDevices(rows) {
       const devices = document.getElementById("devices");
       devices.replaceChildren();
@@ -1176,7 +1273,10 @@ def page() -> bytes:
         return;
       }
 
-      for (const row of rows) {
+      const sortedRows = [...rows].sort((a, b) =>
+        deviceLabel(a).localeCompare(deviceLabel(b), undefined, {sensitivity: "base"})
+      );
+      for (const row of sortedRows) {
         const card = document.createElement("article");
         card.className = "device";
 
@@ -1268,7 +1368,12 @@ def page() -> bytes:
         return;
       }
       body.replaceChildren();
-      for (const row of rows) {
+      const sortedRows = [...rows].sort((a, b) => {
+        const aTemp = typeof a.temperature === "number" ? a.temperature : Number.NEGATIVE_INFINITY;
+        const bTemp = typeof b.temperature === "number" ? b.temperature : Number.NEGATIVE_INFINITY;
+        return bTemp - aTemp || deviceLabel(a).localeCompare(deviceLabel(b));
+      });
+      for (const row of sortedRows) {
         const [stateClass, stateText] = deviceState(row);
         const tr = document.createElement("tr");
         const cells = [
@@ -1399,10 +1504,16 @@ def page() -> bytes:
 
     async function saveMapping(deviceId, location) {
       try {
+        const username = document.getElementById("mapping-username").value;
+        const password = document.getElementById("mapping-password").value;
+        if (!username || !password) throw new Error("Admin username and password are required to save mappings");
         mappingStatus("Saving mapping");
         const response = await fetch("/api/locations", {
           method: "POST",
-          headers: {"Content-Type": "application/json"},
+          headers: {
+            "Authorization": `Basic ${btoa(`${username}:${password}`)}`,
+            "Content-Type": "application/json",
+          },
           body: JSON.stringify({deviceId, location}),
         });
         if (!response.ok) {
@@ -1438,6 +1549,11 @@ def page() -> bytes:
       if (insideGraphLocations.has(location)) return false;
       const zone = floorplanZoneFor(location);
       return separateGraphLocations.has(location) || zone?.type === "utility";
+    }
+
+    function isAtticGraphLocation(location) {
+      const zone = floorplanZoneFor(location);
+      return zone?.type === "attic" || location.toLowerCase().startsWith("attic");
     }
 
     function sortedDevices(rows) {
@@ -1558,10 +1674,6 @@ def page() -> bytes:
     function renderTrend(rows) {
       const svg = document.getElementById("trend");
       svg.replaceChildren();
-      const grid = document.createElementNS("http://www.w3.org/2000/svg", "path");
-      grid.setAttribute("class", "axis");
-      grid.setAttribute("d", "M36 36H864M36 106H864M36 176H864");
-      svg.appendChild(grid);
       syncSelectedDevices([...state.latest, ...rows]);
       renderDeviceToggles([...state.latest, ...rows]);
       const selectedRows = rows.filter((row) => state.selectedDevices.has(row.deviceId));
@@ -1577,18 +1689,27 @@ def page() -> bytes:
         return;
       }
       const temps = selectedRows.map((row) => row.temperature).filter((value) => typeof value === "number");
-      const min = Math.floor(Math.min(...temps) - 1);
-      const max = Math.ceil(Math.max(...temps) + 1);
+      const min = Math.min(75, Math.floor(Math.min(...temps) - 1));
+      const max = Math.max(100, Math.ceil(Math.max(...temps) + 1));
       const times = selectedRows
         .map((row) => new Date(row.createdAt || row.datetime).getTime())
         .filter((time) => !Number.isNaN(time));
       const start = Math.min(...times);
       const end = Math.max(...times);
-      for (const value of [max, Math.round((min + max) / 2), min]) {
+      const referenceValues = [...new Set([max, 100, 75, min])].sort((a, b) => b - a);
+      for (const value of referenceValues) {
+        const y = 176 - ((value - min) / (max - min)) * 140;
+        const grid = document.createElementNS("http://www.w3.org/2000/svg", "line");
+        grid.setAttribute("class", "axis");
+        grid.setAttribute("x1", "36");
+        grid.setAttribute("x2", "864");
+        grid.setAttribute("y1", `${y}`);
+        grid.setAttribute("y2", `${y}`);
+        svg.appendChild(grid);
         const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
         label.setAttribute("class", "axis-label");
         label.setAttribute("x", "40");
-        label.setAttribute("y", `${180 - ((value - min) / (max - min)) * 140}`);
+        label.setAttribute("y", `${y + 4}`);
         label.textContent = `${value} F`;
         svg.appendChild(label);
       }
@@ -1620,20 +1741,23 @@ def page() -> bytes:
 
     async function refresh() {
       try {
-        const [latestResponse, historyResponse, floorplanResponse] = await Promise.all([
+        const [latestResponse, historyResponse, floorplanResponse, systemResponse] = await Promise.all([
           fetch("/api/latest", {cache: "no-store"}),
           fetch(`/api/history?hours=${state.hours}&limit=50000`, {cache: "no-store"}),
           fetch("/api/floorplan", {cache: "no-store"}),
+          fetch("/api/system", {cache: "no-store"}),
         ]);
-        if (!latestResponse.ok || !historyResponse.ok || !floorplanResponse.ok) {
+        if (!latestResponse.ok || !historyResponse.ok || !floorplanResponse.ok || !systemResponse.ok) {
           throw new Error("Dashboard API request failed");
         }
         state.latest = await latestResponse.json();
         state.history = await historyResponse.json();
         const floorplan = await floorplanResponse.json();
+        state.system = await systemResponse.json();
         state.floorplanBackgroundImage = floorplan.backgroundImage || null;
         state.floorplanZones = Array.isArray(floorplan.zones) ? floorplan.zones : [];
         renderSummary(state.latest);
+        renderSystemMetric(state.system);
         renderFloorplan(state.latest);
         renderDevices(state.latest);
         render(state.latest);
@@ -1676,10 +1800,38 @@ class Handler(BaseHTTPRequestHandler):
     stale_seconds: int = 120
     locations_path: Path = DEFAULT_LOCATIONS_PATH
     locations: dict[str, str] = {}
+    firmware_download_key: str | None = None
+    dashboard_username: str | None = None
+    dashboard_password: str | None = None
+    allow_unauthenticated_read: bool = False
+    locations_lock = threading.Lock()
+
+    def request_is_authenticated(self) -> bool:
+        return basic_request_authorized(
+            self.headers.get("Authorization"),
+            self.dashboard_username,
+            self.dashboard_password,
+        )
+
+    def require_authentication(self) -> bool:
+        if self.request_is_authenticated():
+            return True
+        self.send_response(401)
+        self.send_header("WWW-Authenticate", 'Basic realm="IoT Home Admin", charset="UTF-8"')
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+        return False
 
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
         parsed_path = parsed.path
+
+        if parsed_path.startswith("/firmware/"):
+            self.serve_firmware(parsed_path, parsed.query)
+            return
+
+        if not self.allow_unauthenticated_read and not self.require_authentication():
+            return
 
         if parsed_path == "/" or parsed_path == "/index.html":
             self.send_response(200)
@@ -1688,18 +1840,13 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(page())
             return
 
-        if parsed_path.startswith("/firmware/"):
-            self.serve_firmware(parsed_path)
-            return
-
         if parsed_path.startswith("/dashboard-assets/"):
             self.serve_static_file(parsed_path, "/dashboard-assets/", self.asset_dir)
             return
 
         if parsed_path == "/api/latest":
             self.locations = load_locations(self.locations_path)
-            with connect(self.db_path) as conn:
-                init_db(conn)
+            with closing(connect(self.db_path)) as conn:
                 rows = [
                     row_to_dict(row, self.stale_seconds, self.locations)
                     for row in latest_readings(conn)
@@ -1717,8 +1864,7 @@ class Handler(BaseHTTPRequestHandler):
             hours = query_int(query, "hours", 24)
             limit = query_int(query, "limit", 500)
             self.locations = load_locations(self.locations_path)
-            with connect(self.db_path) as conn:
-                init_db(conn)
+            with closing(connect(self.db_path)) as conn:
                 rows = [
                     history_row_to_dict(row, self.locations)
                     for row in reading_history(conn, hours, limit)
@@ -1745,18 +1891,40 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(payload)
             return
 
+        if parsed_path == "/api/system":
+            with closing(connect(self.db_path)) as conn:
+                row = latest_system_metric(conn, "pi_cpu_temperature_f")
+            if row is None:
+                result = {"temperatureF": None, "sampledAt": None, "ageSeconds": None}
+            else:
+                sampled_at = parse_utc(row["created_at"])
+                age_seconds = (
+                    int((datetime.now(UTC) - sampled_at).total_seconds()) if sampled_at else None
+                )
+                result = {
+                    "temperatureF": row["value"],
+                    "sampledAt": row["created_at"],
+                    "ageSeconds": age_seconds,
+                }
+            payload = json.dumps(result).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+            return
+
         if parsed_path == "/api/locations":
             try:
                 self.locations = load_locations(self.locations_path)
             except ValueError as exc:
                 self.send_error(500, str(exc))
                 return
-            with connect(self.db_path) as conn:
-                init_db(conn)
+            with closing(connect(self.db_path)) as conn:
                 rows = latest_readings(conn)
-            payload = json.dumps(
-                location_payload(rows, self.stale_seconds, self.locations)
-            ).encode("utf-8")
+            payload = json.dumps(location_payload(rows, self.stale_seconds, self.locations)).encode(
+                "utf-8"
+            )
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(payload)))
@@ -1771,8 +1939,7 @@ class Handler(BaseHTTPRequestHandler):
         if parsed.path != "/api/locations":
             self.send_error(404)
             return
-        if not valid_client_address(self.client_address[0]):
-            self.send_error(403)
+        if not self.require_authentication():
             return
 
         try:
@@ -1804,19 +1971,19 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         try:
-            self.locations = load_locations(self.locations_path)
-            if location:
-                self.locations[device_id] = location
-            else:
-                self.locations.pop(device_id, None)
-            save_locations(self.locations, self.locations_path)
-            self.locations = load_locations(self.locations_path)
+            with self.locations_lock:
+                self.locations = load_locations(self.locations_path)
+                if location:
+                    self.locations[device_id] = location
+                else:
+                    self.locations.pop(device_id, None)
+                save_locations(self.locations, self.locations_path)
+                self.locations = load_locations(self.locations_path)
         except ValueError as exc:
             self.send_error(400, str(exc))
             return
 
-        with connect(self.db_path) as conn:
-            init_db(conn)
+        with closing(connect(self.db_path)) as conn:
             rows = latest_readings(conn)
         payload_bytes = json.dumps(
             location_payload(rows, self.stale_seconds, self.locations)
@@ -1827,9 +1994,17 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(payload_bytes)
 
-    def serve_firmware(self, parsed_path: str) -> None:
+    def serve_firmware(self, parsed_path: str, query_string: str) -> None:
         if not valid_client_address(self.client_address[0]):
             self.send_error(403)
+            return
+        keys = parse_qs(query_string).get("key", [])
+        provided_key = keys[0] if len(keys) == 1 else None
+        if not (
+            firmware_request_authorized(provided_key, self.firmware_download_key)
+            or self.request_is_authenticated()
+        ):
+            self.require_authentication()
             return
         self.serve_static_file(parsed_path, "/firmware/", self.firmware_dir)
 
@@ -1855,13 +2030,20 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(content)
 
     def log_message(self, format: str, *args) -> None:
-        safe_path = escape(self.path)
-        print(f"{self.address_string()} {self.command} {safe_path} {args}")
+        safe_path = escape(urlparse(self.path).path)
+        response_code = args[1] if len(args) > 1 else "unknown"
+        print(f"{self.address_string()} {self.command} {safe_path} response={response_code}")
 
 
 def main() -> None:
     args = parse_args()
-    with connect(args.db) as conn:
+    if not args.firmware_download_key:
+        raise SystemExit("FIRMWARE_DOWNLOAD_KEY is required to serve firmware (SEC-016)")
+    if not args.username or not args.password:
+        raise SystemExit(
+            "DASHBOARD_USERNAME and DASHBOARD_PASSWORD are required for admin writes (SEC-009)"
+        )
+    with closing(connect(args.db)) as conn:
         init_db(conn)
 
     Handler.db_path = args.db
@@ -1871,6 +2053,10 @@ def main() -> None:
     Handler.locations_path = args.locations
     Handler.stale_seconds = args.stale_seconds
     Handler.locations = load_locations(args.locations)
+    Handler.firmware_download_key = args.firmware_download_key
+    Handler.dashboard_username = args.username
+    Handler.dashboard_password = args.password
+    Handler.allow_unauthenticated_read = args.allow_unauthenticated_read
     server = ThreadingHTTPServer((args.host, args.port), Handler)
     print(f"Dashboard listening on http://{args.host}:{args.port}")
     try:

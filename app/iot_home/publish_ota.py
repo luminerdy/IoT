@@ -10,11 +10,11 @@ import subprocess
 import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
+from urllib.parse import quote, urlsplit, urlunsplit
 
 import paho.mqtt.client as mqtt
 
 from iot_home.mqtt_schema import COMMAND_TOPIC
-
 
 DEFAULT_FIRMWARE_BIN = Path("firmware/.pio/build/esp32dev/firmware.bin")
 DEFAULT_FIRMWARE_DIR = Path("data/firmware")
@@ -36,9 +36,25 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Stage and publish a local OTA update command.")
     parser.add_argument("device_id", help="Device ID, for example esp32-device-id.")
     parser.add_argument("version", help="Firmware version label to stage, for example 0.2.0-local.")
-    parser.add_argument("--firmware-bin", type=Path, default=DEFAULT_FIRMWARE_BIN, help="Built firmware.bin path.")
-    parser.add_argument("--firmware-dir", type=Path, default=DEFAULT_FIRMWARE_DIR, help="OTA firmware staging directory.")
-    parser.add_argument("--base-url", default="http://iot-pi.local:8000", help="Base dashboard URL reachable by ESP32.")
+    parser.add_argument(
+        "--firmware-bin", type=Path, default=DEFAULT_FIRMWARE_BIN, help="Built firmware.bin path."
+    )
+    parser.add_argument(
+        "--firmware-dir",
+        type=Path,
+        default=DEFAULT_FIRMWARE_DIR,
+        help="OTA firmware staging directory.",
+    )
+    parser.add_argument(
+        "--base-url",
+        default="http://iot-pi.local:8000",
+        help="Base dashboard URL reachable by ESP32.",
+    )
+    parser.add_argument(
+        "--firmware-download-key",
+        default=os.getenv("FIRMWARE_DOWNLOAD_KEY"),
+        help="Firmware download capability key (defaults to FIRMWARE_DOWNLOAD_KEY).",
+    )
     parser.add_argument("--broker", default="localhost", help="MQTT broker host.")
     parser.add_argument("--port", type=int, default=1883, help="MQTT broker port.")
     parser.add_argument("--client-id", default="iot-pi-ota-publisher", help="MQTT client ID.")
@@ -59,13 +75,32 @@ def parse_args() -> argparse.Namespace:
         required=True,
         help="Monotonic unsigned OTA build number compiled into this firmware.",
     )
-    parser.add_argument("--stage-only", action="store_true", help="Stage firmware and manifest without publishing MQTT.")
+    parser.add_argument(
+        "--stage-only",
+        action="store_true",
+        help="Stage firmware and manifest without publishing MQTT.",
+    )
     return parser.parse_args()
 
 
 def validate_version(version: str) -> None:
     if not version or "/" in version or "\\" in version or version in {".", ".."}:
         raise SystemExit("version must be a simple path-safe label")
+
+
+def firmware_download_url(base_url: str, version: str, download_key: str | None) -> str:
+    if not download_key:
+        raise ValueError("FIRMWARE_DOWNLOAD_KEY is required to create an OTA download URL")
+    encoded_key = quote(download_key, safe="")
+    return f"{base_url.rstrip('/')}/firmware/{version}/firmware.bin?key={encoded_key}"
+
+
+def replace_firmware_url_base(url: str, base_url: str) -> str:
+    parsed = urlsplit(url)
+    if not parsed.query:
+        raise ValueError("staged OTA manifest URL is missing its firmware download capability key")
+    base = urlsplit(base_url.rstrip("/"))
+    return urlunsplit((base.scheme, base.netloc, parsed.path, parsed.query, ""))
 
 
 def sha256_file(path: Path) -> str:
@@ -101,14 +136,21 @@ def metadata_payload(*, sha256: str, build_number: int, version: str, size: int)
     return f"iot-home-ota-v2\n{sha256}\n{build_number}\n{version}\n{size}\n".encode("utf-8")
 
 
-def sign_metadata(*, sha256: str, build_number: int, version: str, size: int, signing_key: Path) -> str:
+def sign_metadata(
+    *, sha256: str, build_number: int, version: str, size: int, signing_key: Path
+) -> str:
     if build_number <= 0 or build_number > 0xFFFFFFFF:
         raise SystemExit("build number must be between 1 and 4294967295")
     if not signing_key.is_file():
         raise SystemExit(f"OTA signing key not found: {signing_key}")
 
-    with tempfile.NamedTemporaryFile() as payload_file, tempfile.NamedTemporaryFile() as signature_file:
-        payload_file.write(metadata_payload(sha256=sha256, build_number=build_number, version=version, size=size))
+    with (
+        tempfile.NamedTemporaryFile() as payload_file,
+        tempfile.NamedTemporaryFile() as signature_file,
+    ):
+        payload_file.write(
+            metadata_payload(sha256=sha256, build_number=build_number, version=version, size=size)
+        )
         payload_file.flush()
         subprocess.run(
             [
@@ -148,7 +190,7 @@ def stage_firmware(args: argparse.Namespace) -> dict:
         signing_key=args.signing_key,
     )
     rollout_id = args.rollout_id or f"{datetime.now(UTC).strftime('%Y%m%dT%H%M%SZ')}-{args.version}"
-    firmware_url = f"{args.base_url.rstrip('/')}/firmware/{args.version}/firmware.bin"
+    firmware_url = firmware_download_url(args.base_url, args.version, args.firmware_download_key)
 
     command = {
         "command": "ota_update",
@@ -166,11 +208,18 @@ def stage_firmware(args: argparse.Namespace) -> dict:
         "deviceId": args.device_id,
         "createdAt": datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
     }
-    (release_dir / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+    (release_dir / "manifest.json").write_text(
+        json.dumps(manifest, indent=2) + "\n", encoding="utf-8"
+    )
     return command
 
 
-def command_from_manifest(firmware_dir: Path, version: str, base_url: str | None = None) -> dict:
+def command_from_manifest(
+    firmware_dir: Path,
+    version: str,
+    base_url: str | None = None,
+    download_key: str | None = None,
+) -> dict:
     validate_version(version)
     manifest_path = firmware_dir / version / "manifest.json"
     if not manifest_path.is_file():
@@ -185,9 +234,18 @@ def command_from_manifest(firmware_dir: Path, version: str, base_url: str | None
     if command["command"] != "ota_update":
         raise ValueError(f"unsupported OTA command in manifest: {command['command']}")
     if command["version"] != version:
-        raise ValueError(f"manifest version {command['version']} does not match requested version {version}")
+        raise ValueError(
+            f"manifest version {command['version']} does not match requested version {version}"
+        )
     if base_url:
-        command["url"] = f"{base_url.rstrip('/')}/firmware/{version}/firmware.bin"
+        if urlsplit(command["url"]).query:
+            command["url"] = replace_firmware_url_base(command["url"], base_url)
+        else:
+            command["url"] = firmware_download_url(
+                base_url,
+                version,
+                download_key or os.getenv("FIRMWARE_DOWNLOAD_KEY"),
+            )
     return command
 
 
@@ -199,7 +257,10 @@ def publish_command(args: argparse.Namespace, command: dict) -> None:
     if args.username:
         client.username_pw_set(args.username, args.password)
     if args.tls:
-        client.tls_set(ca_certs=str(args.ca_cert) if args.ca_cert else None, tls_version=ssl.PROTOCOL_TLS_CLIENT)
+        client.tls_set(
+            ca_certs=str(args.ca_cert) if args.ca_cert else None,
+            tls_version=ssl.PROTOCOL_TLS_CLIENT,
+        )
     client.connect(args.broker, args.port, keepalive=60)
     client.loop_start()
     result = client.publish(topic, payload, qos=1, retain=False)
@@ -211,7 +272,7 @@ def publish_command(args: argparse.Namespace, command: dict) -> None:
         raise SystemExit(f"publish to {topic} did not complete")
     if result.rc != mqtt.MQTT_ERR_SUCCESS:
         raise SystemExit(f"publish to {topic} failed with MQTT result code {result.rc}")
-    print(f"published OTA command on {topic}: {payload.decode('utf-8')}")
+    print(f"published OTA command on {topic} for rollout {command['rolloutId']}")
 
 
 def main() -> None:

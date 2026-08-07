@@ -4,7 +4,6 @@ import json
 from numbers import Real
 from pathlib import Path
 
-
 DEFAULT_FLOORPLAN_PATH = Path("config/floorplan.json")
 
 

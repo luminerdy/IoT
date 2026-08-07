@@ -78,9 +78,13 @@ The device publishes OTA lifecycle states (`downloading`, `rejected`,
 
 **FR-014 — Network resilience** `MUST` `[CHANGE]`
 WiFi and MQTT reconnects use bounded retries with backoff. The device
-enables a hardware/task watchdog such that no network outage state can wedge
-the device; if connectivity cannot be restored within 15 minutes, the device
-reboots itself. (Current firmware spins forever in `connectWifi()`.)
+never waits indefinitely for WiFi or MQTT; if full connectivity cannot be
+restored within 15 minutes, the device records `network_timeout` in NVS and
+reboots itself. As a second recovery layer, each device performs a safety
+reboot after 7 days plus a deterministic device-ID-based offset of 0–24 hours,
+preventing the fleet from rebooting together. OTA application is not
+interrupted by either timer. The next successful telemetry reports the
+persisted recovery reason once, then clears it.
 
 **FR-015 — Time handling** `MUST`
 The device syncs time via NTP. Until sync succeeds, telemetry carries the
@@ -91,6 +95,13 @@ exempt from de-duplication (FR-024, DATA-001). Device `seq` resets on boot,
 so sentinel rows from successive quick reboots would otherwise collide on
 the dedupe key and be wrongly dropped. Accepted trade-off: a rare QoS-1
 redelivery of a pre-sync reading may store a duplicate row.
+
+**FR-016 — No activity LED** `MUST` *(added 2026-07-12)*
+Normal operation MUST NOT drive or blink the ESP32 onboard LED for telemetry
+publishes, MQTT connection failures, or reconnect attempts. Device health is
+reported through MQTT status, telemetry, and the dashboard instead of a local
+activity light. This requirement does not prohibit bootloader-controlled LED
+behavior during reset or physical USB flashing.
 
 ## 4.2 Hub — Collector
 
@@ -134,7 +145,9 @@ view, save, and clear these mappings without hand-editing the JSON file.
 **FR-030 — Latest view** `MUST`
 The dashboard shows, per device: location, temperature, humidity, RSSI,
 firmware version, online/offline/stale state, and last-seen age. Devices are
-ordered by location.
+ordered by location in the device-card view. The Latest Readings table is
+ordered by temperature descending (hottest first), with location as the
+tie-breaker, so thermal hotspots are immediately visible.
 
 **FR-031 — Stale detection** `MUST`
 A device marked online whose last observation is older than a configurable
@@ -143,6 +156,9 @@ threshold (default 1200 s) is displayed as **stale**, distinct from offline.
 **FR-032 — History view** `MUST`
 The dashboard charts temperature history for a selectable window (1–168 h,
 default 24 h), grouped by location groups, with per-group show/hide toggles.
+The standard groups are Inside, Outside, Attic, and Separate. A floorplan
+zone with type `attic`, or a location whose name begins with `Attic`, belongs
+to Attic and MUST NOT also appear in Inside or Separate.
 
 **FR-033 — Summary stats** `SHOULD`
 Aggregate tiles: devices online/total, stale count, min/max temperature.
@@ -163,6 +179,11 @@ pegged at 99–100 %) are visually flagged, not hidden.
 **FR-037 — Firmware distribution** `SHOULD` (R4)
 The hub serves staged firmware images at stable URLs for device download,
 subject to SEC-007/SEC-008. Path traversal MUST be impossible (SEC-010).
+
+**FR-038 — Hub temperature monitoring** `SHOULD` *(added 2026-08-04)*
+The collector samples the Raspberry Pi CPU temperature every 600 seconds,
+stores the samples in SQLite, and the dashboard shows the latest value with
+its sample age so thermal conditions can be correlated with outages.
 
 ## 4.4 Hub — Operator tools
 
@@ -205,9 +226,9 @@ implemented upstream)*
 The collector MAY compare each device's reported `firmwareVersion` against
 an operator-configured desired version. On mismatch it records a deployment
 attempt (DATA-010) with device ID, from/to versions, and the optional
-observed IP. Automatic OTA publishing is strictly opt-in (`--auto-ota`) and
-constrained: it publishes only a previously staged, signed manifest for the
-desired version; it respects a per-device/per-version cooldown (default
-24 h); and the target version MUST already have passed the bench gate
-(TEST-030/TEST-043) — auto-OTA automates distribution, never validation.
-Observed IP addresses are diagnostic metadata only, never device identity.
+observed IP, respecting a per-device/per-version cooldown (default 24 h).
+The collector MUST NOT publish OTA commands or hold MQTT command-topic write
+authority. After the exact target build passes the bench gate
+(TEST-030/TEST-043), an operator uses the dedicated OTA publisher with admin
+credentials. Observed IP addresses are diagnostic metadata only, never device
+identity.

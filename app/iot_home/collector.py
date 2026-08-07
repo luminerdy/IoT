@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import ssl
+import time
 from pathlib import Path
 
 import paho.mqtt.client as mqtt
@@ -17,13 +18,11 @@ from iot_home.db import (
     recent_deployment_attempt_exists,
     record_deployment_attempt,
     record_status,
+    record_system_metric,
     record_telemetry,
-    update_deployment_attempt,
 )
 from iot_home.locations import DEFAULT_LOCATIONS_PATH, load_locations, mapped_location
-from iot_home.mqtt_schema import COMMAND_TOPIC, STATUS_SUBSCRIPTION, TELEMETRY_SUBSCRIPTION
-from iot_home.publish_ota import DEFAULT_FIRMWARE_DIR, command_from_manifest
-
+from iot_home.mqtt_schema import STATUS_SUBSCRIPTION, TELEMETRY_SUBSCRIPTION
 
 LOG = logging.getLogger("iot_home.collector")
 
@@ -49,34 +48,38 @@ def parse_args() -> argparse.Namespace:
         help="Desired firmware version. Mismatched device reports create deployment attempt records.",
     )
     parser.add_argument(
-        "--auto-ota",
-        action="store_true",
-        help="Publish a staged OTA command when a firmware version mismatch is detected.",
-    )
-    parser.add_argument(
-        "--firmware-dir",
-        type=Path,
-        default=DEFAULT_FIRMWARE_DIR,
-        help="Directory containing staged OTA manifests.",
-    )
-    parser.add_argument("--base-url", default="http://iot-pi.local:8000", help="Base dashboard URL reachable by ESP32.")
-    parser.add_argument(
         "--ota-cooldown-seconds",
         type=int,
         default=86400,
         help="Minimum seconds between deployment attempts for the same device and target version.",
     )
+    parser.add_argument(
+        "--pi-temperature-interval-seconds",
+        type=int,
+        default=600,
+        help="Seconds between Raspberry Pi CPU temperature samples (default: 600).",
+    )
     return parser.parse_args()
 
 
+PI_TEMPERATURE_PATH = Path("/sys/class/thermal/thermal_zone0/temp")
+
+
+def read_pi_temperature_f(path: Path = PI_TEMPERATURE_PATH) -> float:
+    celsius = float(path.read_text(encoding="utf-8").strip()) / 1000.0
+    return round((celsius * 9 / 5) + 32, 1)
+
+
 def validate_telemetry(payload: dict) -> None:
-    required = ["deviceId", "datetime", "temperature", "humidity"]
+    required = ["deviceId", "datetime", "temperature", "humidity", "seq"]
     missing = [field for field in required if field not in payload]
     if missing:
         raise ValueError(f"missing telemetry fields: {', '.join(missing)}")
 
     temperature = float(payload["temperature"])
     humidity = float(payload["humidity"])
+    if type(payload["seq"]) is not int:
+        raise ValueError(f"invalid telemetry seq: {payload['seq']}")
     if not -40 <= temperature <= 185:
         raise ValueError(f"temperature out of range: {temperature}")
     if not 0 <= humidity <= 100:
@@ -90,12 +93,7 @@ def validate_status(payload: dict) -> None:
         raise ValueError(f"invalid device status: {payload.get('status')}")
 
 
-def maybe_trigger_deployment(
-    client: mqtt.Client,
-    conn,
-    args: argparse.Namespace,
-    payload: dict,
-) -> None:
+def maybe_record_deployment(conn, args: argparse.Namespace, payload: dict) -> None:
     desired_version = args.desired_firmware_version
     if not desired_version:
         return
@@ -104,7 +102,9 @@ def maybe_trigger_deployment(
     current_version = payload.get("firmwareVersion")
     if not current_version or current_version == desired_version:
         return
-    if recent_deployment_attempt_exists(conn, device_id, desired_version, args.ota_cooldown_seconds):
+    if recent_deployment_attempt_exists(
+        conn, device_id, desired_version, args.ota_cooldown_seconds
+    ):
         LOG.info("Skipping OTA mismatch for %s; deployment attempt is inside cooldown", device_id)
         return
 
@@ -126,34 +126,6 @@ def maybe_trigger_deployment(
         ip or "unknown",
         attempt_id,
     )
-
-    if not args.auto_ota:
-        return
-
-    try:
-        command = command_from_manifest(args.firmware_dir, desired_version, args.base_url)
-    except Exception as exc:
-        update_deployment_attempt(conn, attempt_id, status="failed", message=str(exc))
-        LOG.exception("Cannot publish OTA for %s", device_id)
-        return
-
-    topic = COMMAND_TOPIC.format(device_id=device_id)
-    mqtt_payload = json.dumps(command, separators=(",", ":")).encode("utf-8")
-    result = client.publish(topic, mqtt_payload, qos=1, retain=False)
-    if result.rc != mqtt.MQTT_ERR_SUCCESS:
-        message = f"MQTT publish failed with result code {result.rc}"
-        update_deployment_attempt(conn, attempt_id, status="failed", rollout_id=command["rolloutId"], message=message)
-        LOG.error("%s for %s on %s", message, device_id, topic)
-        return
-
-    update_deployment_attempt(
-        conn,
-        attempt_id,
-        status="published",
-        rollout_id=command["rolloutId"],
-        message=f"published OTA command to {topic}",
-    )
-    LOG.info("Published OTA command for %s rollout=%s target=%s", device_id, command["rolloutId"], desired_version)
 
 
 def main() -> None:
@@ -188,7 +160,7 @@ def main() -> None:
                     locations,
                 )
                 record_telemetry(conn, payload)
-                maybe_trigger_deployment(client, conn, args, payload)
+                maybe_record_deployment(conn, args, payload)
                 LOG.info(
                     "Telemetry %s location=%s temp=%.1f humidity=%.1f",
                     payload["deviceId"],
@@ -199,7 +171,7 @@ def main() -> None:
             elif message.topic.endswith("/status"):
                 validate_status(payload)
                 record_status(conn, payload)
-                maybe_trigger_deployment(client, conn, args, payload)
+                maybe_record_deployment(conn, args, payload)
                 LOG.info("Status %s %s", payload["deviceId"], payload["status"])
         except Exception:
             LOG.exception("Failed to process MQTT message on %s", message.topic)
@@ -208,16 +180,40 @@ def main() -> None:
     if args.username:
         client.username_pw_set(args.username, args.password)
     if args.tls:
-        client.tls_set(ca_certs=str(args.ca_cert) if args.ca_cert else None, tls_version=ssl.PROTOCOL_TLS_CLIENT)
+        client.tls_set(
+            ca_certs=str(args.ca_cert) if args.ca_cert else None,
+            tls_version=ssl.PROTOCOL_TLS_CLIENT,
+        )
     client.on_connect = on_connect
     client.on_message = on_message
     client.connect(args.broker, args.port, keepalive=60)
+    temperature_interval = max(10, args.pi_temperature_interval_seconds)
+    next_temperature_sample = 0.0
     try:
-        client.loop_forever()
+        while True:
+            result = client.loop(timeout=1.0)
+            if result != mqtt.MQTT_ERR_SUCCESS:
+                LOG.warning("MQTT loop stopped with code %s; reconnecting", result)
+                time.sleep(1)
+                try:
+                    client.reconnect()
+                except OSError:
+                    LOG.exception("MQTT reconnect failed")
+                    time.sleep(4)
+            now = time.monotonic()
+            if now >= next_temperature_sample:
+                next_temperature_sample = now + temperature_interval
+                try:
+                    temperature_f = read_pi_temperature_f()
+                    record_system_metric(conn, "pi_cpu_temperature_f", temperature_f)
+                    LOG.info("Pi CPU temperature %.1f F", temperature_f)
+                except (OSError, ValueError):
+                    LOG.exception("Failed to sample Pi CPU temperature")
     except KeyboardInterrupt:
         LOG.info("Collector stopped")
     finally:
         client.disconnect()
+        conn.close()
 
 
 if __name__ == "__main__":

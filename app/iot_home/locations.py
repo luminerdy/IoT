@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-
 DEFAULT_LOCATIONS_PATH = Path("config/locations.json")
 
 
@@ -47,7 +46,9 @@ def save_locations(locations: dict[str, str], path: Path | str = DEFAULT_LOCATIO
     tmp_path.replace(location_path)
 
 
-def mapped_location(device_id: str, reported_location: str | None, locations: dict[str, str]) -> str:
+def mapped_location(
+    device_id: str, reported_location: str | None, locations: dict[str, str]
+) -> str:
     if device_id in locations:
         return locations[device_id]
     if reported_location and reported_location != "UNMAPPED":

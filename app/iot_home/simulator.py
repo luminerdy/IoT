@@ -15,7 +15,6 @@ import paho.mqtt.client as mqtt
 
 from iot_home.mqtt_schema import STATUS_TOPIC, TELEMETRY_TOPIC
 
-
 DEVICES = [
     {"deviceId": "esp32-sim-kitchen", "location": "RoomF", "baseTemp": 73.5, "baseHumidity": 42.0},
     {"deviceId": "esp32-sim-office", "location": "RoomD", "baseTemp": 75.0, "baseHumidity": 39.0},
@@ -27,7 +26,9 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Publish simulated ESP32 DHT22 telemetry.")
     parser.add_argument("--broker", default="localhost", help="MQTT broker host.")
     parser.add_argument("--port", type=int, default=1883, help="MQTT broker port.")
-    parser.add_argument("--interval", type=float, default=5.0, help="Seconds between publish cycles.")
+    parser.add_argument(
+        "--interval", type=float, default=5.0, help="Seconds between publish cycles."
+    )
     parser.add_argument("--client-id", default="iot-simulated-esp32-fleet", help="MQTT client ID.")
     parser.add_argument("--username", default=os.getenv("MQTT_USERNAME"), help="MQTT username.")
     parser.add_argument("--password", default=os.getenv("MQTT_PASSWORD"), help="MQTT password.")
@@ -93,7 +94,10 @@ def main() -> None:
     if args.username:
         client.username_pw_set(args.username, args.password)
     if args.tls:
-        client.tls_set(ca_certs=str(args.ca_cert) if args.ca_cert else None, tls_version=ssl.PROTOCOL_TLS_CLIENT)
+        client.tls_set(
+            ca_certs=str(args.ca_cert) if args.ca_cert else None,
+            tls_version=ssl.PROTOCOL_TLS_CLIENT,
+        )
     client.connect(args.broker, args.port, keepalive=60)
     client.loop_start()
 

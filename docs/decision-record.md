@@ -193,3 +193,77 @@ This file records project architecture decisions and the reasoning behind them.
 **Reasoning:** The existing firmware signature authorizes the binary bytes, but does not prevent an old signed binary from being replayed later. The first anti-rollback rollout must still be accepted by `0.1.3-signed-ota`, so the binary signature remains unchanged. New firmware stores the highest booted build number in ESP32 NVS and rejects future OTA commands whose signed build number is less than or equal to that value.
 
 **Status:** Accepted and live-validated on 2026-07-04. `Sunroom Test` accepted `0.1.4-antirollback` build `2026070401`, rejected a signed lower-build rollback command with `firmware rollback rejected`, and the 21 mapped devices were rolled out in small batches.
+
+## DR-020: Disable Firmware-Driven Onboard LED Activity
+
+**Date:** 2026-07-12
+
+**Decision:** Do not drive the ESP32 onboard LED for telemetry publishes, MQTT connection failures, or reconnect attempts. Use MQTT status, telemetry, and the dashboard as the operational health indicators.
+
+**Reasoning:** The activity flash is too brief to provide useful diagnostic information and is disruptive at night. A scheduled quiet-hours implementation would add device-local time and policy complexity without improving observability. Existing remote status and telemetry provide a more durable health signal.
+
+**Status:** Implemented in signed firmware `0.1.5-led-off`, build `2026071201`. The exact build passed the USB bench gate and one full ten-minute telemetry interval. Seven of 23 devices are updated and healthy; rollout is paused while MasterBedroom's unrelated reconnect/download issue is investigated.
+
+## DR-021: Preserve Existing Git History and Block New Identifier Residue
+
+**Date:** 2026-08-07
+
+**Decision:** Do not rewrite the existing public Git history at this stage.
+Accept its known identifier residue as historical risk, scan new commits for
+secrets with gitleaks, and scan the tracked current tree for private IPs, MACs,
+ESP32 IDs, `.local` names, and the installed hub hostname. Existing current-tree
+findings are represented only by SHA-256 fingerprints in a reviewed baseline;
+new findings fail CI and must normally be sanitized.
+
+**Reasoning:** Rewriting published history would disrupt clones and references
+without rotating or materially protecting any credential. A hash-only baseline
+prevents sensitive matched values from being duplicated in the policy file and
+makes any expansion explicit in review. Gitleaks covers credential-shaped
+content while the custom scan covers installation identifiers outside normal
+secret detectors.
+
+**Status:** Accepted. Any baseline update requires an explicit security review;
+routine CI work must not regenerate it automatically.
+
+## DR-022: Keep MQTT OTA Publication Operator-Only
+
+**Date:** 2026-08-07
+
+**Decision:** The collector may detect and record firmware-version mismatches,
+but it must not publish OTA commands or hold command-topic write authority.
+Only the dedicated OTA publisher running with the operator/admin identity may
+publish a staged signed command after the exact build passes the USB bench
+gate.
+
+**Reasoning:** The per-device ACL contract makes `iot-collector` read-only on
+telemetry/status. Preserving collector `--auto-ota` would either fail under that
+ACL or require over-privileging a continuously running service. Keeping
+distribution as an explicit operator action aligns least privilege, the bench
+gate, and acknowledged batch rollout policy.
+
+**Status:** Accepted and implemented locally. The collector publishing path and
+`--auto-ota` option are removed. TEST-023 verifies the tracked per-device ACL
+with two device users, the collector, and admin against an isolated Mosquitto
+broker. The live interim listener and credentials were not changed.
+
+## DR-023: Preserve Legacy Duplicate Readings During Dedupe Migration
+
+**Date:** 2026-08-07
+
+**Decision:** Preserve every pre-index reading. During the version-2 migration,
+mark only extra historical copies of each non-sentinel `(device_id, seq,
+datetime)` key as `legacy_dedupe_exempt=1`, keep the lowest-ID copy canonical,
+and index canonical plus all future rows. New rows always default to non-exempt.
+
+**Reasoning:** The live read-only audit found historical duplicate keys, so a
+strict unique index could not be created without deleting or rewriting
+telemetry. A migration-only exemption retains all original values and IDs while
+the indexed canonical row blocks every future duplicate of the same key. The
+sentinel timestamp remains independently exempt because sequence numbers reset
+before NTP synchronization.
+
+**Status:** Accepted and live at schema version 2. Production-copy and live
+comparisons preserved all historical rows and values. A concurrent-start race
+observed during activation was fixed in `cacfceb` by re-checking schema version
+under the migration write lock. The collector was restarted with the fix and
+passed schema, integrity, log, and telemetry verification.

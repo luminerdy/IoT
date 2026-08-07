@@ -1,6 +1,141 @@
 # Progress Log
 
+## 2026-08-07
+
+- Replaced ad hoc SQLite schema initialization with packaged forward-only
+  migrations `001` and `002`, transactionally tracked through
+  `PRAGMA user_version`.
+- Added DATA-001 database-enforced dedupe. The partial unique index ignores the
+  pre-NTP sentinel and migration-only legacy exemptions; collector inserts use
+  the index conflict path rather than a check-before-insert query. Telemetry
+  validation now requires integer `seq` as specified by FR-021.
+- Audited production read-only and found 503 historical extra rows across 486
+  non-sentinel duplicate keys. DR-023 preserves all of them: migration marks
+  only extra copies, retains the lowest-ID canonical row in the index, and
+  gives every future row a non-exempt default.
+- Applied the migrations to an online-backup scratch copy. It reached schema
+  version 2 with integrity `ok`; exact comparisons found no removed, added, or
+  changed original reading values and no changes to devices, deployment
+  attempts, or system metrics.
+- The live database reached schema version 2 during simultaneous dashboard and
+  collector starts at 12:46 CDT. One collector attempt encountered a concurrent
+  migration race and restarted successfully five seconds later. The migration
+  retained all pre-migration readings and metrics; integrity is `ok`, 503 legacy
+  duplicates remain preserved, and no indexed duplicate groups remain.
+- Fixed the concurrent-start race by re-reading `PRAGMA user_version` after
+  acquiring each migration write lock. A deterministic regression test now
+  proves that a second starter skips migrations completed while it waited. The
+  full suite has 114 passing tests at 91.9% branch-aware coverage.
+- Restarted the collector at 15:14 CDT to load the concurrent-start fix. It
+  reconnected and subscribed immediately with no warning, traceback, or
+  migration error. Post-restart integrity remained `ok`, schema remained at
+  version 2, all 503 legacy exemptions remained preserved, and fresh telemetry
+  continued.
+- Created and restore-verified fresh backup
+  `data/backups/iot-20260807T193918Z.sqlite.gz`. A separate version-0 backup from
+  before the live migration was also re-migrated with the fixed code: all
+  242,715 readings and all original values were unchanged.
+- Added CI Ruff lint and formatting checks, pytest coverage reporting and
+  artifact upload, gitleaks, and a custom current-tree identifier scan.
+- Removed collector `--auto-ota` and its command-publishing code. Firmware
+  mismatches still create cooldown-limited `detected` deployment attempts;
+  staged OTA publication remains an explicit admin-authenticated operator
+  action under DR-022.
+- Added a canonical per-device Mosquitto ACL and TEST-023 integration matrix.
+  The test starts an isolated broker and verifies actual read/write behavior
+  for two device identities, the read-only collector, and admin. The TLS setup
+  script installs this same ACL; no live broker configuration was changed.
+- Recorded an initial 52.6% branch-aware Python coverage baseline, then added
+  collector, dashboard HTTP/security, config publisher, and OTA staging/
+  publishing tests. The 114-test suite now measures 91.9%, and CI enforces the
+  normative 80% floor.
+- Extracted sensor filtering and publish policy into a pure C++ firmware
+  library. Six PlatformIO native tests cover TEST-010/011, and both the native
+  suite and ESP32 compile pass. Assigned the changed binary a distinct local
+  identity, `0.1.7-testable-core` build `2026080701`, to avoid reusing the
+  deployed anti-rollback identity. The candidate has not been USB-bench tested,
+  staged, or deployed. OTA manifest-native coverage remains tied to the later
+  ArduinoJson refactor.
+- Added a hash-only baseline for existing private-IP, MAC, device-ID, `.local`,
+  and installed-hostname findings. New findings fail without printing matched
+  values, and baseline regeneration is never automatic.
+- Accepted DR-021: preserve existing Git history for now, scan new commits with
+  gitleaks, and require explicit security review for identifier-baseline changes.
+- Added lossless SQLite maintenance that checks live integrity, restore-checks
+  the newest compressed local backup, runs `PRAGMA optimize`, and proves that
+  row counts in `readings`, `deployment_attempts`, and `system_metrics` do not
+  change.
+- Added explicit alerts for backup age, database size, filesystem free bytes,
+  and filesystem free percentage. The command returns distinct alert and
+  critical-failure exit statuses for systemd/journal visibility.
+- Added a hardened oneshot service and daily 03:05 America/Chicago timer, plus
+  a dedicated installer that does not rewrite application credentials or
+  restart the collector/dashboard.
+- Installed and enabled the live timer. Its first systemd-triggered oneshot
+  completed successfully, and the next randomized run is scheduled for
+  2026-08-08 at 03:09:59 CDT.
+- Added focused preservation, capacity-alert, and missing-backup tests. A live
+  manual check passed with 241,624 readings, 351 system metrics, a restore-valid
+  current backup, a roughly 62 MB database, and 90.3% filesystem free space.
+
+## 2026-08-05
+
+- Fixed the Pi3 watchdog's initial-cooldown bug so the first qualified recovery
+  is immediately eligible and the one-hour cooldown applies only between actual
+  relay cycles. All 34 Python tests passed, and the installed Pi3 script matched
+  the tested local checksum.
+- Completed a controlled end-to-end PiServer recovery test. After five
+  consecutive failed checks, the Pi3 activated BCM GPIO17 at 08:04:50 CDT,
+  removed target power for 15 seconds, and restored it. PiServer booted at
+  08:05:19; Mosquitto, the collector, and the dashboard returned active and
+  enabled, and the Pi3 reported the target healthy at 08:05:44.
+- Changed the live production threshold from the five-check test setting to 10
+  consecutive one-minute failures. Verified
+  `WATCHDOG_FAILURES_BEFORE_RECOVERY=10`, an active and enabled watchdog
+  service, and GPIO17 output-low at idle. Retained the 15-second relay-off time
+  and one-hour cooldown between actual relay cycles.
+- The post-recovery dashboard check reported 23 online, non-stale records on
+  `0.1.6-recovery`: 22 active mapped devices and one `UNMAPPED` device,
+  consistent with the temporarily retired `AtticChimney` reporting again.
+
+## 2026-08-04
+
+- Temporarily retired `AtticChimney` from the active dashboard fleet until attic access is safe and the device can be replaced. Removed its ignored local location and floorplan entries and its current `devices` row while preserving all 463 historical readings. Created verified pre-change backup `data/backups/iot-20260804T125801Z.sqlite.gz`.
+- Recorded that the operator replaced power for `MasterBedroom`. The live 2026-08-04 check shows it online, fresh, and reporting normally on `0.1.6-recovery`; treat the earlier reconnect problem as resolved unless it recurs.
+- Recorded that the operator also replaced power for `BunkHouse`. The live 2026-08-04 check shows it online, fresh, and reporting normally on `0.1.6-recovery`; treat the earlier long-offline problem as resolved unless it recurs.
+- Set up a Raspberry Pi 3 as the external PiServer watchdog. The local SSH alias
+  is `pi-watchdog`, using a dedicated SSH identity. The Pi3 runs an enabled and
+  active `pi-watchdog.service`, watches PiServer through its private LAN
+  address, and has relay control enabled on BCM GPIO17 for a Digital Loggers
+  IoT Relay. That relay accepts a direct 3.3 V GPIO signal plus ground and does
+  not require an external resistor or driver.
+- Observed a real PiServer-unreachable interval from 21:13 through 21:23. The Pi3 correctly detected 11 failed checks and saw PiServer recover at 21:24, but did not activate the relay. The cause is a watchdog cooldown bug: `last_recovery = 0.0` combined with monotonic uptime prevents the first recovery until the Pi3 has been up for one hour. The Pi3 had booted at 20:33, so the five-failure threshold at 21:17 was still inside that unintended startup block.
+- Left the watchdog running overnight so a later test can exercise relay recovery after the one-hour restriction has elapsed. Scheduled the one-time user timer `iot-watchdog-morning-check.timer` for 2026-08-05 07:00 CDT. It runs `tools/morning_watchdog_check.sh` read-only and writes `data/watchdog-morning-check-2026-08-05.txt` with both machines' uptime, service health, GPIO17 state, and watchdog recovery logs.
+
 Use this file for dated accomplishments and important observations. Keep future tasks in `docs/implementation-plan.md` and durable decisions in `docs/decision-record.md`.
+
+## 2026-07-10
+
+### Third Attic Sensor And Dashboard Thermal View
+
+- Provisioned and mapped the third attic device as `Attic`, bringing the live mapped fleet to 23 devices and the attic set to `Attic`, `AtticChimney`, and `AtticDoor`; all three report firmware `0.1.4-antirollback`.
+- Added a distinct `Attic` Temperature Graph selector group. Locations in an `attic` floorplan zone or beginning with `Attic` are excluded from `Inside` and `Separate`.
+- Sorted Device List Grid cards alphabetically by display location and Latest Readings by temperature descending so the hottest locations appear first.
+- Changed the temperature graph to retain 75 F and 100 F reference lines while expanding its range for selected readings outside that span.
+- Observed the new `Attic` sensor peak at `137.5 F` around 15:21 CDT, stop reporting after 15:22, and return around 18:34 at `124.3 F`. The approximately 3 hour 12 minute gap began before the Pi reboot at 17:33 and was isolated from `AtticChimney` and `AtticDoor`. Repeated sequence resets before the gap indicate device reboot or power instability; heat is a plausible correlation, not yet a confirmed cause.
+- After recovery, the device advanced sequence numbers normally and remained online with good RSSI. Recheck during the 2026-07-11 afternoon heat window for a repeatable temperature/offline threshold.
+
+## 2026-07-09
+
+### AtticChimney ESP32 Provisioned
+
+- Reviewed `AtticDoor` telemetry from the two attic-door opening tests. The first opening around 12:21 CDT dropped the attic-door reading from about `109.9F` to `97.5F`; the second opening around 17:00 CDT dropped it from about `123.8F` to near `100F`.
+- Identified the new blank ESP32 on `/dev/ttyUSB0`; the existing flashed USB sensor remained on `/dev/ttyUSB1`.
+- USB-flashed firmware `0.1.4-antirollback` to the new ESP32.
+- Published retained default config: `reportIntervalSeconds=600`, `changeThresholdF=1.0`.
+- Mapped the new device to `AtticChimney` in local `config/locations.json` and added it to the local floorplan as a `utility` zone so it appears with the separate/utility graph group.
+- Restarted `iot-home-collector.service` and `iot-home-dashboard.service`.
+- Verified `AtticChimney` on `/api/latest`: online, non-stale, firmware `0.1.4-antirollback`, status `OK`, valid DHT22 telemetry, and no `UNMAPPED` devices.
 
 ## 2026-07-08
 
@@ -103,7 +238,10 @@ Use this file for dated accomplishments and important observations. Keep future 
 ### Version Mismatch OTA Trigger
 
 - Added optional collector-side desired firmware version checking. When a device reports a different `firmwareVersion`, the collector records a `deployment_attempts` row with the stable device ID, current version, target version, and optional reported `localIp`.
-- Added opt-in collector `--auto-ota` publishing from an already staged `data/firmware/{version}/manifest.json`, with a cooldown to avoid repeated commands for the same device/version.
+- Added opt-in collector `--auto-ota` publishing from an already staged
+  `data/firmware/{version}/manifest.json`, with a cooldown to avoid repeated
+  commands for the same device/version. Superseded by DR-022 on 2026-08-07;
+  collector OTA publishing was removed in favor of operator-only authority.
 - Updated ESP32 status and telemetry payloads to include `localIp` as diagnostic metadata.
 - Verified the code path with `.venv/bin/python -m pytest` and confirmed the firmware still builds with `.venv/bin/pio run -d firmware`.
 - USB-flashed the exact build to the local `Bench Device` ESP32 first and verified it came back online over MQTT with `firmwareVersion` and `localIp` in the status payload.
@@ -802,3 +940,132 @@ Use this file for dated accomplishments and important observations. Keep future 
   - `0.1.2-filtered-telemetry`: 13 devices.
 - `Sunroom` remained online after the wire replacement and had advanced to sequence 145.
 - `/api/floorplan` loaded the local configured zones; `backgroundImage` is still unset until the actual house image is uploaded.
+
+# LED-Off Firmware Rollout
+
+- Built and signed firmware `0.1.5-led-off` with anti-rollback build number `2026071201`; the staged and dashboard-served binaries matched SHA-256 `6f8caa48dc9f948c7d4e714a0645eeea66c731d53d62a4631f99076e347febf8`.
+- USB-flashed the exact build to `Sunroom Test` / `esp32-9c9c1fda3670` and verified it remained online and non-stale through a full ten-minute telemetry interval.
+- Rolled out successfully to `Den`, `Kitchen`, `Office`, `FrontBedroom`, `Entryway`, and `Laundryroom`; each returned online and non-stale on `0.1.5-led-off`.
+- Initial canary commands using `iot-pi.local` were acknowledged but could not reach the firmware endpoint. Retrying with the numeric Pi LAN address completed successfully.
+- Paused the rollout at `MasterBedroom`: it remains online and non-stale on `0.1.4-antirollback`, but repeated commands were missed during MQTT reconnects or stopped after `downloading`. Do not retry broadly until its connectivity/download path is checked. `Studio` and the rest of the fleet were intentionally left untouched after the batch pause.
+# 2026-07-24
+
+## Unattended Device Recovery
+
+- Added firmware `0.1.6-recovery` build `2026072401` for difficult-to-access
+  sensors.
+- Replaced the indefinitely blocking initial WiFi connection loop with bounded
+  reconnect attempts.
+- Added a recovery reboot after 15 continuous minutes without both WiFi and
+  MQTT, plus a deterministic device-staggered safety reboot after 7–8 days.
+- Persisted `network_timeout` or `weekly_safety` across the restart so the next
+  successful telemetry reports the cause once.
+- Kept recovery timers outside the synchronous OTA application path so they
+  cannot interrupt an update.
+- Built successfully, passed all 30 Python tests and PlatformIO static analysis,
+  and USB-flashed `/dev/ttyUSB0`. The uploader confirmed MAC
+  `<bench-mac>`, matching `Sunroom Test` / `esp32-device-id`.
+- Verified Sunroom Test returned online and non-stale on `0.1.6-recovery`,
+  publishing fresh DHT22 telemetry after the flash.
+
+# 2026-07-25
+
+## Recovery Firmware Bench Gate
+
+- Isolated only `Sunroom Test` from MQTT by temporarily flashing a build pointed
+  at a user-owned TCP proxy on port `1884`; the production broker and fleet
+  remained online.
+- Held the MQTT path down continuously for the production 15-minute interval.
+  The device logged `Recovery restart requested: network_timeout` and rebooted.
+- Restored the proxy and verified automatic MQTT recovery. The first telemetry
+  reported `restartReason=Software` and `recoveryReason=network_timeout`; the
+  next successful telemetry reported `recoveryReason=none`.
+- Temporarily shortened the safety interval to 60–70 seconds on the USB bench
+  device. It rebooted with `weekly_safety`, returned automatically, reported
+  the reason once, and cleared it on the next telemetry.
+- Restored the real 7–8 day safety constants and direct MQTT port `1883`, then
+  rebuilt and USB-flashed the exact production `0.1.6-recovery` build
+  `2026072401`.
+- Recorded production firmware SHA-256
+  `56db51afdd3d3e05c3e2741ea90ee6143046b332de19774f317c634b432b8704`.
+- Verified fresh production telemetry from `Sunroom Test` with
+  `recoveryReason=none`.
+- Final checks passed: PlatformIO build, 30 Python tests, and PlatformIO static
+  analysis with only the existing five low-level style notices.
+
+# 2026-08-01
+
+## Backup Verification And Recovery Firmware Rollout
+
+- Verified the scheduled 02:05 local SQLite backup
+  `data/backups/iot-20260801T070501Z.sqlite.gz` by restoring it and running
+  `PRAGMA integrity_check;`; the result was `ok`.
+- Verified the scheduled 02:15 restic/S3 snapshot `b4d60733`, confirmed it
+  contains `data/iot.db` and the current local SQLite archive, and completed
+  `restic check --read-data-subset=1/100` with no errors.
+- Staged and served the bench-validated `0.1.6-recovery` build `2026072401`;
+  the served binary matched SHA-256
+  `56db51afdd3d3e05c3e2741ea90ee6143046b332de19774f317c634b432b8704`.
+- Rolled the firmware out in acknowledged batches. Each device either reported
+  `downloading` then `rebooting`, or was confirmed at build `2026072401` by an
+  anti-rollback rejection on a retry.
+- Retried Kitchen after its first command was missed and confirmed a complete
+  acknowledged update. Updated MasterBedroom alone; it completed
+  `downloading` then `rebooting` successfully.
+- Final dashboard verification showed 23 devices online, 0 stale, 0 unmapped,
+  and all 23 on `0.1.6-recovery`. Mosquitto, collector, and dashboard services
+  remained active with no recent warning-level logs.
+
+# 2026-08-06
+
+## Firmware Download Capability Key
+
+- Implemented SEC-016 capability-key protection for `/firmware/` downloads;
+  missing, wrong, or duplicate keys receive HTTP 401 and the configured key is
+  compared in constant time.
+- Required `FIRMWARE_DOWNLOAD_KEY` at dashboard startup and added it to the
+  systemd environment installer without exposing the value in tracked files.
+- Updated OTA staging and manifest reconstruction to add or preserve the
+  URL-encoded capability key. Removed secret-bearing OTA payloads from CLI
+  success output and removed query strings from dashboard access logs.
+- Added live HTTP route tests plus OTA URL construction/preservation tests.
+  All 39 Python tests passed. A temporary LAN listener returned 401 for missing
+  and wrong keys, returned 200 for the correct key, and served bytes matching
+  the staged production artifact. No OTA command or firmware update was sent.
+- Installed the generated capability key in `/etc/iot-home/iot-home.env`, mode
+  `0600`, and restarted the dashboard. Live port `8000` returned HTTP 401 for
+  missing and wrong keys and HTTP 200 for the correct key; the downloaded bytes
+  matched the staged `0.1.6-recovery` artifact. Mosquitto, collector, and
+  dashboard remained active, and the USB-connected `Sunroom Test` bench device
+  remained online on Wi-Fi. No OTA command or firmware update was sent.
+
+## Authenticated Dashboard Writes And Resource Handling
+
+- Added constant-time HTTP Basic authentication for `POST /api/locations` and
+  an explicit `--allow-unauthenticated-read` deployment option so normal
+  dashboard viewing remains open on the home network by policy.
+- Added username/password fields to Manage Devices; credentials are sent only
+  on mapping writes. Generated credentials are stored outside the repository
+  in the root-owned service environment and a user-readable mode-`0600` local
+  credentials file.
+- Serialized location-file read/modify/write operations to prevent lost
+  concurrent updates.
+- Removed per-request schema initialization and explicitly close every
+  per-request SQLite connection; schema initialization remains at startup.
+- Added Basic-auth and live HTTP tests, including eight concurrent mapping
+  writes with all updates preserved.
+- Deployed the updated dashboard with `--allow-unauthenticated-read`. Live
+  verification returned 200 for an unauthenticated read, 401 for missing and
+  wrong write credentials, and reached normal 400 input validation with valid
+  credentials. Basic-authenticated firmware download returned the exact staged
+  production bytes. All three core services remained active with no warning
+  logs, and the USB bench device remained online; no OTA command was sent.
+
+## Historical Data Preservation Decision
+
+- Rejected the proposed 90-day telemetry pruning plan. Readings, deployment
+  attempts, and system metrics must be preserved indefinitely.
+- Reframed the next database milestone as integrity checks, backup validation,
+  capacity/free-space monitoring, alerts, and safe optimization without row
+  deletion. Any future lossless archival requires explicit approval plus copy,
+  integrity, row-count, and restore verification before live rows move.

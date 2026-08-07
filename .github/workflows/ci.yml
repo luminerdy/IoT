@@ -13,12 +13,37 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+      - name: Install Mosquitto test broker
+        run: sudo apt-get update && sudo apt-get install --yes mosquitto mosquitto-clients
       - name: Install Python package
         run: python -m pip install --upgrade pip && python -m pip install -e ".[dev]"
       - name: Compile Python
         run: python -m compileall app scripts
-      - name: Test Python
+      - name: Ruff lint
+        run: ruff check app scripts tests tools
+      - name: Ruff format
+        run: ruff format --check app scripts tests tools
+      - name: Test Python with coverage
         run: pytest
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: python-coverage
+          path: coverage.xml
+          if-no-files-found: ignore
+
+  repository-safety:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Scan commits for secrets
+        uses: gitleaks/gitleaks-action@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Check current tree for local identifiers
+        run: python scripts/check_public_identifiers.py
 
   firmware-check:
     runs-on: ubuntu-latest
@@ -33,5 +58,7 @@ jobs:
         run: cp firmware/include/secrets.sample.h firmware/include/secrets.h
       - name: Check firmware
         run: platformio check -d firmware
+      - name: Test firmware logic natively
+        run: platformio test -d firmware -e native
       - name: Build firmware
         run: platformio run -d firmware

@@ -49,10 +49,16 @@ are stored — sentinel rows are exempt from de-duplication.
 Given telemetry lacking `seq`, then it is rejected and logged; no row is
 written.
 
+**AC-009a** (FR-016) *(added 2026-07-12)*
+Given the bench device running the release candidate, when it publishes
+telemetry and experiences an MQTT reconnect attempt, then firmware does not
+drive the onboard LED. Telemetry and connection status remain observable
+through MQTT and the dashboard.
+
 ## Dashboard
 
 **AC-010** (FR-030, API-021)
-Given 21 devices with recent readings, when `/api/latest` is called, then it
+Given the mapped fleet (currently 23 devices) with recent readings, when `/api/latest` is called, then it
 returns one entry per device with correct mapped locations, ordered by
 location, in < 200 ms.
 
@@ -70,9 +76,10 @@ the dashboard renders it, then the string appears as literal text and no
 script executes.
 
 **AC-014** (SEC-009)
-Given a client on the LAN without credentials, when it requests any
-dashboard or firmware URL, then it receives 401/403 (or connection refused,
-per the chosen mechanism) — verified from a second machine.
+Given a client without credentials, `POST /api/locations` returns 401 while
+read-only dashboard routes remain available only when the explicit
+`--allow-unauthenticated-read` deployment option is set. Firmware URLs still
+require SEC-016 authorization.
 
 **AC-015** (SEC-010, TEST-021)
 Given requests for `/assets/../../etc/passwd`, `%2e%2e` variants, and a
@@ -81,14 +88,26 @@ out-of-root file content is ever served.
 
 **AC-016** (SEC-009) *(added 2026-07-02)*
 Given `DASHBOARD_USERNAME`/`DASHBOARD_PASSWORD` are unset, when the
-dashboard is started with a non-loopback bind and without
-`--allow-unauthenticated`, then it exits with an error citing SEC-009; a
-loopback bind starts normally.
+dashboard is started, then it exits with an error citing SEC-009 because admin
+writes cannot be enabled safely. With credentials set, read routes require
+authentication unless `--allow-unauthenticated-read` is explicitly supplied.
 
 **AC-017** (SEC-016) *(added 2026-07-02)*
 Given a configured `FIRMWARE_DOWNLOAD_KEY`, then `/firmware/…?key=<correct>`
 and operator Basic auth each return the image; a wrong or missing key
 returns 401; the key comparison is constant-time.
+
+**AC-018** (FR-030, FR-032) *(added 2026-07-10)*
+Given current readings for inside, outside, attic, and separate/utility
+locations, when the dashboard renders, then device cards are alphabetical by
+display location, Latest Readings is hottest-first, and attic locations appear
+only in the Attic temperature-history group. The graph scale always includes
+75 F and 100 F reference lines while expanding to contain the selected data.
+
+**AC-019** (FR-038, DATA-011) *(added 2026-08-04)*
+Given the collector is running on the Pi, then it records CPU temperature at
+600-second intervals and `/api/system` exposes the latest value and sample age;
+the dashboard displays that value in its header.
 
 ## Configuration (R3)
 
@@ -126,18 +145,26 @@ firmware rejected a signed lower-build command with
 `firmware rollback rejected`; AC-030/AC-031 equivalents were bench-run
 before the 21-device batch rollout.
 
+**AC-032a** (FR-016, TEST-043) *(added 2026-07-12)*
+Given the exact `0.1.5-led-off` binary on the USB bench device, when it remains
+online through a full configured report interval, then the next periodic
+telemetry arrives without firmware-driven LED activity. A fleet rollout may
+proceed only in acknowledged batches, and must pause when any device fails to
+reach a terminal OTA state and return online on the target version.
+
 **AC-045** (FR-046, DATA-010) *(added 2026-07-05)*
 Given a desired firmware version configured and a device reporting an
 older version, then exactly one deployment attempt is recorded per cooldown
-window; with `--auto-ota` enabled, the staged signed manifest for the
-desired version is published to that device's command topic and the attempt
-records `published` (or `failed` with a reason); without `--auto-ota`,
-nothing is published.
+window and nothing is published to the command topic. Publishing remains a
+separate operator action through the admin-authenticated OTA CLI after the
+bench gate.
 
 **AC-033** (SEC-003)
 Given a client authenticated with device-A credentials, when it publishes to
-device-B's `command` topic, then the broker denies it (verified by ACL test,
-TEST-023).
+device-B's `command` topic, then the broker denies it. The complete TEST-023
+matrix also proves device users are confined to their own subtree, the
+collector is read-only on telemetry/status, and only admin can write
+config/command.
 
 ## Operations
 
@@ -153,8 +180,9 @@ local archive predates the restic snapshot, both are current for the day, and
 a restored database copy passes `PRAGMA integrity_check`.
 
 **AC-041** (NFR-007, DATA-005)
-Given readings older than the retention window, when the retention job runs,
-then they are deleted and the dashboard/history APIs still work.
+Given historical readings, deployment attempts, and system metrics, when
+scheduled database maintenance runs, then all rows remain present, integrity
+checks pass, capacity is reported, and the dashboard/history APIs still work.
 
 **AC-042** (NFR-008)
 Given a clean Raspberry Pi OS image and the install docs, when a new
@@ -170,3 +198,11 @@ and the dashboard recovers without intervention.
 **AC-044** (FR-014, NFR-006)
 Given the WiFi AP goes down for 20 minutes and comes back, then every bench
 device resumes reporting without manual power-cycling.
+
+**AC-044a** (FR-014, NFR-006) *(added 2026-07-24)*
+Given a bench device cannot restore WiFi or MQTT for 15 minutes, then it
+reboots with `recoveryReason=network_timeout` in its next successful
+telemetry. Given a continuously healthy device, it reboots once after its
+deterministic 7–8 day interval with `recoveryReason=weekly_safety`. Device
+intervals differ by device ID, and neither timer can interrupt synchronous
+OTA application.

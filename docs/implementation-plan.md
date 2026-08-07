@@ -147,9 +147,16 @@ Priority 1: Fleet Stability
 
 - Continue signed OTA rollout in small batches until the installed fleet is on `0.1.3-signed-ota` or newer. Done for the 21 mapped devices on 2026-07-01.
 - Keep the USB bench device reserved for firmware and feature validation before fleet rollout. No firmware build may go to fleet devices until the exact build has passed bench ESP32 testing.
+- Complete the `0.1.5-led-off` rollout only after resolving or explicitly isolating MasterBedroom's frequent MQTT reconnects and incomplete OTA download. Current state: 7 of 23 devices updated; all 23 online and non-stale; rollout paused.
+- Require acknowledged `downloading → rebooting` OTA states and fresh target-version telemetry for every device before expanding a batch. Use the verified numeric Pi LAN address while ESP32 `.local` resolution remains unavailable.
 - Watch recovered/replaced devices across normal 10-minute report intervals.
+- Monitor the three attic sensors during the 2026-07-11 afternoon heat window. If `Attic` repeats the 2026-07-10 outage near the prior 137.5 F peak, inspect its power supply, regulator, wiring, and enclosure before considering firmware changes.
 - Fix retained telemetry pollution by stopping retained telemetry publishes and/or deduping collector inserts on `(device_id, seq, datetime)`. Done for the 21 mapped devices with firmware `0.1.4-antirollback` and the live collector/database deployment on 2026-07-04.
-- Use collector-side desired firmware version checking to record deployment attempts on version mismatch; enable `--auto-ota` only after the exact staged firmware build has passed bench ESP32 validation.
+- Use collector-side desired firmware version checking to record deployment
+  attempts on version mismatch while keeping OTA publication operator-only.
+  Done on 2026-08-07: `--auto-ota` was removed, the collector retains no
+  command publisher path, and the admin-authenticated OTA CLI remains the
+  distribution mechanism after bench validation.
 - Keep retained MQTT config/status state, SQLite device rows, and `config/locations.json` clean when devices are removed, replaced, or renamed.
 - Add a simple operator checklist for adding/replacing a sensor. Done in `docs/operations-runbook.md` on 2026-07-05.
 
@@ -161,12 +168,22 @@ Priority 2: Dashboard As The Daily Control Surface
 - Tune local sensor overlay placement without committing private floorplan data.
 - Add a dashboard admin view for device/location mapping. Done on 2026-07-08 with local-network-only writes to `config/locations.json`.
 - Make graph grouping configurable if hard-coded groups become limiting.
+- Keep the dedicated Attic group, alphabetical device-card order, hottest-first Latest Readings, and 75 F / 100 F graph references covered by the dashboard presentation contract test. Added on 2026-07-10.
 - Keep suspect humidity flagging visible but non-disruptive.
 
 Priority 3: Operations And Data Protection
 
 - Add SQLite backup/export workflow. Done; the local SQLite backup runs daily at 02:05 before the 02:15 restic/S3 backup.
 - Add restore verification for at least one backup. Done for both local SQLite backup and latest restic S3 snapshot; reverified on 2026-07-08.
+- Add lossless scheduled database maintenance that verifies live and backup
+  integrity, preserves row counts, runs `PRAGMA optimize`, and alerts on stale
+  backups or storage thresholds. Done on 2026-08-07 with a daily systemd timer
+  and focused tests.
+- Replace ad hoc schema creation with numbered forward-only migrations and add
+  the DATA-001 partial unique dedupe index. Done and live at schema version 2 on
+  2026-08-07 with lossless production-backup and live comparisons. The
+  concurrent-start race found during activation is fixed and tested in
+  `cacfceb`; the collector was restarted with the fix and reverified.
 - Add a compact operational runbook covering service status, logs, OTA rollout, config publish, and sensor replacement. Done in `docs/operations-runbook.md` on 2026-07-05.
 - Decide how much local runtime state should stay JSON files versus moving to SQLite tables.
 
@@ -180,6 +197,17 @@ Priority 4: Security Hardening Without Fleet Disruption
 - Stage MQTT TLS and per-device ACL migration on the bench device first.
 - Add per-device credentials only after bench validation.
 - Decide whether the public GitHub history needs a full rewrite or whether the current sanitized tip is sufficient.
+- Keep existing public history without a rewrite and block new current-tree
+  identifier residue with a hash-only baseline. Done in DR-021 on 2026-08-07.
+- Expand Python coverage from the measured 52.6% baseline to the required 80%
+  gate. Done on 2026-08-07: 114 tests measure 91.9% with branch coverage, and
+  CI enforces an 80% floor.
+- Add the TEST-023 broker ACL matrix. Done on 2026-08-07 against an isolated
+  Mosquitto broker using the same tracked per-device ACL installed by the TLS
+  setup script; no live broker configuration was changed.
+- Extract firmware filter and publish-policy logic for native host tests. Done
+  on 2026-08-07 with six passing PlatformIO native cases for TEST-010/011;
+  TEST-012 manifest validation remains paired with the ArduinoJson milestone.
 
 Acceptance criteria:
 

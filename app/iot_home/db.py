@@ -1,63 +1,55 @@
 from __future__ import annotations
 
 import ipaddress
+import re
 import sqlite3
 from pathlib import Path
 
-
 DEFAULT_DB_PATH = Path("data/iot.db")
+PRE_NTP_SENTINEL = "1970-01-01T00:00:00Z"
+MIGRATIONS_DIR = Path(__file__).with_name("migrations")
+MIGRATION_FILENAME = re.compile(r"^(\d{3})_[a-z0-9_]+\.sql$")
 
-
-SCHEMA = """
-CREATE TABLE IF NOT EXISTS readings (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    device_id TEXT NOT NULL,
-    location TEXT,
-    sensor_type TEXT,
-    temperature REAL NOT NULL,
-    humidity REAL NOT NULL,
-    datetime TEXT NOT NULL,
-    rssi INTEGER,
-    status TEXT,
-    seq INTEGER,
-    created_at TEXT DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE INDEX IF NOT EXISTS idx_readings_device_created
-ON readings (device_id, created_at DESC);
-
-CREATE INDEX IF NOT EXISTS idx_readings_created
-ON readings (created_at DESC);
-
-CREATE TABLE IF NOT EXISTS devices (
-    device_id TEXT PRIMARY KEY,
-    location TEXT,
-    firmware_version TEXT,
-    last_seen TEXT,
-    online INTEGER NOT NULL DEFAULT 0,
-    last_rssi INTEGER,
-    last_status TEXT,
-    last_seq INTEGER,
-    last_ip TEXT,
-    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE TABLE IF NOT EXISTS deployment_attempts (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    device_id TEXT NOT NULL,
-    from_version TEXT,
-    to_version TEXT NOT NULL,
-    observed_ip TEXT,
-    status TEXT NOT NULL,
-    rollout_id TEXT,
-    message TEXT,
-    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE INDEX IF NOT EXISTS idx_deployment_attempts_device_created
-ON deployment_attempts (device_id, created_at DESC);
-"""
+REQUIRED_COLUMNS = {
+    "readings": {
+        "id",
+        "device_id",
+        "location",
+        "sensor_type",
+        "temperature",
+        "humidity",
+        "datetime",
+        "rssi",
+        "status",
+        "seq",
+        "created_at",
+    },
+    "devices": {
+        "device_id",
+        "location",
+        "firmware_version",
+        "last_seen",
+        "online",
+        "last_rssi",
+        "last_status",
+        "last_seq",
+        "last_ip",
+        "updated_at",
+    },
+    "deployment_attempts": {
+        "id",
+        "device_id",
+        "from_version",
+        "to_version",
+        "observed_ip",
+        "status",
+        "rollout_id",
+        "message",
+        "created_at",
+        "updated_at",
+    },
+    "system_metrics": {"id", "metric", "value", "created_at"},
+}
 
 
 def connect(db_path: Path | str = DEFAULT_DB_PATH) -> sqlite3.Connection:
@@ -71,15 +63,106 @@ def connect(db_path: Path | str = DEFAULT_DB_PATH) -> sqlite3.Connection:
 
 
 def init_db(conn: sqlite3.Connection) -> None:
-    conn.executescript(SCHEMA)
-    ensure_column(conn, "devices", "last_ip", "TEXT")
-    conn.commit()
+    apply_migrations(conn)
 
 
-def ensure_column(conn: sqlite3.Connection, table: str, column: str, definition: str) -> None:
-    columns = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
-    if column not in columns:
-        conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+def migration_paths() -> tuple[tuple[int, Path], ...]:
+    migrations = []
+    for path in sorted(MIGRATIONS_DIR.glob("*.sql")):
+        match = MIGRATION_FILENAME.fullmatch(path.name)
+        if match:
+            migrations.append((int(match.group(1)), path))
+    versions = [version for version, _ in migrations]
+    if versions != list(range(1, len(versions) + 1)):
+        raise RuntimeError(f"database migration sequence is invalid: {versions}")
+    return tuple(migrations)
+
+
+MIGRATIONS = migration_paths()
+CURRENT_SCHEMA_VERSION = MIGRATIONS[-1][0]
+
+
+def migration_statements(sql: str) -> tuple[str, ...]:
+    statements = []
+    pending = ""
+    for line in sql.splitlines(keepends=True):
+        pending += line
+        if sqlite3.complete_statement(pending):
+            statement = pending.strip()
+            if statement:
+                statements.append(statement)
+            pending = ""
+    if pending.strip():
+        raise RuntimeError("database migration contains an incomplete SQL statement")
+    return tuple(statements)
+
+
+def validate_schema(conn: sqlite3.Connection, version: int) -> None:
+    for table, required in REQUIRED_COLUMNS.items():
+        columns = {
+            str(row["name"]) for row in conn.execute(f"PRAGMA table_info({table})").fetchall()
+        }
+        missing = required - columns
+        if missing:
+            raise RuntimeError(f"database table {table} is missing columns: {sorted(missing)}")
+    if version >= 2:
+        reading_columns = {
+            str(row["name"]) for row in conn.execute("PRAGMA table_info(readings)").fetchall()
+        }
+        if "legacy_dedupe_exempt" not in reading_columns:
+            raise RuntimeError("database table readings is missing column: legacy_dedupe_exempt")
+        index = conn.execute(
+            "SELECT sql FROM sqlite_master WHERE type = 'index' AND name = ?",
+            ("uq_readings_device_seq_datetime",),
+        ).fetchone()
+        if index is None:
+            raise RuntimeError("database is missing the readings dedupe index")
+
+
+def apply_migrations(conn: sqlite3.Connection, target_version: int | None = None) -> None:
+    current_version = int(conn.execute("PRAGMA user_version").fetchone()[0])
+    latest_version = CURRENT_SCHEMA_VERSION if target_version is None else int(target_version)
+    if current_version > CURRENT_SCHEMA_VERSION:
+        raise RuntimeError(
+            f"database schema {current_version} is newer than supported {CURRENT_SCHEMA_VERSION}"
+        )
+    if latest_version < current_version or latest_version > CURRENT_SCHEMA_VERSION:
+        raise RuntimeError(
+            f"unsupported database schema transition {current_version} -> {latest_version}"
+        )
+    if conn.in_transaction:
+        raise RuntimeError("database migrations cannot start inside an active transaction")
+
+    for version, path in MIGRATIONS:
+        if version <= current_version or version > latest_version:
+            continue
+        try:
+            conn.execute("BEGIN IMMEDIATE")
+            locked_version = int(conn.execute("PRAGMA user_version").fetchone()[0])
+            if locked_version > CURRENT_SCHEMA_VERSION:
+                raise RuntimeError(
+                    f"database schema {locked_version} is newer than supported "
+                    f"{CURRENT_SCHEMA_VERSION}"
+                )
+            if locked_version >= version:
+                conn.commit()
+                current_version = locked_version
+                continue
+            if locked_version != version - 1:
+                raise RuntimeError(
+                    f"database schema changed unexpectedly from {current_version} "
+                    f"to {locked_version} before migration {version}"
+                )
+            sql = path.read_text(encoding="utf-8")
+            for statement in migration_statements(sql):
+                conn.execute(statement)
+            validate_schema(conn, version)
+            conn.execute(f"PRAGMA user_version = {version}")
+            conn.commit()
+            current_version = version
+        except Exception as exc:
+            conn.rollback()
+            raise RuntimeError(f"database migration {version} ({path.name}) failed: {exc}") from exc
 
 
 def observed_ip(payload: dict) -> str | None:
@@ -96,23 +179,6 @@ def observed_ip(payload: dict) -> str | None:
     return candidate
 
 
-def telemetry_exists(conn: sqlite3.Connection, device_id: str, reading_time: str, seq: object) -> bool:
-    return (
-        conn.execute(
-            """
-            SELECT 1
-            FROM readings
-            WHERE device_id = ?
-              AND datetime = ?
-              AND seq IS ?
-            LIMIT 1
-            """,
-            (device_id, reading_time, seq),
-        ).fetchone()
-        is not None
-    )
-
-
 def record_telemetry(conn: sqlite3.Connection, payload: dict) -> None:
     device_id = str(payload["deviceId"])
     location = payload.get("location")
@@ -127,27 +193,30 @@ def record_telemetry(conn: sqlite3.Connection, payload: dict) -> None:
     ip = observed_ip(payload)
 
     with conn:
-        if not telemetry_exists(conn, device_id, reading_time, seq):
-            conn.execute(
-                """
-                INSERT INTO readings (
-                    device_id, location, sensor_type, temperature, humidity,
-                    datetime, rssi, status, seq
-                )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    device_id,
-                    location,
-                    sensor_type,
-                    temperature,
-                    humidity,
-                    reading_time,
-                    rssi,
-                    status,
-                    seq,
-                ),
+        conn.execute(
+            """
+            INSERT INTO readings (
+                device_id, location, sensor_type, temperature, humidity,
+                datetime, rssi, status, seq
             )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(device_id, seq, datetime)
+            WHERE datetime <> '1970-01-01T00:00:00Z'
+              AND legacy_dedupe_exempt = 0
+            DO NOTHING
+            """,
+            (
+                device_id,
+                location,
+                sensor_type,
+                temperature,
+                humidity,
+                reading_time,
+                rssi,
+                status,
+                seq,
+            ),
+        )
         conn.execute(
             """
             INSERT INTO devices (
@@ -274,6 +343,27 @@ def update_deployment_attempt(
             """,
             (status, rollout_id, message, attempt_id),
         )
+
+
+def record_system_metric(conn: sqlite3.Connection, metric: str, value: float) -> None:
+    with conn:
+        conn.execute(
+            "INSERT INTO system_metrics (metric, value) VALUES (?, ?)",
+            (metric, float(value)),
+        )
+
+
+def latest_system_metric(conn: sqlite3.Connection, metric: str) -> sqlite3.Row | None:
+    return conn.execute(
+        """
+        SELECT metric, value, created_at
+        FROM system_metrics
+        WHERE metric = ?
+        ORDER BY created_at DESC, id DESC
+        LIMIT 1
+        """,
+        (metric,),
+    ).fetchone()
 
 
 def latest_readings(conn: sqlite3.Connection) -> list[sqlite3.Row]:

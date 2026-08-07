@@ -53,9 +53,15 @@ Example:
   "numReadErrors": 0,
   "numFilteredReadings": 0,
   "restartReason": "PowerOn",
+  "recoveryReason": "none",
   "status": "OK"
 }
 ```
+
+`restartReason` is the ESP32 hardware reset classification. `recoveryReason`
+is normally `none`; after a firmware-initiated recovery restart, the first
+successfully published telemetry reports `network_timeout` or
+`weekly_safety`, then clears the persisted value.
 
 ## Status
 
@@ -211,4 +217,6 @@ Observed successful OTA progression is `downloading`, then `rebooting`, followed
 
 The collector can compare reported `firmwareVersion` values against a configured desired version. When a mismatch is detected, it records a deployment attempt with the stable `deviceId`, current version, target version, and optional `localIp` metadata from the MQTT payload. IP addresses are diagnostic only and are not used as device identity.
 
-Automatic OTA publish is opt-in with the collector `--auto-ota` flag and requires a staged manifest under `data/firmware/{version}/manifest.json`.
+The collector never publishes OTA commands. After bench validation, an
+operator publishes a staged signed command with `iot_home.publish_ota` using
+the MQTT admin identity.

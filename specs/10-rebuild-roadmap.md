@@ -1,6 +1,6 @@
 # 12. Rebuild Roadmap
 
-Phased so the live fleet (21 devices) keeps reporting throughout. Each phase
+Phased so the live fleet (currently 23 devices) keeps reporting throughout. Each phase
 ends with its listed acceptance criteria green. Old and new components may
 run side by side (different systemd units / DB file) during migration.
 
@@ -24,14 +24,27 @@ run side by side (different systemd units / DB file) during migration.
 > fleet-reconciliation feature (FR-046/DATA-010/AC-045).
 > **Consequence for the rebuild:** preserve the deployed OTA signature
 > contract v2 (API-013); do not regress to the superseded 2026-07-02 draft.
-> Items still open against this spec: `/firmware/` capability-key protection
-> (SEC-016 — images embed WiFi/MQTT secrets), dashboard startup refusal or an
-> explicit `--allow-unauthenticated` path (SEC-009/AC-016), TLS +
-> per-device MQTT credentials (SEC-001/002), seq-mandatory collector
+> Items still open against this spec: TLS + per-device MQTT credentials
+> (SEC-001/002), seq-mandatory collector
 > validation and topic/payload identity checks (FR-021/FR-022), database
-> migrations and partial unique index (DATA-001/DATA-006), retention
-> automation (DATA-005), restic exclude verification for the signing key
-> (DATA-007), and deployment-attempt retention (DATA-010).
+> migrations and partial unique index (DATA-001/DATA-006), preservation and
+> capacity monitoring (DATA-005), and restic exclude verification for the
+> signing key (DATA-007).
+>
+> **Status (2026-08-06):** SEC-016 capability-key firmware downloads and the
+> chosen SEC-009 policy are implemented and live. Read-only dashboard routes
+> are explicitly open on the home LAN; location writes require Basic auth;
+> firmware downloads require Basic auth or a capability key. Location updates
+> are serialized, per-request SQLite connections close explicitly, and schema
+> initialization runs only at startup. Numbered migrations, seq-mandatory
+> validation, and the DATA-001 partial unique index were implemented and
+> validated losslessly against production backup copies on 2026-08-07. The live
+> database is now schema version 2; the concurrent-start race found during
+> activation is fixed, regression-tested, loaded by a collector restart, and
+> live-verified.
+> The next code milestone is ArduinoJson plus manifest-validation native tests,
+> then NVS-provisioned per-device credentials and TLS. The Python 80% gate and
+> TEST-010/011 firmware native tests were also completed on 2026-08-07.
 
 ## R0 — Foundations (no behavior change)
 
@@ -45,15 +58,29 @@ run side by side (different systemd units / DB file) during migration.
   while behavior is otherwise frozen.
 - Decide and record: git-history identifier scrub vs. acceptance (SEC-014).
 
+> **Status (2026-08-07):** Ruff, 91.9% branch-aware coverage with an enforced
+> 80% floor, gitleaks, the hash-only current-tree identifier scan, and native
+> sensor-filter/publish-policy tests are implemented. DR-021 accepts existing
+> history without a rewrite. TEST-023 now verifies the tracked per-device ACL
+> against an isolated Mosquitto broker, and collector OTA publishing has been
+> removed to preserve operator-only command authority. TEST-012 manifest-native
+> tests remain paired with the later ArduinoJson refactor.
+
 **Exit:** CI green including firmware build; no fleet change.
 
 ## R1 — Core pipeline (MVP part 1)
 
 - Rebuild collector against FR-020…FR-025 with migrations (DATA-006),
-  dedupe index (DATA-001), retention job (DATA-005).
+  dedupe index (DATA-001), preservation/capacity job (DATA-005).
 - Shared MQTT client helper (NFR-009); CLI contracts API-030/031.
 - Simulator updated (no retained telemetry).
 - Tests: TEST-001/002/003/005/006/020.
+
+> **Status (2026-08-07):** DATA-001/DATA-006 and TEST-002/006 are live at schema
+> version 2. Migration preserved all rows and values while converting historical
+> extra duplicates into explicit legacy exemptions. Concurrent startup is now
+> serialized and regression-tested; FR-022 topic/payload identity checking and
+> the complete TEST-020 path remain open.
 
 **Exit:** AC-004…AC-007, AC-041, AC-043.
 
@@ -96,7 +123,7 @@ run side by side (different systemd units / DB file) during migration.
 - Rotating views, floorplan, suspect-reading flags (FR-034…FR-036) on the
   static-asset UI.
 - Summary stats (FR-033), device mapping admin, ops polish, backup schedule
-  and retention automation.
+  and preservation/capacity automation.
 
 **Exit:** AC-011 extended views verified on the 1080p wall display; AC-040.
 
@@ -126,7 +153,7 @@ firmware/
   test/                     # native unit tests
 scripts/ (install_systemd_services.sh, add_mqtt_device_user.sh,
           configure_mosquitto_tls_acl.sh, backup_sqlite.sh,
-          retention hooks)
+          preservation/capacity hooks)
 deploy/systemd/ (*.service.template + generator)
 tests/
 docs/                       # see §13

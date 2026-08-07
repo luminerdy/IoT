@@ -13,10 +13,23 @@
   non-sentinel duplicate keys. DR-023 preserves all of them: migration marks
   only extra copies, retains the lowest-ID canonical row in the index, and
   gives every future row a non-exempt default.
-- Applied the migrations only to an online-backup scratch copy. It reached
-  schema version 2 with integrity `ok`; exact comparisons found no removed,
-  added, or changed original reading values and no changes to devices,
-  deployment attempts, or system metrics. The live schema remains unchanged.
+- Applied the migrations to an online-backup scratch copy. It reached schema
+  version 2 with integrity `ok`; exact comparisons found no removed, added, or
+  changed original reading values and no changes to devices, deployment
+  attempts, or system metrics.
+- The live database reached schema version 2 during simultaneous dashboard and
+  collector starts at 12:46 CDT. One collector attempt encountered a concurrent
+  migration race and restarted successfully five seconds later. The migration
+  retained all pre-migration readings and metrics; integrity is `ok`, 503 legacy
+  duplicates remain preserved, and no indexed duplicate groups remain.
+- Fixed the concurrent-start race by re-reading `PRAGMA user_version` after
+  acquiring each migration write lock. A deterministic regression test now
+  proves that a second starter skips migrations completed while it waited. The
+  full suite has 114 passing tests at 91.9% branch-aware coverage.
+- Created and restore-verified fresh backup
+  `data/backups/iot-20260807T193918Z.sqlite.gz`. A separate version-0 backup from
+  before the live migration was also re-migrated with the fixed code: all
+  242,715 readings and all original values were unchanged.
 - Added CI Ruff lint and formatting checks, pytest coverage reporting and
   artifact upload, gitleaks, and a custom current-tree identifier scan.
 - Removed collector `--auto-ota` and its command-publishing code. Firmware
@@ -29,7 +42,7 @@
   script installs this same ACL; no live broker configuration was changed.
 - Recorded an initial 52.6% branch-aware Python coverage baseline, then added
   collector, dashboard HTTP/security, config publisher, and OTA staging/
-  publishing tests. The 113-test suite now measures 92.1%, and CI enforces the
+  publishing tests. The 114-test suite now measures 91.9%, and CI enforces the
   normative 80% floor.
 - Extracted sensor filtering and publish policy into a pure C++ firmware
   library. Six PlatformIO native tests cover TEST-010/011, and both the native

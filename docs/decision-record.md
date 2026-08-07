@@ -262,6 +262,8 @@ the indexed canonical row blocks every future duplicate of the same key. The
 sentinel timestamp remains independently exempt because sequence numbers reset
 before NTP synchronization.
 
-**Status:** Accepted and implemented locally. A migrated production copy passed
-integrity and exact row/value comparisons; the live database has not been
-migrated and no service was restarted.
+**Status:** Accepted and live at schema version 2. Production-copy and live
+comparisons preserved all historical rows and values. A concurrent-start race
+observed during activation was fixed in `cacfceb` by re-checking schema version
+under the migration write lock; the running collector still needs one
+privileged restart to load that fix.

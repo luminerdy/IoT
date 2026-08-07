@@ -38,8 +38,10 @@ run side by side (different systemd units / DB file) during migration.
 > are serialized, per-request SQLite connections close explicitly, and schema
 > initialization runs only at startup. Numbered migrations, seq-mandatory
 > validation, and the DATA-001 partial unique index were implemented and
-> validated losslessly against a production backup copy on 2026-08-07; live
-> migration remains gated on a fresh backup and approved collector restart.
+> validated losslessly against production backup copies on 2026-08-07. The live
+> database is now schema version 2; the concurrent-start race found during
+> activation is fixed and regression-tested, with one privileged collector
+> restart remaining to load the fix.
 > The next code milestone is ArduinoJson plus manifest-validation native tests,
 > then NVS-provisioned per-device credentials and TLS. The Python 80% gate and
 > TEST-010/011 firmware native tests were also completed on 2026-08-07.
@@ -56,7 +58,7 @@ run side by side (different systemd units / DB file) during migration.
   while behavior is otherwise frozen.
 - Decide and record: git-history identifier scrub vs. acceptance (SEC-014).
 
-> **Status (2026-08-07):** Ruff, 92.1% branch-aware coverage with an enforced
+> **Status (2026-08-07):** Ruff, 91.9% branch-aware coverage with an enforced
 > 80% floor, gitleaks, the hash-only current-tree identifier scan, and native
 > sensor-filter/publish-policy tests are implemented. DR-021 accepts existing
 > history without a rewrite. TEST-023 now verifies the tracked per-device ACL
@@ -74,11 +76,11 @@ run side by side (different systemd units / DB file) during migration.
 - Simulator updated (no retained telemetry).
 - Tests: TEST-001/002/003/005/006/020.
 
-> **Status (2026-08-07):** DATA-001/DATA-006 and TEST-002/006 are implemented
-> locally. Migration version 2 preserved all rows and values in a production
-> copy while converting historical extra duplicates into explicit legacy
-> exemptions. Live deployment remains pending; FR-022 topic/payload identity
-> checking and the complete TEST-020 path remain open.
+> **Status (2026-08-07):** DATA-001/DATA-006 and TEST-002/006 are live at schema
+> version 2. Migration preserved all rows and values while converting historical
+> extra duplicates into explicit legacy exemptions. Concurrent startup is now
+> serialized and regression-tested; FR-022 topic/payload identity checking and
+> the complete TEST-020 path remain open.
 
 **Exit:** AC-004…AC-007, AC-041, AC-043.
 

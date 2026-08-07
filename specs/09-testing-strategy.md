@@ -105,7 +105,7 @@ gate for the HTTP handler and validation modules is not natively enforceable
 by coverage tooling; those modules are instead reviewed at report level with
 a ≥ 85 % target. Network-bound service loops (`main()` connect loops,
 simulator) are covered by TEST-020 integration tests, not unit coverage.
-*Implementation note (2026-08-07):* the 113-test suite measures 92.1% with
+*Implementation note (2026-08-07):* the 114-test suite measures 91.9% with
 branch coverage enabled, and CI enforces the required 80% floor. Collector,
 dashboard HTTP/security, config-publisher, and OTA staging/publishing paths are
 included in the expanded coverage.

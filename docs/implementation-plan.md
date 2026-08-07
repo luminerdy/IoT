@@ -180,10 +180,10 @@ Priority 3: Operations And Data Protection
   backups or storage thresholds. Done on 2026-08-07 with a daily systemd timer
   and focused tests.
 - Replace ad hoc schema creation with numbered forward-only migrations and add
-  the DATA-001 partial unique dedupe index. Implemented locally on 2026-08-07
-  and validated losslessly against a production backup copy. Live deployment
-  remains gated on a fresh verified backup and explicit collector-restart
-  approval.
+  the DATA-001 partial unique dedupe index. Done and live at schema version 2 on
+  2026-08-07 with lossless production-backup and live comparisons. The
+  concurrent-start race found during activation is fixed and tested in
+  `cacfceb`; one privileged collector restart remains to load that fix.
 - Add a compact operational runbook covering service status, logs, OTA rollout, config publish, and sensor replacement. Done in `docs/operations-runbook.md` on 2026-07-05.
 - Decide how much local runtime state should stay JSON files versus moving to SQLite tables.
 
@@ -200,7 +200,7 @@ Priority 4: Security Hardening Without Fleet Disruption
 - Keep existing public history without a rewrite and block new current-tree
   identifier residue with a hash-only baseline. Done in DR-021 on 2026-08-07.
 - Expand Python coverage from the measured 52.6% baseline to the required 80%
-  gate. Done on 2026-08-07: 113 tests measure 92.1% with branch coverage, and
+  gate. Done on 2026-08-07: 114 tests measure 91.9% with branch coverage, and
   CI enforces an 80% floor.
 - Add the TEST-023 broker ACL matrix. Done on 2026-08-07 against an isolated
   Mosquitto broker using the same tracked per-device ACL installed by the TLS

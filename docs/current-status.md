@@ -108,8 +108,8 @@ Status: Phases 0 through 4 are complete for the current local-first system. Sign
   The timer is installed and enabled; its first live oneshot passed on
   2026-08-07.
 - Added CI safeguards for Ruff lint/format, pytest coverage reporting, gitleaks,
-  and hash-only current-tree identifier scanning. The expanded 113-test Python
-  suite measures 92.1% with branch coverage enabled, and CI now enforces the
+  and hash-only current-tree identifier scanning. The expanded 114-test Python
+  suite measures 91.9% with branch coverage enabled, and CI now enforces the
   required 80% floor.
 - Extracted firmware sensor filtering and publish policy into an
   Arduino-independent C++ library. Six PlatformIO native tests now cover median
@@ -127,12 +127,22 @@ Status: Phases 0 through 4 are complete for the current local-first system. Sign
   check-before-insert dedupe with a partial unique index and correctly exempts
   pre-NTP sentinel readings. It preserves historical duplicate rows through a
   migration-only marker while indexing one canonical row per key.
-- Validated the migration against a SQLite online-backup copy of production:
-  integrity remained `ok`; all 242,291 readings and all original reading
-  values were unchanged; device, deployment-attempt, and system-metric rows
-  were unchanged; 503 extra legacy copies were marked; and no indexed duplicate
-  groups remained. The live database is still schema version 0 because no
-  service was restarted and no production schema change was authorized.
+- Validated the migration against SQLite online-backup copies of production.
+  The latest version-0 replay preserved all 242,715 readings and every original
+  value, left the other preserved tables unchanged, marked 503 extra legacy
+  copies, and left no indexed duplicate groups.
+- The live database is now schema version 2 with integrity `ok`. It migrated
+  during simultaneous dashboard and collector starts at 12:46 CDT; one
+  collector attempt exposed a concurrent-start race, then systemd restarted it
+  successfully five seconds later. Commit `cacfceb` fixes the race by checking
+  the schema version again after acquiring the migration write lock, with a
+  deterministic regression test. The current services have remained healthy;
+  a privileged collector restart is still needed to load that race fix into the
+  already-running process.
+- Created and restore-verified fresh post-migration backup
+  `data/backups/iot-20260807T193918Z.sqlite.gz`. Its snapshot contains 243,328
+  readings, 23 devices, 0 deployment attempts, 395 system metrics, 503 preserved
+  legacy exemptions, and no indexed duplicate groups.
 
 ## Live Dashboard State
 
@@ -167,6 +177,10 @@ production build was reflashed and reverified on `Sunroom Test`.
 
 ## Active Blockers
 
+- The live database migration is complete and healthy, but reloading the
+  concurrent-start fix requires `sudo systemctl restart
+  iot-home-collector.service`. Non-interactive service control is not authorized
+  on PiServer, so this one privileged command remains for the operator.
 - MasterBedroom completed the `0.1.6-recovery` rollout in an isolated acknowledged attempt. Its power supply was replaced by the operator before the 2026-08-04 check; it is currently reporting normally, so the prior reconnect issue is no longer active unless it recurs.
 - `BunkHouse` also received replacement power before the 2026-08-04 check and is currently online and reporting normally; its prior long-offline issue is no longer active unless it recurs.
 - `AtticChimney` stopped reporting and was temporarily retired from the dashboard fleet on 2026-08-04 until it is safe to enter the attic and replace it. Historical readings were preserved.
@@ -176,10 +190,10 @@ production build was reflashed and reverified on `Sunroom Test`.
 
 ## Next Actions
 
-1. In an approved maintenance window, create and verify a fresh backup, deploy
-   the migration-capable collector, then verify schema version 2, integrity,
-   row preservation, collector logs, and fresh telemetry. The migration has
-   already passed against a production copy; it has not touched the live DB.
+1. Run `sudo systemctl restart iot-home-collector.service` to load commit
+   `cacfceb`, then verify the collector reconnects, schema version remains 2,
+   integrity remains `ok`, and fresh telemetry continues. The backup, live
+   migration, lossless comparisons, and regression fix are complete.
 2. Replace firmware substring JSON parsing with ArduinoJson, add native
    manifest-validation tests,
    and USB-bench the exact build before any OTA rollout.
@@ -224,8 +238,10 @@ production build was reflashed and reverified on `Sunroom Test`.
   PiServer services are active and enabled; the dashboard reports 22 active
   mapped devices plus one online `UNMAPPED` device.
 - Local branch: `agent/disable-iot-led`
-- Latest local commit: run `git log -1 --oneline`.
+- Published implementation commits: `789c308` and concurrent-migration fix
+  `cacfceb`; final documentation may be newer.
 - Public GitHub repo: `luminerdy/IoT`
+- Draft PR: `https://github.com/luminerdy/IoT/pull/4`
 - Merged PR: `https://github.com/luminerdy/IoT/pull/3`
 - GitHub CLI is authenticated for PR/check workflows; push future changes from a new branch or directly to `main` only when intentional.
 - Local-only ignored files include runtime data, build output, `config/locations.json`, `config/floorplan.json`, and `firmware/include/secrets.h`.

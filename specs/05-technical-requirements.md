@@ -73,7 +73,7 @@ gate (TEST-040), (3) **firmware compile** via `platformio run` (not just
 (SEC-014).
 *Implementation status (2026-08-07):* Ruff lint/format, pytest coverage
 reporting, gitleaks, and a hash-only current-tree identifier baseline are now
-configured. The 113-test Python suite measures 92.1% with branch coverage and
+configured. The 114-test Python suite measures 91.9% with branch coverage and
 enforces TEST-040's normative 80% floor. PlatformIO native tests cover the
 extracted sensor filter and publish policy (TEST-010/011); TEST-012 remains
 paired with the ArduinoJson manifest-validation milestone.

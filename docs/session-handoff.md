@@ -93,22 +93,21 @@ Bench validation completed:
 
 ## Pick Up Next
 
-1. Deploy the already production-copy-validated database migrations only in an
-   approved maintenance window after a fresh verified backup, then continue
-   with ArduinoJson manifest-validation tests and NVS-provisioned
-   per-device credentials/TLS, and dashboard static-asset extraction.
+1. Run the remaining privileged collector restart documented below, verify the
+   fixed process and live schema, then continue with ArduinoJson
+   manifest-validation tests, NVS-provisioned per-device credentials/TLS, and
+   dashboard static-asset extraction.
 2. Continue watchdog/fleet/attic monitoring and decide whether to remap or
    re-retire the returned `UNMAPPED` device.
 
 ## Working Tree
 
 The capability-key and authenticated-write batch was published in commit
-`6c4f8fd` and added to draft PR #4. The current branch tip is `a9b5a80`; the
-database-maintenance, migration/dedupe, CI safeguards, coverage expansion,
-firmware native-test, ACL matrix, operator-only OTA authority, spec, and
-documentation work remains local and uncommitted. No fleet command, service
-restart, live ACL change, live schema change, or firmware deployment was
-performed for this work.
+`6c4f8fd`. The database-maintenance, migration/dedupe, CI safeguards, coverage
+expansion, firmware native-test, ACL matrix, operator-only OTA authority, spec,
+and documentation batch was published in `789c308`; concurrent migration
+startup was fixed and pushed in `cacfceb`. Draft PR #4 contains the work. No
+fleet command, live ACL change, or firmware deployment was performed.
 
 `AGENTS.md` remains local/untracked because it identifies the local machine and
 workspace. `IoT-code-review.md` remains local/untracked because it contains
@@ -122,7 +121,7 @@ Historical rows must not be pruned; any future archival still requires explicit
 approval and restore verification. Continue with the ordered `Pick Up Next`
 list above.
 
-The Python suite now has 113 passing tests at 92.1% branch-aware coverage, with
+The Python suite now has 114 passing tests at 91.9% branch-aware coverage, with
 an enforced 80% CI floor. Six PlatformIO native tests cover the extracted
 sensor-filter and publish-policy logic. Local firmware candidate
 `0.1.7-testable-core` build `2026080701` compiles for ESP32, but it has not been
@@ -137,13 +136,24 @@ per-device ACL installed by the TLS setup script. The live Mosquitto listener,
 credentials, services, and fleet were not changed.
 
 Numbered migrations `001` and `002` now replace ad hoc schema initialization
-and record version 2 in `PRAGMA user_version`. The dedupe migration preserves
-all pre-index rows by marking only historical extra copies and indexing one
-canonical row per key; future non-sentinel duplicates are rejected atomically.
-A production backup copy migrated with integrity `ok`, 242,291 readings and all
-original values unchanged, 503 legacy exemptions, and no remaining indexed
-duplicate groups. The live DB remains at version 0; deploy only after a fresh
-verified backup and explicit approval to restart the collector.
+and record version 2 in `PRAGMA user_version`. The live database is at version
+2 with integrity `ok`, 503 preserved legacy exemptions, and no indexed
+duplicate groups. All rows from the pre-migration backup remain present and
+unchanged. Fresh backup `data/backups/iot-20260807T193918Z.sqlite.gz` was
+restore-verified after migration.
+
+Simultaneous dashboard and collector starts at 12:46 CDT exposed a migration
+race: one collector attempt saw the column created by the other process and
+failed, then systemd restarted it successfully five seconds later. Commit
+`cacfceb` re-checks `PRAGMA user_version` under the migration write lock, and a
+deterministic concurrent-start test passes. The collector is healthy but still
+has its pre-fix Python module loaded. Non-interactive sudo is unavailable, so
+the operator must run the following once, after which the listed verification
+should be repeated:
+
+```bash
+sudo systemctl restart iot-home-collector.service
+```
 
 The final 2026-08-07 read-only API check showed all 22 active mapped devices
 online and non-stale on deployed `0.1.6-recovery`. The separate `UNMAPPED`

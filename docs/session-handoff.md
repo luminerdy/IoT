@@ -105,14 +105,18 @@ Bench validation completed:
 
 ## Working Tree
 
-Today’s tracked capability-key, authenticated-write, tests, deployment unit,
-spec, and documentation changes are intended for the existing
-`agent/disable-iot-led` branch and draft PR #4.
+Today’s capability-key, authenticated-write, tests, deployment unit, spec, and
+documentation changes were published to `agent/disable-iot-led` in commit
+`6c4f8fd` and added to draft PR #4. GitHub Python and firmware checks passed.
 
 `AGENTS.md` remains local/untracked because it identifies the local machine and
 workspace. `IoT-code-review.md` remains local/untracked because it contains
 review context and identifiers that should not be added to the sanitized public
 repository. Its accepted actions are captured in tracked specs/status docs.
+
+Tomorrow, start with the ordered `Pick Up Next` list above. Historical rows
+must not be pruned; the first database milestone is preservation, integrity,
+capacity/free-space monitoring, and alerts only.
 
 ## Verification
 

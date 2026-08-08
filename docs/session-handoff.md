@@ -117,6 +117,13 @@ Bench validation completed:
 - Opening PlatformIO's serial monitor toggled the USB control lines and reset
   the bench device; closing it and reading serial directly produced a clean
   boot. Keep the monitor detached during MQTT assertions on this adapter.
+- Final committed build `2026080703` is 839,344 bytes with SHA-256
+  `76ff6464c2189c029b6bcf57bd660b553b3d8b0fdef90075cdbf8929bd75cf91`.
+  It passed signed OTA (`downloading → rebooting → target-build telemetry`), a
+  3,601-second six-interval soak, config rejection/apply/default restoration,
+  signed same-build rollback rejection, and post-download invalid firmware-
+  signature rejection without reboot. This supersedes the preliminary
+  `2026080702` candidate for release.
 
 ## Pick Up Next
 
@@ -133,8 +140,9 @@ The capability-key and authenticated-write batch was published in commit
 expansion, firmware native-test, ACL matrix, operator-only OTA authority, spec,
 and documentation batch was published in `789c308`; concurrent migration
 startup was fixed and pushed in `cacfceb`. PR #4 was merged to `main` as
-`e67fa2e`. The ArduinoJson work is currently uncommitted on local branch
-`agent/arduinojson-manifest-tests`; no fleet OTA was performed.
+`e67fa2e`. ArduinoJson release commit `37d6ba5` is pushed on
+`agent/arduinojson-manifest-tests`; draft PR #5 is green and awaiting the final
+bench-evidence documentation commit and merge. No fleet OTA was performed.
 
 `AGENTS.md` remains local/untracked because it identifies the local machine and
 workspace. `IoT-code-review.md` remains local/untracked because it contains
@@ -151,11 +159,9 @@ list above.
 The Python suite now has 114 passing tests at 91.9% branch-aware coverage, with
 an enforced 80% CI floor. Fifteen PlatformIO native tests cover sensor filtering,
 publish policy, and ArduinoJson OTA manifest validation. Local firmware
-candidate `0.1.8-arduinojson` build `2026080702` passed task-focused USB
-parser/preflight validation on Sunroom Test but has not been staged or deployed
-to the fleet. The source now selects final candidate build `2026080703`; it is
-pending committed-artifact signed OTA and a fresh bench soak. Complete TEST-030
-still gates any rollout.
+candidate `0.1.8-arduinojson` build `2026080703` passed the committed-artifact
+signed OTA and release soak gates on Sunroom Test. It is staged but has not yet
+been deployed to fleet devices.
 
 DR-022 resolves the collector/ACL conflict: desired-version mismatches are
 recorded, but the collector has no OTA publish option or command authority.

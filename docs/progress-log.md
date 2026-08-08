@@ -22,6 +22,30 @@
   2 through 8, all statuses were `OK`, temperatures stayed between 92.7 F and
   92.8 F, humidity stayed between 31.0% and 31.6%, and no early telemetry was
   published. The 30-minute timing/plausibility test passed.
+- Finalized `0.1.8-arduinojson` build `2026080703` in commit `37d6ba5` and
+  opened draft PR #5. Local and GitHub CI gates passed: 15 native firmware
+  cases, 114 Python tests at 91.93% coverage, ESP32 build, static analysis,
+  Ruff, compile, gitleaks, and the hash-only identifier scan.
+- Clean-rebuilt, signed, and staged the committed 839,344-byte artifact. The
+  rebuilt and staged SHA-256 values both equal
+  `76ff6464c2189c029b6bcf57bd660b553b3d8b0fdef90075cdbf8929bd75cf91`;
+  both signatures verified, keyed download returned 200 with exact bytes, and
+  an unauthenticated download returned 401.
+- Sent the signed command only to USB-connected Sunroom Test. It reported
+  `downloading`, then `rebooting`, then fresh `OK` telemetry on build
+  `2026080703`. Its final soak lasted 3,601 seconds with intervals of 600, 600,
+  600, 600, 601, and 600 seconds, sequence 2 through 8, no early publishes,
+  temperatures of 91.8–91.9 F, and humidity of 30.7–32.5%.
+- Final bench regressions passed: rejected a 5-second config without changing
+  the active 600-second interval; applied a valid 60-second config and restored
+  retained defaults; rejected a valid signed same-build manifest before
+  download; and downloaded then rejected valid metadata with an intentionally
+  invalid firmware signature without rebooting or changing the installed build.
+- Created and restore-verified fresh pre-rollout backup
+  `data/backups/iot-20260808T013909Z.sqlite.gz`; integrity is `ok`, schema is v2,
+  and preserved table counts were verified. Core services were active/enabled.
+  Restic's read-only metadata/subset check found no repository errors; an
+  84-hour stale lock was observed and intentionally left untouched.
 - Replaced ad hoc SQLite schema initialization with packaged forward-only
   migrations `001` and `002`, transactionally tracked through
   `PRAGMA user_version`.

@@ -125,6 +125,13 @@ Status: Phases 0 through 4 are complete for the current local-first system. Sign
   requested 30-minute cadence/plausibility test with six 600–601 second
   intervals, no early publishes, monotonic sequence numbers, plausible
   readings, and `OK` status throughout. No fleet OTA was sent.
+- Finalized committed release candidate `0.1.8-arduinojson` build `2026080703`
+  with SHA-256
+  `76ff6464c2189c029b6bcf57bd660b553b3d8b0fdef90075cdbf8929bd75cf91`.
+  Sunroom Test accepted it through the real signed OTA path, returned on the
+  target build, passed a 3,601-second six-interval soak, passed config
+  apply/reject/restore and signed rollback checks, and rejected an invalid
+  firmware signature after download without rebooting. PR #5 CI is green.
 - Kept OTA command authority operator-only by removing collector `--auto-ota`
   and its MQTT publish path. Desired-version reconciliation still records one
   `detected` attempt per cooldown window. Added TEST-023, which validates the
@@ -179,11 +186,10 @@ production build was reflashed and reverified on `Sunroom Test`.
   with the temporarily retired `AtticChimney` is online and currently non-stale.
 - Recovery firmware count: 21 active devices on `0.1.6-recovery` build `2026072401`, plus the temporarily retired `AtticChimney` device on the same build.
 - ArduinoJson candidate count: 1 USB-connected bench device on
-  `0.1.8-arduinojson` build `2026080702`; no fleet rollout has started.
-- Final signed-OTA release candidate: the source now identifies build
-  `2026080703`, which must pass committed-artifact signed OTA and a fresh bench
-  soak before replacing the preliminary `2026080702` build or reaching fleet
-  devices.
+  `0.1.8-arduinojson` build `2026080703`; no fleet rollout has started.
+- Final signed-OTA release candidate: build `2026080703` has passed the
+  committed-artifact signed OTA and release soak gates. Its staged, served, and
+  clean-rebuilt binaries exact-match the recorded SHA-256.
 - Previous firmware count: 0 devices.
 - Remaining old firmware count: 0 devices on `0.1.3-signed-ota`.
 - `Sunroom` / `esp32-device-id`: online again after wire replacement; current sequence is increasing normally.
@@ -216,9 +222,9 @@ production build was reflashed and reverified on `Sunroom Test`.
     retired `AtticChimney` only when attic access is safe, continue attic heat
     monitoring, upload the house image, and keep periodic backup restore checks.
 
-Before any `0.1.8-arduinojson` fleet rollout, run and record the complete
-TEST-030 release checklist; the completed USB checks were scoped to the new
-parser/preflight behavior and do not constitute fleet-rollout clearance.
+The `0.1.8-arduinojson` release gate is complete. Fleet rollout remains an
+explicit operator action and must use acknowledged small batches with
+stop-on-failure checks.
 
 ## Decisions To Revisit Soon
 

@@ -92,6 +92,12 @@ A written checklist executed on the USB-recoverable bench device before any
 fleet rollout: AC-001, AC-020/021, AC-030…AC-032, AC-044. Results recorded
 (date, firmware build, outcome) in the ops log.
 
+*Release execution (2026-08-08):* exact committed build `2026080703` passed
+signed OTA success, 60-minute cadence/plausibility soak, retained config
+apply/reject/restore, signed rollback, and invalid firmware-signature rejection.
+The unchanged recovery path retains its earlier production-duration AC-044
+bench validation. The exact release binary is identified in the progress log.
+
 **TEST-031 — Restore drill** `MUST`
 Quarterly, and after backup schedule changes: restore the latest local
 SQLite backup to a scratch DB, verify integrity and recency, then verify the

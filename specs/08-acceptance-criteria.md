@@ -18,6 +18,12 @@ window. Six successive intervals were 600, 600, 600, 601, 600, and 600 seconds;
 there were no early publishes, all readings were plausible, every status was
 `OK`, and sequence numbers advanced monotonically.
 
+*Final release candidate validation (build `2026080703`):* after signed OTA,
+the committed artifact ran for 3,601 seconds with six successive intervals of
+600, 600, 600, 600, 601, and 600 seconds. Sequence advanced from 2 through 8,
+status remained `OK`, temperatures stayed within 91.8–91.9 F, humidity stayed
+within 30.7–32.5%, and there were no early publishes.
+
 **AC-002** (FR-004)
 Given a single spurious DHT22 spike ≥ 8 °F, when it is not confirmed by 3
 consecutive similar samples, then it never appears in published telemetry
@@ -123,10 +129,17 @@ Given a retained config `{"reportIntervalSeconds": 60}`, when the device
 the active config, and resumes the default when the retained payload is
 cleared.
 
+*Validated on final build `2026080703`:* Sunroom Test applied a retained
+60-second interval, echoed it in the `applied` response, and then applied the
+restored retained defaults with a 600-second interval.
+
 **AC-021** (FR-009)
 Given `{"reportIntervalSeconds": 5}` (out of range), then the device rejects
 the whole document, keeps its current config, and publishes `rejected` with
 a reason.
+
+*Validated on final build `2026080703`:* the device rejected the 5-second
+value and reported the unchanged active 600-second interval.
 
 ## OTA (R4)
 
@@ -136,11 +149,21 @@ the device downloads, verifies size + SHA-256 + signature, reports
 `downloading → rebooting`, boots the new version, and its next telemetry
 shows the new `firmwareVersion`/`buildNumber`.
 
+*Validated on 2026-08-08:* committed artifact `37d6ba5`, build `2026080703`,
+reported `downloading → rebooting` and returned with fresh `OK` telemetry on
+`0.1.8-arduinojson` / `2026080703`.
+
 **AC-031** (FR-011)
 Each of: wrong URL, truncated download, corrupted image (bad SHA), valid
 SHA with invalid signature, oversized image — results in `rejected`/`failed`
 status with the correct reason, and the device continues running the old
 firmware. (Matches the existing Phase-4 bench validation set.)
+
+*Final-candidate regression:* valid signed metadata with a deliberately invalid
+firmware signature downloaded the exact artifact, reported
+`firmware signature invalid`, did not reboot, and left build `2026080703`
+running. Native TEST-012 covers length → SHA → signature ordering; the broader
+wrong-URL/truncation/bad-SHA/oversized set remains preserved from Phase 4.
 
 **AC-032** (FR-012, SEC-006)
 Given a validly signed manifest whose `buildNumber` ≤ the highest booted
@@ -150,6 +173,9 @@ downloading, with reason indicating rollback protection.
 firmware rejected a signed lower-build command with
 `firmware rollback rejected`; AC-030/AC-031 equivalents were bench-run
 before the 21-device batch rollout.
+
+*Revalidated on final build `2026080703`:* replaying its valid signed manifest
+was rejected as `firmware rollback rejected` before download.
 
 **AC-032a** (FR-016, TEST-043) *(added 2026-07-12)*
 Given the exact `0.1.5-led-off` binary on the USB bench device, when it remains

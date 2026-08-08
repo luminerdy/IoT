@@ -12,7 +12,7 @@ The project is a local-first Raspberry Pi IoT system with MQTT, SQLite, a boot-e
 
 Phase 5: Fleet operations plus daily dashboard improvements
 
-Status: Phases 0 through 4 are complete for the current local-first system. Signed OTA hardening and signed build-number anti-rollback are live. Firmware `0.1.8-arduinojson` build `2026080703` is deployed to all 22 active mapped devices after passing the USB-connected Sunroom Test release gate. `AtticChimney` is temporarily retired pending safe physical replacement; its separate `UNMAPPED` record remains on `0.1.6-recovery`. The active work is Phase 5: fleet operations, dashboard maintenance workflows, backups, tests/CI, and staged security hardening.
+Status: Phases 0 through 4 are complete for the current local-first system. Signed OTA hardening and signed build-number anti-rollback are live. Firmware `0.1.8-arduinojson` build `2026080703` remains deployed to 21 active mapped devices; USB-connected Sunroom Test is on bench-only `0.1.9-nvs-tls` build `2026080707` after passing the per-device TLS gate and returning to the unchanged production MQTT fallback. `AtticChimney` is temporarily retired pending safe physical replacement; its separate `UNMAPPED` record remains on `0.1.6-recovery`. The active work is Phase 5: fleet operations, dashboard maintenance workflows, backups, tests/CI, and staged security hardening.
 
 ## Accomplished
 
@@ -44,6 +44,9 @@ Status: Phases 0 through 4 are complete for the current local-first system. Sign
 - Restarted the boot-enabled dashboard service on 2026-06-27 with the new floorplan config and asset directory arguments.
 - Added signed OTA verification and tested it on `Bench Device` only. The device reports `0.1.3-signed-ota`; a signed OTA was accepted, and an intentionally bad signature was rejected.
 - Added optional MQTT TLS and ACL scripts for staged migration. They are not yet enabled across the installed fleet.
+- Added NVS-provisioned, per-device TLS profiles and passed the isolated USB
+  bench gate on Sunroom Test. Production MQTT TLS and per-device credentials
+  remain intentionally unactivated pending a separately approved migration.
 - Started the first small indoor signed-OTA soak batch on 2026-06-27: `RoomE`, `RoomF`, and `RoomA` updated to `0.1.3-signed-ota` and came back online/non-stale immediately after OTA.
 - Installed and authenticated GitHub CLI locally for terminal-based PR/check workflows.
 - Sanitized the tracked public branch tip to remove local private IPs, MAC-shaped addresses, real ESP32 IDs, Pi hostname references, and real room/location labels. Older public git history still contains local identifiers but no passwords or private key material were found by the scan.
@@ -108,8 +111,8 @@ Status: Phases 0 through 4 are complete for the current local-first system. Sign
   The timer is installed and enabled; its first live oneshot passed on
   2026-08-07.
 - Added CI safeguards for Ruff lint/format, pytest coverage reporting, gitleaks,
-  and hash-only current-tree identifier scanning. The expanded 114-test Python
-  suite measures 91.9% with branch coverage enabled, and CI now enforces the
+  and hash-only current-tree identifier scanning. The expanded 127-test Python
+  suite measures 86.8% with branch coverage enabled, and CI now enforces the
   required 80% floor.
 - Extracted firmware sensor filtering and publish policy into an
   Arduino-independent C++ library. Six PlatformIO native tests now cover median
@@ -118,7 +121,8 @@ Status: Phases 0 through 4 are complete for the current local-first system. Sign
 - Replaced OTA command substring scanning with ArduinoJson `7.4.3`. Nine native
   TEST-012 cases cover typed and bounded manifest fields, malformed/root/key-
   confusion input, hex/SHA checks, and preflight/download validation order. All
-  15 native firmware cases pass. The exact `0.1.8-arduinojson` build
+  15 native firmware cases pass; eight MQTT-profile cases bring the current
+  native total to 23. The exact `0.1.8-arduinojson` build
   `2026080702` was USB-flashed and validated on Sunroom Test; it returned online
   with fresh telemetry and rejected three safe parser/preflight probes before
   download. A subsequent uninterrupted 60-minute observation passed the
@@ -168,8 +172,10 @@ Status: Phases 0 through 4 are complete for the current local-first system. Sign
 
 ## Live Dashboard State
 
-The latest dashboard API check on 2026-08-07 shows all 22 active mapped devices
-online, non-stale, `OK`, and on `0.1.8-arduinojson`. The additional `UNMAPPED`
+The latest dashboard API check on 2026-08-07/08 shows all 22 active mapped
+devices online, non-stale, and `OK`: 21 remain on `0.1.8-arduinojson`, while
+USB-connected Sunroom Test is on bench-only `0.1.9-nvs-tls` using the cleared
+NVS profile's compiled production fallback. The additional `UNMAPPED`
 record associated with the temporarily retired `AtticChimney` remains on
 `0.1.6-recovery`; it is online but stale and was excluded from the rollout. The
 dashboard code includes the dedicated Attic graph group,
@@ -193,8 +199,9 @@ production build was reflashed and reverified on `Sunroom Test`.
   with the temporarily retired `AtticChimney` is online but stale.
 - Recovery firmware count: 0 active devices; only the excluded retired
   `UNMAPPED` record remains on `0.1.6-recovery` build `2026072401`.
-- ArduinoJson firmware count: all 22 active mapped devices on
-  `0.1.8-arduinojson` build `2026080703`.
+- Firmware count: 21 active mapped devices on `0.1.8-arduinojson` build
+  `2026080703`; Sunroom Test alone is on bench candidate `0.1.9-nvs-tls` build
+  `2026080707`.
 - Deployed signed-OTA release: build `2026080703` passed the committed-artifact
   signed OTA and release soak gates. Its staged, served, clean-rebuilt, and
   merged-main binaries exact-match the recorded SHA-256.
@@ -216,8 +223,9 @@ production build was reflashed and reverified on `Sunroom Test`.
 
 ## Next Actions
 
-1. Design and bench NVS-provisioned per-device MQTT credentials and TLS, then
-   migrate incrementally before retiring the shared credential.
+1. Plan a separately approved, incremental production MQTT TLS/per-device
+   credential migration; do not retire the shared fallback until every active
+   device has passed its migration check.
 2. Convert remaining firmware config parsing and JSON construction to
    ArduinoJson to complete SEC-015.
 3. Extract dashboard HTML/CSS/JavaScript into static assets after the security

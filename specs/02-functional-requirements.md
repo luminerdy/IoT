@@ -199,8 +199,13 @@ client-side validation of ranges.
 
 **FR-042 — Provisioning CLI** `MUST`
 A documented, scripted flow creates per-device broker credentials and ACL
-entries (SEC-002/SEC-003) and emits the values needed for the device's
-`secrets.h`.
+entries (SEC-002/SEC-003), then writes the device-specific username, password,
+broker endpoint, TLS requirement, and pinned CA certificate into ESP32 NVS over
+the physical USB serial connection. Password input MUST be hidden or read from
+a mode-0600 file and MUST NOT be accepted in command-line arguments or echoed.
+The write is a single validated NVS profile so an interrupted replacement does
+not expose a partially selected profile. A USB clear operation restores the
+compiled migration fallback without erasing OTA anti-rollback state.
 
 **FR-043 — Simulator** `MAY`
 A simulator publishes realistic multi-device telemetry/status for local

@@ -34,6 +34,12 @@ migrated.
 Every device authenticates with its own username (= device ID) and unique
 password. The shared `iot` credential is retired. Compromise of one device
 is revocable by deleting one broker user.
+*Migration implementation (2026-08-07):* firmware accepts only a typed,
+bounded, TLS-required profile over physical USB serial, requires the username
+to equal its hardware-derived device ID, and stores the complete profile as one
+NVS string. A valid NVS profile overrides the compiled shared fallback. The
+fallback remains only to keep unprovisioned devices reachable during staged
+migration and must be retired after every active device is provisioned.
 
 **SEC-003 — Topic ACLs on every listener** `MUST` `[CHANGE]`
 ACLs restrict each device user to its own topic subtree: write telemetry/
@@ -84,6 +90,9 @@ retire old key.
 never contains real credentials. Accepted residual risk: ESP32 flash is
 readable with physical access; per-device credentials (SEC-002) bound the
 blast radius to one revocable identity plus the WiFi PSK (documented).
+USB provisioning never echoes a password or accepts one through argv. NVS is
+not encrypted on the current hardware, so the physical-flash residual risk
+still applies.
 
 ## 6.4 Dashboard / HTTP
 

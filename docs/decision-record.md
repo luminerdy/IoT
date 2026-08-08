@@ -267,3 +267,31 @@ comparisons preserved all historical rows and values. A concurrent-start race
 observed during activation was fixed in `cacfceb` by re-checking schema version
 under the migration write lock. The collector was restarted with the fix and
 passed schema, integrity, log, and telemetry verification.
+
+## DR-024: USB-Provisioned NVS MQTT TLS Profiles
+
+**Date:** 2026-08-07
+
+**Decision:** Provision each ESP32's MQTT host, port, hardware-bound username,
+unique password, TLS-required flag, and pinned CA certificate as one validated
+JSON profile in a dedicated NVS namespace over physical USB serial. A valid NVS
+profile takes precedence over compiled settings. Keep the compiled shared-user
+profile only as a reversible migration fallback until the fleet has moved.
+
+**Reasoning:** Baking a fleet-wide password into every firmware image prevents
+individual revocation. A serial-only profile avoids sending new credentials
+over the current plaintext shared MQTT channel, preserves the existing OTA NVS
+namespace, and lets the bench device prove certificate validation and ACL
+identity before the production listener changes. One NVS string avoids a
+partially selected multi-key profile; strict bounds fit the ESP-IDF 4000-byte
+string limit. The serial protocol and host tool never echo secrets or accept a
+password through argv.
+
+**Status:** Implemented and passed TEST-033 on USB-connected Sunroom Test with
+candidate `0.1.9-nvs-tls` build `2026080707`. An isolated TLS listener using
+the production ACL accepted fresh telemetry only under the hardware-bound
+identity, rejected a mismatched identity and cross-device publish, and the
+device returned to its compiled production fallback after the NVS profile was
+cleared. A matching DNS SAN was required for certificate validation on the
+Arduino/mbedTLS stack. No live broker, ACL, credential, service, or fleet
+setting changed.

@@ -198,6 +198,21 @@ matrix also proves device users are confined to their own subtree, the
 collector is read-only on telemetry/status, and only admin can write
 config/command.
 
+**AC-034** (FR-042, SEC-001, SEC-002, API-034)
+Given the USB bench device and an isolated TLS broker with a per-device user,
+when a valid profile is provisioned, then the device restarts, reports that NVS
+is selected, completes certificate-validated MQTT authentication, and publishes
+fresh telemetry only inside its own ACL subtree. An invalid profile leaves the
+previous profile unchanged. Clearing the profile restarts the device on its
+compiled migration fallback while preserving the OTA anti-rollback high-water
+mark.
+
+*Validated on `0.1.9-nvs-tls` build `2026080707` on 2026-08-07/08:* Sunroom
+Test published fresh status and telemetry through a pinned-CA TLS listener
+using its unique identity and the production ACL. A mismatched identity was
+rejected, cross-device publish was denied, and clearing the profile restored
+fresh `OK` telemetry through the unchanged production fallback.
+
 ## Operations
 
 **AC-040** (FR-044, DATA-007, TEST-030)

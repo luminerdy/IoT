@@ -8,14 +8,13 @@ fi
 
 username="$1"
 
-read -rsp "MQTT password for ${username}: " password
-echo
-
 if [[ ! -f /etc/mosquitto/passwd ]]; then
   sudo install -o root -g mosquitto -m 0640 /dev/null /etc/mosquitto/passwd
 fi
 
-sudo mosquitto_passwd -b /etc/mosquitto/passwd "${username}" "${password}"
+# Let mosquitto_passwd read the password directly from the terminal. Do not use
+# batch mode: it places the plaintext password in the process argument list.
+sudo mosquitto_passwd /etc/mosquitto/passwd "${username}"
 sudo chown root:mosquitto /etc/mosquitto/passwd
 sudo chmod 0640 /etc/mosquitto/passwd
 sudo systemctl reload mosquitto

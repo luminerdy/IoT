@@ -193,3 +193,23 @@ Flags: `--host --port --db --locations --floorplan --stale-seconds
 
 **API-033 — `iot-home-config`** `SHOULD` (R3)
 Per FR-041, including `--clear`.
+
+**API-034 — USB MQTT provisioning** `MUST`
+At 115200 baud, firmware accepts newline-terminated commands from the physical
+USB serial port:
+
+- `IOT_MQTT_STATUS` returns only profile source (`compiled` or `nvs`), TLS
+  state, stored-profile and parsed/active CA byte counts, and non-secret FNV-1a
+  CA diagnostic fingerprints; it returns no endpoint, username, password, or
+  certificate content.
+- `IOT_MQTT_PROVISION <json>` accepts exactly seven top-level fields:
+  `schemaVersion=1`, `mqttHost`, `mqttPort`, `mqttUsername`, `mqttPassword`,
+  `mqttUseTls=true`, and one PEM `mqttCaCert`. The username MUST equal the
+  hardware-derived device ID. String, port, password, certificate, and total
+  NVS-profile lengths are bounded. Unknown, nested, missing, incorrectly typed,
+  plaintext, or oversized profiles are rejected without changing NVS.
+- `IOT_MQTT_CLEAR` removes only the MQTT profile and restarts into the compiled
+  migration fallback. It MUST NOT erase the OTA build high-water mark.
+
+Responses are fixed, secret-free status lines. The host CLI prompts with hidden
+input or reads a mode-0600 password file; no password flag exists.

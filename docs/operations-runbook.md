@@ -193,6 +193,43 @@ Clear retained config only when intentionally returning an online device to firm
 MQTT_USERNAME="$MQTT_ADMIN_USERNAME" MQTT_PASSWORD="$MQTT_ADMIN_PASSWORD" PYTHONPATH=app python3 -m iot_home.publish_config esp32-device-id --clear
 ```
 
+## USB Per-Device MQTT TLS Provisioning
+
+This is a physical bench/migration operation. It does not authorize changing
+the live Mosquitto listener. First confirm the target on `/dev/ttyUSB0`, create
+its unique broker user without using batch-mode passwords, and keep its CA and
+password outside the repository:
+
+The `--host` value must be a DNS/mDNS hostname present in the broker
+certificate's DNS subject-alternative-name. The pinned-CA bench gate proved
+that path; this ESP32 Arduino/mbedTLS version did not accept an IP-literal host
+with an IP subject-alternative-name.
+
+```bash
+scripts/add_mqtt_device_user.sh esp32-device-id
+PYTHONPATH=app .venv/bin/python -m iot_home.provision_mqtt \
+  --serial-port /dev/ttyUSB0 \
+  --device-id esp32-device-id \
+  --host iot-pi.local \
+  --mqtt-port 8883 \
+  --ca-cert /etc/mosquitto/certs/iot-home/ca.crt
+```
+
+The provisioning tool prompts for the same password without echo. It may
+instead read a mode-0600 `--password-file`; there is deliberately no password
+argument. Verify the device reports fresh telemetry through TLS under only its
+own ACL subtree. For a controlled bench rollback, remove only the MQTT NVS
+profile and verify the compiled migration fallback reconnects:
+
+```bash
+PYTHONPATH=app .venv/bin/python -m iot_home.provision_mqtt \
+  --serial-port /dev/ttyUSB0 --clear
+```
+
+Clearing does not erase the OTA build high-water mark. Never retire the shared
+credential or plaintext fleet listener until every active device has been
+individually provisioned and observed.
+
 ## OTA Rollout
 
 Standing rule: no firmware build goes to fleet devices until the exact binary has passed validation on the USB-connected bench ESP32.

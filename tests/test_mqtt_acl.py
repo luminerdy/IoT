@@ -178,6 +178,13 @@ def test_tls_installer_uses_tested_acl_without_replacing_interim_acl():
     assert "per_listener_settings true" in script
 
 
+def test_device_user_script_does_not_put_password_in_process_arguments():
+    script = (PROJECT_ROOT / "scripts/add_mqtt_device_user.sh").read_text(encoding="utf-8")
+
+    assert "mosquitto_passwd -b" not in script
+    assert 'mosquitto_passwd /etc/mosquitto/passwd "${username}"' in script
+
+
 def test_broker_acl_matrix_enforces_device_collector_and_admin_roles(isolated_broker):
     clients = {
         username: MqttTestClient(username, isolated_broker)

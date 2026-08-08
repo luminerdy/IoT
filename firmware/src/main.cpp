@@ -9,10 +9,12 @@
 #include <mbedtls/ecdsa.h>
 #include <mbedtls/ecp.h>
 #include <mbedtls/sha256.h>
+#include <mbedtls/x509_crt.h>
 #include <time.h>
 
 #include "ota_public_key.h"
 #include "ota_manifest.h"
+#include "mqtt_provisioning.h"
 #include "sensor_core.h"
 #include "secrets.h"
 
@@ -44,18 +46,33 @@ constexpr size_t PAYLOAD_LEN = 768;
 constexpr const char *ROLLBACK_PREF_NAMESPACE = "iot-ota";
 constexpr const char *ROLLBACK_PREF_KEY = "build";
 constexpr const char *RECOVERY_PREF_KEY = "recovery";
+constexpr const char *MQTT_PREF_NAMESPACE = "iot-mqtt";
+constexpr const char *MQTT_PREF_KEY = "config";
+constexpr const char *MQTT_PROVISION_PREFIX = "IOT_MQTT_PROVISION ";
+constexpr const char *MQTT_PROVISION_CLEAR = "IOT_MQTT_CLEAR";
+constexpr const char *MQTT_PROVISION_STATUS = "IOT_MQTT_STATUS";
+constexpr size_t MQTT_PROVISION_SERIAL_BUFFER =
+  mqtt_provisioning::MAX_PROFILE_JSON_LENGTH + 512;
 
 DHT dht(DHT_PIN, DHT_TYPE);
 #ifndef MQTT_USE_TLS
 #define MQTT_USE_TLS 0
 #endif
-
-#if MQTT_USE_TLS
-WiFiClientSecure wifiClient;
-#else
-WiFiClient wifiClient;
+#ifndef MQTT_CA_CERT
+#define MQTT_CA_CERT ""
 #endif
-PubSubClient mqtt(wifiClient);
+
+WiFiClient plainWifiClient;
+WiFiClientSecure secureWifiClient;
+PubSubClient mqtt;
+mqtt_provisioning::Settings mqttSettings{};
+mqtt_provisioning::Settings mqttProvisioningCandidate{};
+bool mqttProfileProvisioned = false;
+size_t mqttStoredProfileBytes = 0;
+size_t mqttParsedCaBytes = 0;
+uint32_t mqttParsedCaFingerprint = 0;
+String serialProvisioningLine;
+bool serialProvisioningOverflow = false;
 
 char deviceId[32];
 char telemetryTopic[TOPIC_LEN];
@@ -64,6 +81,29 @@ char commandTopic[TOPIC_LEN];
 char configTopic[TOPIC_LEN];
 char responseTopic[TOPIC_LEN];
 char otaStatusTopic[TOPIC_LEN];
+
+uint32_t mqttCaFingerprint(const char *certificate)
+{
+  uint32_t hash = 2166136261UL;
+  for (const char *cursor = certificate; *cursor != '\0'; cursor++) {
+    hash ^= static_cast<uint8_t>(*cursor);
+    hash *= 16777619UL;
+  }
+  return hash;
+}
+
+bool mqttCaCertificateParses(const char *certificate)
+{
+  mbedtls_x509_crt parsed;
+  mbedtls_x509_crt_init(&parsed);
+  int result = mbedtls_x509_crt_parse(
+    &parsed,
+    reinterpret_cast<const unsigned char *>(certificate),
+    strlen(certificate) + 1
+  );
+  mbedtls_x509_crt_free(&parsed);
+  return result == 0;
+}
 
 unsigned long lastReportMs = 0;
 unsigned long lastWifiAttemptMs = 0;
@@ -241,6 +281,183 @@ void buildDeviceIdentity()
   snprintf(otaStatusTopic, sizeof(otaStatusTopic), "home/sensors/%s/ota/status", deviceId);
 }
 
+void loadCompiledMqttSettings()
+{
+  snprintf(mqttSettings.host, sizeof(mqttSettings.host), "%s", MQTT_HOST);
+  mqttSettings.port = MQTT_PORT;
+  snprintf(mqttSettings.username, sizeof(mqttSettings.username), "%s", MQTT_USER);
+  snprintf(mqttSettings.password, sizeof(mqttSettings.password), "%s", MQTT_PASSWORD);
+  mqttSettings.use_tls = MQTT_USE_TLS != 0;
+  snprintf(mqttSettings.ca_cert, sizeof(mqttSettings.ca_cert), "%s", MQTT_CA_CERT);
+  mqttProfileProvisioned = false;
+  mqttStoredProfileBytes = 0;
+  mqttParsedCaBytes = strlen(mqttSettings.ca_cert);
+  mqttParsedCaFingerprint = mqttCaFingerprint(mqttSettings.ca_cert);
+}
+
+void loadMqttSettings()
+{
+  loadCompiledMqttSettings();
+
+  Preferences prefs;
+  if (!prefs.begin(MQTT_PREF_NAMESPACE, true)) {
+    Serial.println("MQTT provisioning unavailable; using compiled fallback");
+    return;
+  }
+  String stored = prefs.getString(MQTT_PREF_KEY, "");
+  prefs.end();
+  if (stored.length() == 0) {
+    Serial.println("MQTT profile source: compiled fallback");
+    return;
+  }
+  mqttStoredProfileBytes = stored.length();
+
+  char error[96];
+  if (!mqtt_provisioning::parse_profile(
+        stored.c_str(),
+        stored.length(),
+        deviceId,
+        &mqttProvisioningCandidate,
+        error,
+        sizeof(error)
+      )) {
+    Serial.printf("Stored MQTT provisioning rejected: %s; using compiled fallback\n", error);
+    return;
+  }
+  if (!mqttCaCertificateParses(mqttProvisioningCandidate.ca_cert)) {
+    Serial.println("Stored MQTT CA certificate rejected; using compiled fallback");
+    return;
+  }
+  mqttParsedCaBytes = strlen(mqttProvisioningCandidate.ca_cert);
+  mqttParsedCaFingerprint = mqttCaFingerprint(mqttProvisioningCandidate.ca_cert);
+  mqttSettings = mqttProvisioningCandidate;
+  mqttProfileProvisioned = true;
+  Serial.println("MQTT profile source: NVS per-device TLS");
+}
+
+void configureMqttTransport()
+{
+  if (mqttSettings.use_tls) {
+    secureWifiClient.setCACert(mqttSettings.ca_cert);
+    mqtt.setClient(secureWifiClient);
+  } else {
+    mqtt.setClient(plainWifiClient);
+  }
+  mqtt.setServer(mqttSettings.host, mqttSettings.port);
+}
+
+bool storeMqttProfile(const String &profile)
+{
+  Preferences prefs;
+  if (!prefs.begin(MQTT_PREF_NAMESPACE, false)) {
+    return false;
+  }
+  size_t written = prefs.putString(MQTT_PREF_KEY, profile);
+  prefs.end();
+  return written == profile.length();
+}
+
+bool clearMqttProfile()
+{
+  Preferences prefs;
+  if (!prefs.begin(MQTT_PREF_NAMESPACE, false)) {
+    return false;
+  }
+  bool removed = prefs.remove(MQTT_PREF_KEY);
+  prefs.end();
+  return removed || !mqttProfileProvisioned;
+}
+
+void restartAfterProvisioning(const char *message)
+{
+  Serial.println(message);
+  Serial.flush();
+  delay(250);
+  ESP.restart();
+}
+
+void processSerialProvisioningLine(const String &line)
+{
+  if (line == MQTT_PROVISION_STATUS) {
+    Serial.printf(
+      "MQTT provisioning status: source=%s tls=%d profileBytes=%u parsedCaBytes=%u "
+      "parsedCaFingerprint=%08lx activeCaBytes=%u activeCaFingerprint=%08lx\n",
+      mqttProfileProvisioned ? "nvs" : "compiled",
+      mqttSettings.use_tls ? 1 : 0,
+      static_cast<unsigned int>(mqttStoredProfileBytes),
+      static_cast<unsigned int>(mqttParsedCaBytes),
+      static_cast<unsigned long>(mqttParsedCaFingerprint),
+      static_cast<unsigned int>(strlen(mqttSettings.ca_cert)),
+      static_cast<unsigned long>(mqttCaFingerprint(mqttSettings.ca_cert))
+    );
+    return;
+  }
+  if (line == MQTT_PROVISION_CLEAR) {
+    if (!clearMqttProfile()) {
+      Serial.println("MQTT provisioning clear failed");
+      return;
+    }
+    restartAfterProvisioning("MQTT provisioning cleared; restarting");
+    return;
+  }
+  if (!line.startsWith(MQTT_PROVISION_PREFIX)) {
+    return;
+  }
+
+  String profile = line.substring(strlen(MQTT_PROVISION_PREFIX));
+  char error[96];
+  if (!mqtt_provisioning::parse_profile(
+        profile.c_str(),
+        profile.length(),
+        deviceId,
+        &mqttProvisioningCandidate,
+        error,
+        sizeof(error)
+      )) {
+    Serial.printf("MQTT provisioning rejected: %s\n", error);
+    return;
+  }
+  if (!mqttCaCertificateParses(mqttProvisioningCandidate.ca_cert)) {
+    Serial.println("MQTT provisioning rejected: MQTT CA certificate parse failed");
+    return;
+  }
+  if (!storeMqttProfile(profile)) {
+    Serial.println("MQTT provisioning rejected: NVS write failed");
+    return;
+  }
+  restartAfterProvisioning("MQTT provisioning applied; restarting");
+}
+
+void maintainSerialProvisioning()
+{
+  while (Serial.available() > 0) {
+    char value = static_cast<char>(Serial.read());
+    if (value == '\r') {
+      continue;
+    }
+    if (value == '\n') {
+      if (serialProvisioningOverflow) {
+        Serial.println("MQTT provisioning rejected: profile too large");
+      } else if (serialProvisioningLine.length() > 0) {
+        processSerialProvisioningLine(serialProvisioningLine);
+      }
+      serialProvisioningLine = "";
+      serialProvisioningOverflow = false;
+      continue;
+    }
+    if (serialProvisioningOverflow) {
+      continue;
+    }
+    if (serialProvisioningLine.length() >=
+        mqtt_provisioning::MAX_PROFILE_JSON_LENGTH + strlen(MQTT_PROVISION_PREFIX)) {
+      serialProvisioningLine = "";
+      serialProvisioningOverflow = true;
+      continue;
+    }
+    serialProvisioningLine += value;
+  }
+}
+
 void startWifiConnection()
 {
   WiFi.mode(WIFI_STA);
@@ -267,10 +484,6 @@ void maintainWifi()
   }
   wifiConnectionInitialized = true;
   Serial.printf("WiFi connected, IP=%s RSSI=%d\n", WiFi.localIP().toString().c_str(), WiFi.RSSI());
-
-#if MQTT_USE_TLS
-  wifiClient.setCACert(MQTT_CA_CERT);
-#endif
 
   configTime(0, 0, "pool.ntp.org", "time.nist.gov");
   waitForTime(15000);
@@ -768,11 +981,17 @@ bool connectMqtt()
     deviceId
   );
 
-  Serial.printf("Connecting to MQTT %s:%d as %s\n", MQTT_HOST, MQTT_PORT, deviceId);
+  Serial.printf(
+    "Connecting to MQTT %s:%u as %s tls=%d\n",
+    mqttSettings.host,
+    static_cast<unsigned int>(mqttSettings.port),
+    deviceId,
+    mqttSettings.use_tls ? 1 : 0
+  );
   bool connected = mqtt.connect(
     deviceId,
-    MQTT_USER,
-    MQTT_PASSWORD,
+    mqttSettings.username,
+    mqttSettings.password,
     statusTopic,
     1,
     true,
@@ -862,6 +1081,7 @@ void publishTelemetry(float temperatureF, float humidity)
 
 void setup()
 {
+  Serial.setRxBufferSize(MQTT_PROVISION_SERIAL_BUFFER);
   Serial.begin(115200);
   delay(1000);
   dht.begin();
@@ -870,6 +1090,12 @@ void setup()
   rememberCurrentBuildNumber();
   loadBootRecoveryReason();
   buildDeviceIdentity();
+  loadMqttSettings();
+  configureMqttTransport();
+  serialProvisioningLine.reserve(
+    mqtt_provisioning::MAX_PROFILE_JSON_LENGTH + strlen(MQTT_PROVISION_PREFIX)
+  );
+  Serial.println("MQTT provisioning ready on USB serial");
   safetyRebootAtMs = deviceSafetyRebootDelayMs();
   Serial.printf(
     "Safety reboot scheduled after %lu seconds\n",
@@ -877,7 +1103,6 @@ void setup()
   );
   startWifiConnection();
 
-  mqtt.setServer(MQTT_HOST, MQTT_PORT);
   mqtt.setCallback(onMqttMessage);
   mqtt.setBufferSize(PAYLOAD_LEN);
   mqtt.setKeepAlive(60);
@@ -885,6 +1110,7 @@ void setup()
 
 void loop()
 {
+  maintainSerialProvisioning();
   maintainWifi();
 
   if (!connectMqtt()) {

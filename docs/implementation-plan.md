@@ -194,8 +194,11 @@ Priority 4: Security Hardening Without Fleet Disruption
 - Add MQTT ACL protection to the current port `1883` listener so shared credentials cannot publish fleet OTA/config commands. Done and live-activated on 2026-07-04.
 - Add a first dashboard access-control layer before treating the LAN as a trusted boundary. Basic auth was implemented and live-tested on 2026-07-04, then intentionally removed the same day so trusted home-network clients can view the dashboard without credentials.
 - Add signed OTA anti-rollback with a monotonic build number before the next feature firmware rollout. Done and rolled out to the 21 mapped devices on 2026-07-04.
-- Stage MQTT TLS and per-device ACL migration on the bench device first.
-- Add per-device credentials only after bench validation.
+- Stage MQTT TLS and per-device ACL migration on the bench device first. Done
+  on 2026-08-07/08 with `0.1.9-nvs-tls` build `2026080707` and TEST-033.
+- Add per-device credentials only after bench validation. Bench tooling is
+  complete; production provisioning remains a separately approved incremental
+  migration.
 - Decide whether the public GitHub history needs a full rewrite or whether the current sanitized tip is sufficient.
 - Keep existing public history without a rewrite and block new current-tree
   identifier residue with a hash-only baseline. Done in DR-021 on 2026-08-07.

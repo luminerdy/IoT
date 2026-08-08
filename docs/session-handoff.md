@@ -32,8 +32,10 @@ Last updated: 2026-08-07
 
 The local-first IoT stack is running on PiServer. Mosquitto, the collector, and
 the dashboard are active and enabled. All 22 active mapped devices are online,
-non-stale, `OK`, and on `0.1.8-arduinojson` build `2026080703`; this includes
-the USB-connected `Sunroom Test` bench device on `/dev/ttyUSB0`. The separate
+non-stale, and `OK`; 21 remain on `0.1.8-arduinojson` build `2026080703`, while
+the USB-connected `Sunroom Test` bench device on `/dev/ttyUSB0` is on
+`0.1.9-nvs-tls` build `2026080707` using its cleared NVS profile's unchanged
+production fallback. The separate
 retired `UNMAPPED` AtticChimney record remains on `0.1.6-recovery`, is stale,
 and was intentionally excluded from the rollout.
 
@@ -98,8 +100,9 @@ Bench validation completed:
 - OTA command parsing uses pinned ArduinoJson `7.4.3`; typed, bounded manifest
   parsing and pure hex/SHA/preflight/download validation live in
   `firmware/lib/ota_manifest/`.
-- Nine TEST-012 cases plus the six sensor-core cases pass natively. The ESP32
-  build and static analysis pass, and 114 Python tests pass at 91.93% coverage.
+- Nine TEST-012 cases plus the six sensor-core and eight MQTT-profile cases pass
+  natively. The ESP32 build and static analysis pass, and 127 Python tests pass
+  at 86.76% branch-aware coverage.
 - The exact `0.1.8-arduinojson` build `2026080702` was USB-flashed to Sunroom
   Test. The 839,344-byte binary SHA-256 is
   `a58577ffba350b39b209b976b75413b7901b15875c2e5c9e5087cd4b7e0ec855`.
@@ -139,13 +142,23 @@ Bench validation completed:
 
 ## Pick Up Next
 
-1. Continue with NVS-provisioned per-device credentials/TLS, then complete the
-   remaining SEC-015 config parsing and device-side JSON construction work.
-   Dashboard static-asset extraction follows those security milestones.
+1. Plan the separately approved incremental production MQTT TLS/per-device
+   credential migration, or continue the remaining SEC-015 config parsing and
+   device-side JSON construction work. Do not alter the live broker or fleet
+   credentials without explicit authorization.
 2. Continue watchdog/fleet/attic monitoring and decide whether to remap or
    re-retire the returned `UNMAPPED` device.
 
 ## Working Tree
+
+Branch `agent/nvs-mqtt-tls` contains the NVS MQTT TLS implementation in commits
+`a22fe6d`, `cb72338`, `1ab1e86`, and `2ea0e6b`, plus the final paced USB-write
+fix and bench evidence. Exact firmware
+`0.1.9-nvs-tls` build `2026080707` is 970,976 bytes with SHA-256
+`3420e492e3d450886326885c65d1b3b6706f97ccab21724f5b58f75f1c61d501`.
+TEST-033 passed against an isolated TLS listener and production ACL, then the
+NVS profile was cleared and production fallback telemetry recovered. No live
+broker, ACL, credential, service, or fleet setting changed.
 
 The capability-key and authenticated-write batch was published in commit
 `6c4f8fd`. The database-maintenance, migration/dedupe, CI safeguards, coverage
@@ -168,12 +181,12 @@ Historical rows must not be pruned; any future archival still requires explicit
 approval and restore verification. Continue with the ordered `Pick Up Next`
 list above.
 
-The Python suite now has 114 passing tests at 91.9% branch-aware coverage, with
-an enforced 80% CI floor. Fifteen PlatformIO native tests cover sensor filtering,
-publish policy, and ArduinoJson OTA manifest validation. Firmware
-`0.1.8-arduinojson` build `2026080703` passed the committed-artifact signed OTA
-and release soak gates on Sunroom Test and is now deployed to all 22 active
-mapped devices. The retired `UNMAPPED` record was not changed.
+The Python suite and its enforced 80% CI floor remain green. Twenty-three
+PlatformIO native tests cover sensor filtering, publish policy, ArduinoJson OTA
+manifest validation, and MQTT profile validation. Firmware
+`0.1.8-arduinojson` build `2026080703` remains deployed to 21 active mapped
+devices; only Sunroom Test is on the newer bench candidate. The retired
+`UNMAPPED` record was not changed.
 
 DR-022 resolves the collector/ACL conflict: desired-version mismatches are
 recorded, but the collector has no OTA publish option or command authority.
@@ -198,8 +211,9 @@ deterministic concurrent-start test passes. The collector was restarted at
 warning, traceback, or migration error. Post-restart schema, integrity, row
 preservation, and fresh telemetry checks all passed.
 
-The final 2026-08-07 read-only API check showed all 22 active mapped devices
-online, non-stale, `OK`, and on deployed `0.1.8-arduinojson`. The separate
+The final 2026-08-07/08 read-only API check showed all 22 active mapped devices
+online, non-stale, and `OK`; 21 are on deployed `0.1.8-arduinojson` and Sunroom
+Test is on bench-only `0.1.9-nvs-tls` using the production fallback. The separate
 `UNMAPPED` record associated with retired `AtticChimney` is online but stale on
 `0.1.6-recovery`. All three core services remain active and enabled.
 

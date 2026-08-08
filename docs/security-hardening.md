@@ -90,12 +90,33 @@ before migrating a sensor:
 scripts/add_mqtt_device_user.sh esp32-device-id
 ```
 
-To test TLS on a bench ESP32, copy the generated CA certificate into `firmware/include/secrets.h`, set:
+Do not place a per-device password in `secrets.h`. Firmware
+`0.1.9-nvs-tls` and newer accepts a bounded TLS-only profile over the physical
+USB serial port and stores the complete profile atomically in NVS. The username
+must equal the hardware-derived device ID. The host tool never accepts the
+password through argv:
 
-```c
-#define MQTT_PORT 8883
-#define MQTT_USER "esp32-device-id"
-#define MQTT_USE_TLS 1
+```bash
+PYTHONPATH=app .venv/bin/python -m iot_home.provision_mqtt \
+  --serial-port /dev/ttyUSB0 \
+  --device-id esp32-device-id \
+  --host iot-pi.local \
+  --mqtt-port 8883 \
+  --ca-cert /etc/mosquitto/certs/iot-home/ca.crt
 ```
 
-Then USB flash `Bench Device` first and verify it reports telemetry before changing any other device.
+It prompts without echo. For automation, `--password-file` accepts only a
+mode-0600 file. A valid NVS profile overrides the compiled migration fallback;
+clear only during a controlled rollback:
+
+```bash
+PYTHONPATH=app .venv/bin/python -m iot_home.provision_mqtt \
+  --serial-port /dev/ttyUSB0 --clear
+```
+
+Bench the exact firmware against an isolated TLS listener using the tracked
+per-device ACL before running the root-owned TLS installer or changing any live
+broker listener. After the isolated test, clear the NVS profile and verify the
+bench device returns to production. Migrate live devices one at a time; retire
+the shared credential and LAN listener only after every active device is on its
+unique identity.

@@ -61,6 +61,14 @@ integer fields, hex/SHA validation, and the required preflight and downloaded
 image gate order. The hardware download and flash adapters are excluded from
 the pure validation module.
 
+**TEST-013 — MQTT provisioning profile validation** `MUST`
+Native firmware tests cover valid typed TLS profiles plus malformed/root/key-
+confusion input, unknown/missing/nested fields, field types, hostname/port/
+password/certificate bounds, username-to-device binding, TLS-required policy,
+and the NVS string-size ceiling. Host tests cover hidden/file-based password
+handling and prove the USB tool sends secret-bearing JSON only to the serial
+device, never to stdout or argv.
+
 ## 11.3 Integration tests (CI, real broker)
 
 **TEST-020 — End-to-end ingest** `MUST`
@@ -107,6 +115,18 @@ latest restic/S3 snapshot includes the DB and critical config files
 **TEST-032 — Fresh-install drill** `SHOULD`
 Once per major release: AC-042 on a clean SD image (or container
 approximation of the install script).
+
+**TEST-033 — Per-device TLS bench migration** `MUST`
+On the USB-recoverable bench ESP32, flash the exact candidate, provision a
+unique device identity against a temporary certificate-authenticated Mosquitto
+listener using the production ACL, and observe a TLS connection plus fresh
+telemetry. Confirm another device identity cannot use the credential. Clear the
+NVS profile and verify the bench device returns to the unchanged production
+listener before any live broker or fleet migration.
+
+*Last passed:* 2026-08-07/08 on Sunroom Test with `0.1.9-nvs-tls` build
+`2026080707`, including pinned-CA TLS telemetry, identity rejection,
+cross-device ACL denial, invalid-profile preservation, and fallback recovery.
 
 ## 11.5 Gates and tooling
 

@@ -2,6 +2,31 @@
 
 ## 2026-08-07
 
+- Added USB-provisioned, hardware-bound MQTT profiles in a dedicated NVS
+  namespace for `0.1.9-nvs-tls` build `2026080707`. Profiles require TLS, a
+  unique device username, a bounded password, and one parse-valid pinned CA;
+  the compiled shared profile remains a reversible migration fallback.
+- Added a secret-safe host provisioning CLI, status/clear serial commands,
+  ArduinoJson profile parsing, device-side mbedTLS certificate parsing, a
+  profile-sized 4.4 KiB serial RX buffer, paced 64-byte USB writes for full
+  certificate profiles,
+  and secret-free CA length/fingerprint diagnostics. Native and Python tests
+  cover type, bound, identity, TLS, PEM, NVS-size, and transport behavior.
+- USB-flashed the exact 970,976-byte candidate to Sunroom Test; its SHA-256 is
+  `3420e492e3d450886326885c65d1b3b6706f97ccab21724f5b58f75f1c61d501`.
+  An isolated port-8884 Mosquitto listener with ephemeral RSA credentials,
+  pinned CA validation, a matching broker-hostname DNS SAN, and the tracked
+  production ACL accepted fresh status and `OK` telemetry from the device's
+  unique identity. A mismatched identity could not reuse the credential, an
+  authenticated device credential could not publish into another device's
+  subtree, and a mismatched profile was rejected without replacing the valid
+  NVS profile.
+- Cleared the bench NVS profile after TEST-033 and verified Sunroom Test
+  returned online with fresh `OK` telemetry through the unchanged compiled
+  production listener. The temporary broker, CA, passwords, and test files
+  were removed. No production listener, ACL, service, credential, or fleet
+  device was changed.
+
 - Replaced OTA command substring scanning with ArduinoJson `7.4.3` and moved
   typed, bounded manifest parsing plus hex, SHA, preflight, and downloaded-image
   validation into a host-testable firmware library. Nine TEST-012 cases cover

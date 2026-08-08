@@ -55,6 +55,12 @@ clocks.
 Field parsing, hex decoding, size/sha/signature/buildNumber gate ordering
 (FR-010…FR-012) with the download and flash layers faked.
 
+*Implementation status (2026-08-07):* Nine native cases exercise typed
+ArduinoJson parsing, malformed/root/key-confusion rejection, bounded string and
+integer fields, hex/SHA validation, and the required preflight and downloaded
+image gate order. The hardware download and flash adapters are excluded from
+the pure validation module.
+
 ## 11.3 Integration tests (CI, real broker)
 
 **TEST-020 — End-to-end ingest** `MUST`

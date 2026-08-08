@@ -2,6 +2,26 @@
 
 ## 2026-08-07
 
+- Replaced OTA command substring scanning with ArduinoJson `7.4.3` and moved
+  typed, bounded manifest parsing plus hex, SHA, preflight, and downloaded-image
+  validation into a host-testable firmware library. Nine TEST-012 cases cover
+  malformed/root/key-confusion input, field types and bounds, hex/SHA checks,
+  and size/build/signature gate ordering; all 15 native firmware cases pass.
+- Built firmware `0.1.8-arduinojson` build `2026080702`, then USB-flashed the
+  exact 839,344-byte artifact to Sunroom Test. The uploader verified the flash,
+  and the device returned online with fresh DHT22 telemetry. Its binary SHA-256
+  is `a58577ffba350b39b209b976b75413b7901b15875c2e5c9e5087cd4b7e0ec855`.
+- Bench-probed the live ArduinoJson path with three download-blocked commands.
+  The device rejected nested-command key confusion as `missing command`, a
+  string-typed size as `invalid ota size`, and a valid typed current-build
+  manifest as `firmware rollback rejected`. No fleet OTA was sent.
+- Completed the requested 30-minute Sunroom Test observation on the exact
+  `0.1.8-arduinojson` candidate. The final uninterrupted run supplied a
+  60-minute window from 23:31:11Z through 00:31:12Z with six successive
+  intervals of 600, 600, 600, 601, 600, and 600 seconds. Sequence advanced from
+  2 through 8, all statuses were `OK`, temperatures stayed between 92.7 F and
+  92.8 F, humidity stayed between 31.0% and 31.6%, and no early telemetry was
+  published. The 30-minute timing/plausibility test passed.
 - Replaced ad hoc SQLite schema initialization with packaged forward-only
   migrations `001` and `002`, transactionally tracked through
   `PRAGMA user_version`.

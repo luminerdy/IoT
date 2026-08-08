@@ -12,6 +12,12 @@ then it publishes at the report interval (±5 s), publishes early only on a
 confirmed ≥ threshold change, and publishes no reading outside plausible
 ranges.
 
+*Validated on the `0.1.8-arduinojson` candidate 2026-08-07/08:* after the final
+USB-monitor-induced reset, Sunroom Test ran for a clean 60-minute observation
+window. Six successive intervals were 600, 600, 600, 601, 600, and 600 seconds;
+there were no early publishes, all readings were plausible, every status was
+`OK`, and sequence numbers advanced monotonically.
+
 **AC-002** (FR-004)
 Given a single spurious DHT22 spike ≥ 8 °F, when it is not confirmed by 3
 consecutive similar samples, then it never appears in published telemetry

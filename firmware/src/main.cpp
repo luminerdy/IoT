@@ -9,10 +9,10 @@
 #include <mbedtls/ecdsa.h>
 #include <mbedtls/ecp.h>
 #include <mbedtls/sha256.h>
-#include <strings.h>
 #include <time.h>
 
 #include "ota_public_key.h"
+#include "ota_manifest.h"
 #include "sensor_core.h"
 #include "secrets.h"
 
@@ -383,67 +383,6 @@ bool extractNumber(const char *payload, const char *key, float *value)
   return true;
 }
 
-bool extractUnsignedLong(const char *payload, const char *key, uint32_t *value)
-{
-  char quotedKey[48];
-  snprintf(quotedKey, sizeof(quotedKey), "\"%s\"", key);
-
-  const char *keyPos = strstr(payload, quotedKey);
-  if (keyPos == nullptr) {
-    return false;
-  }
-
-  const char *colon = strchr(keyPos, ':');
-  if (colon == nullptr) {
-    return false;
-  }
-
-  char *end = nullptr;
-  unsigned long parsed = strtoul(colon + 1, &end, 10);
-  if (end == colon + 1 || parsed == 0 || parsed > 0xFFFFFFFFUL) {
-    return false;
-  }
-
-  *value = static_cast<uint32_t>(parsed);
-  return true;
-}
-
-bool extractString(const char *payload, const char *key, char *value, size_t valueLen)
-{
-  char quotedKey[48];
-  snprintf(quotedKey, sizeof(quotedKey), "\"%s\"", key);
-
-  const char *keyPos = strstr(payload, quotedKey);
-  if (keyPos == nullptr) {
-    return false;
-  }
-
-  const char *colon = strchr(keyPos, ':');
-  if (colon == nullptr) {
-    return false;
-  }
-
-  const char *start = strchr(colon + 1, '"');
-  if (start == nullptr) {
-    return false;
-  }
-  start++;
-
-  const char *end = strchr(start, '"');
-  if (end == nullptr || end == start) {
-    return false;
-  }
-
-  size_t len = static_cast<size_t>(end - start);
-  if (len >= valueLen) {
-    return false;
-  }
-
-  memcpy(value, start, len);
-  value[len] = '\0';
-  return true;
-}
-
 void publishConfigResponse(const char *status, const char *message)
 {
   char payload[PAYLOAD_LEN];
@@ -543,47 +482,6 @@ void publishOtaStatus(const char *status, const char *message, const char *versi
   Serial.printf("Published OTA status: %s\n", payload);
 }
 
-int hexNibble(char c)
-{
-  if (c >= '0' && c <= '9') {
-    return c - '0';
-  }
-  if (c >= 'a' && c <= 'f') {
-    return c - 'a' + 10;
-  }
-  if (c >= 'A' && c <= 'F') {
-    return c - 'A' + 10;
-  }
-  return -1;
-}
-
-bool decodeHex(const char *hex, uint8_t *output, size_t outputLen)
-{
-  if (strlen(hex) != outputLen * 2) {
-    return false;
-  }
-
-  for (size_t i = 0; i < outputLen; i++) {
-    int high = hexNibble(hex[i * 2]);
-    int low = hexNibble(hex[(i * 2) + 1]);
-    if (high < 0 || low < 0) {
-      return false;
-    }
-    output[i] = static_cast<uint8_t>((high << 4) | low);
-  }
-  return true;
-}
-
-bool sha256Matches(const char *expectedSha, const uint8_t digest[32])
-{
-  char actualSha[65];
-  for (size_t i = 0; i < 32; i++) {
-    snprintf(actualSha + (i * 2), 3, "%02x", digest[i]);
-  }
-  actualSha[64] = '\0';
-  return strcasecmp(actualSha, expectedSha) == 0;
-}
-
 bool otaSignatureValid(const char *signatureHex, const uint8_t digest[32])
 {
   uint8_t signature[80];
@@ -594,9 +492,9 @@ bool otaSignatureValid(const char *signatureHex, const uint8_t digest[32])
   if (signatureLen == 0 || signatureLen > sizeof(signature) || strlen(signatureHex) % 2 != 0) {
     return false;
   }
-  if (!decodeHex(signatureHex, signature, signatureLen) ||
-      !decodeHex(OTA_SIGNING_PUBKEY_X_HEX, publicX, sizeof(publicX)) ||
-      !decodeHex(OTA_SIGNING_PUBKEY_Y_HEX, publicY, sizeof(publicY))) {
+  if (!ota_manifest::decode_hex(signatureHex, signature, signatureLen) ||
+      !ota_manifest::decode_hex(OTA_SIGNING_PUBKEY_X_HEX, publicX, sizeof(publicX)) ||
+      !ota_manifest::decode_hex(OTA_SIGNING_PUBKEY_Y_HEX, publicY, sizeof(publicY))) {
     return false;
   }
 
@@ -646,70 +544,75 @@ bool otaMetadataSignatureValid(
   return otaSignatureValid(metadataSignatureHex, digest);
 }
 
-bool performOtaUpdate(
-  const char *url,
-  const char *expectedSha,
-  const char *signatureHex,
-  const char *metadataSignatureHex,
-  long expectedSize,
-  uint32_t buildNumber,
-  const char *version,
-  const char *rolloutId
-)
+bool validateMetadataSignature(const ota_manifest::Manifest &manifest, void *)
 {
-  if (OTA_BUILD_NUMBER <= 0) {
-    publishOtaStatus("rejected", "ota build number not configured", version, rolloutId);
-    return false;
-  }
-  if (expectedSize <= 0) {
-    publishOtaStatus("rejected", "missing firmware size", version, rolloutId);
-    return false;
-  }
-  uint32_t highestBuildNumber = storedBuildNumber();
-  if (highestBuildNumber < static_cast<uint32_t>(OTA_BUILD_NUMBER)) {
-    highestBuildNumber = static_cast<uint32_t>(OTA_BUILD_NUMBER);
-  }
-  if (buildNumber <= highestBuildNumber) {
-    publishOtaStatus("rejected", "firmware rollback rejected", version, rolloutId);
-    return false;
-  }
-  if (!otaMetadataSignatureValid(metadataSignatureHex, expectedSha, buildNumber, version, expectedSize)) {
-    publishOtaStatus("rejected", "ota metadata signature invalid", version, rolloutId);
+  return otaMetadataSignatureValid(
+    manifest.metadata_signature,
+    manifest.sha256,
+    manifest.build_number,
+    manifest.version,
+    static_cast<long>(manifest.size)
+  );
+}
+
+bool validateFirmwareSignature(const char *signatureHex, const uint8_t digest[32], void *)
+{
+  return otaSignatureValid(signatureHex, digest);
+}
+
+bool performOtaUpdate(const ota_manifest::Manifest &manifest)
+{
+  const uint32_t configuredBuildNumber = OTA_BUILD_NUMBER > 0
+    ? static_cast<uint32_t>(OTA_BUILD_NUMBER)
+    : 0;
+  const ota_manifest::PreflightResult preflight = ota_manifest::validate_preflight(
+    manifest,
+    configuredBuildNumber,
+    storedBuildNumber(),
+    validateMetadataSignature,
+    nullptr
+  );
+  if (preflight != ota_manifest::PreflightResult::ready) {
+    publishOtaStatus(
+      "rejected",
+      ota_manifest::preflight_message(preflight),
+      manifest.version,
+      manifest.rollout_id
+    );
     return false;
   }
 
   if (WiFi.status() != WL_CONNECTED) {
-    publishOtaStatus("rejected", "wifi not connected", version, rolloutId);
+    publishOtaStatus("rejected", "wifi not connected", manifest.version, manifest.rollout_id);
     return false;
   }
 
   WiFiClient httpClient;
   HTTPClient http;
   http.setTimeout(OTA_NO_PROGRESS_TIMEOUT_MS);
-  if (!http.begin(httpClient, url)) {
-    publishOtaStatus("rejected", "invalid ota url", version, rolloutId);
+  if (!http.begin(httpClient, manifest.url)) {
+    publishOtaStatus("rejected", "invalid ota url", manifest.version, manifest.rollout_id);
     return false;
   }
 
-  publishOtaStatus("downloading", "ota download started", version, rolloutId);
+  publishOtaStatus("downloading", "ota download started", manifest.version, manifest.rollout_id);
   int httpCode = http.GET();
   if (httpCode != HTTP_CODE_OK) {
     http.end();
-    publishOtaStatus("failed", "firmware download failed", version, rolloutId);
+    publishOtaStatus("failed", "firmware download failed", manifest.version, manifest.rollout_id);
     return false;
   }
 
   int contentLength = http.getSize();
-  if (expectedSize > 0 && contentLength > 0 && contentLength != expectedSize) {
+  if (contentLength > 0 && static_cast<uint32_t>(contentLength) != manifest.size) {
     http.end();
-    publishOtaStatus("rejected", "firmware size mismatch", version, rolloutId);
+    publishOtaStatus("rejected", "firmware size mismatch", manifest.version, manifest.rollout_id);
     return false;
   }
 
-  size_t updateSize = expectedSize > 0 ? static_cast<size_t>(expectedSize) : UPDATE_SIZE_UNKNOWN;
-  if (!Update.begin(updateSize)) {
+  if (!Update.begin(static_cast<size_t>(manifest.size))) {
     http.end();
-    publishOtaStatus("failed", "ota partition unavailable", version, rolloutId);
+    publishOtaStatus("failed", "ota partition unavailable", manifest.version, manifest.rollout_id);
     return false;
   }
 
@@ -759,88 +662,65 @@ bool performOtaUpdate(
 
   if (!ok) {
     Update.abort();
-    publishOtaStatus("failed", "firmware stream failed", version, rolloutId);
+    publishOtaStatus("failed", "firmware stream failed", manifest.version, manifest.rollout_id);
     return false;
   }
-  if (expectedSize > 0 && written != static_cast<size_t>(expectedSize)) {
+  const ota_manifest::DownloadResult validation = ota_manifest::validate_download(
+    manifest,
+    written,
+    digest,
+    validateFirmwareSignature,
+    nullptr
+  );
+  if (validation != ota_manifest::DownloadResult::valid) {
     Update.abort();
-    publishOtaStatus("failed", "firmware length mismatch", version, rolloutId);
-    return false;
-  }
-  if (!sha256Matches(expectedSha, digest)) {
-    Update.abort();
-    publishOtaStatus("rejected", "firmware sha256 mismatch", version, rolloutId);
-    return false;
-  }
-  if (!otaSignatureValid(signatureHex, digest)) {
-    Update.abort();
-    publishOtaStatus("rejected", "firmware signature invalid", version, rolloutId);
+    const char *status = validation == ota_manifest::DownloadResult::length_mismatch
+      ? "failed"
+      : "rejected";
+    publishOtaStatus(
+      status,
+      ota_manifest::download_message(validation),
+      manifest.version,
+      manifest.rollout_id
+    );
     return false;
   }
   if (!Update.end(true)) {
-    publishOtaStatus("failed", "firmware update finalize failed", version, rolloutId);
+    publishOtaStatus(
+      "failed",
+      "firmware update finalize failed",
+      manifest.version,
+      manifest.rollout_id
+    );
     return false;
   }
 
-  publishOtaStatus("rebooting", "firmware update applied", version, rolloutId);
+  publishOtaStatus(
+    "rebooting",
+    "firmware update applied",
+    manifest.version,
+    manifest.rollout_id
+  );
   delay(1000);
   ESP.restart();
   return true;
 }
 
-void applyCommandPayload(const char *payload)
+void applyCommandPayload(const char *payload, size_t length)
 {
-  char command[32];
-  if (!extractString(payload, "command", command, sizeof(command))) {
-    publishOtaStatus("rejected", "missing command", "", "");
+  ota_manifest::Manifest manifest = {};
+  const ota_manifest::ParseResult result = ota_manifest::parse(payload, length, &manifest);
+  if (result != ota_manifest::ParseResult::ok) {
+    publishOtaStatus("rejected", ota_manifest::parse_message(result), "", "");
     return;
   }
 
-  if (strcmp(command, "ota_update") != 0) {
-    publishOtaStatus("rejected", "unsupported command", "", "");
-    return;
-  }
-
-  char url[192];
-  char sha256[65];
-  char signature[161];
-  char metadataSignature[161];
-  char version[32];
-  char rolloutId[64];
-  float sizeValue = 0.0f;
-  uint32_t buildNumber = 0;
-
-  if (!extractString(payload, "url", url, sizeof(url)) ||
-      !extractString(payload, "sha256", sha256, sizeof(sha256)) ||
-      !extractString(payload, "signature", signature, sizeof(signature)) ||
-      !extractString(payload, "metadataSignature", metadataSignature, sizeof(metadataSignature)) ||
-      !extractString(payload, "version", version, sizeof(version)) ||
-      !extractString(payload, "rolloutId", rolloutId, sizeof(rolloutId)) ||
-      !extractUnsignedLong(payload, "buildNumber", &buildNumber) ||
-      strlen(sha256) != 64 ||
-      strlen(signature) == 0 ||
-      strlen(signature) % 2 != 0 ||
-      strlen(metadataSignature) == 0 ||
-      strlen(metadataSignature) % 2 != 0) {
-    publishOtaStatus("rejected", "invalid ota command", "", "");
-    return;
-  }
-
-  long expectedSize = 0;
-  if (extractNumber(payload, "size", &sizeValue) && sizeValue > 0.0f) {
-    expectedSize = static_cast<long>(sizeValue);
-  }
-
-  performOtaUpdate(url, sha256, signature, metadataSignature, expectedSize, buildNumber, version, rolloutId);
+  performOtaUpdate(manifest);
 }
 
 void onMqttMessage(char *topic, uint8_t *payload, unsigned int length)
 {
-  Serial.printf("MQTT message on %s: ", topic);
-  for (unsigned int i = 0; i < length; i++) {
-    Serial.print(static_cast<char>(payload[i]));
-  }
-  Serial.println();
+  Serial.printf("MQTT message on %s length=%u\n", topic, length);
 
   if (strcmp(topic, configTopic) == 0) {
     if (length >= PAYLOAD_LEN) {
@@ -864,7 +744,7 @@ void onMqttMessage(char *topic, uint8_t *payload, unsigned int length)
     char buffer[PAYLOAD_LEN];
     memcpy(buffer, payload, length);
     buffer[length] = '\0';
-    applyCommandPayload(buffer);
+    applyCommandPayload(buffer, length);
   }
 }
 

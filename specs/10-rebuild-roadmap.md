@@ -42,8 +42,9 @@ run side by side (different systemd units / DB file) during migration.
 > database is now schema version 2; the concurrent-start race found during
 > activation is fixed, regression-tested, loaded by a collector restart, and
 > live-verified.
-> The next code milestone is ArduinoJson plus manifest-validation native tests,
-> then NVS-provisioned per-device credentials and TLS. The Python 80% gate and
+> ArduinoJson OTA parsing and TEST-012 manifest-validation native tests were
+> completed and task-focused USB-bench validated on 2026-08-07. The next code milestone is
+> NVS-provisioned per-device credentials and TLS. The Python 80% gate and
 > TEST-010/011 firmware native tests were also completed on 2026-08-07.
 
 ## R0 — Foundations (no behavior change)
@@ -63,8 +64,11 @@ run side by side (different systemd units / DB file) during migration.
 > sensor-filter/publish-policy tests are implemented. DR-021 accepts existing
 > history without a rewrite. TEST-023 now verifies the tracked per-device ACL
 > against an isolated Mosquitto broker, and collector OTA publishing has been
-> removed to preserve operator-only command authority. TEST-012 manifest-native
-> tests remain paired with the later ArduinoJson refactor.
+> removed to preserve operator-only command authority. ArduinoJson OTA parsing
+> and nine TEST-012 manifest-native cases are implemented; the combined native
+> suite has 15 passing cases and the exact candidate passed parser/preflight
+> checks on the USB bench device. The complete TEST-030 release checklist was
+> not rerun, so this is not fleet-rollout clearance.
 
 **Exit:** CI green including firmware build; no fleet change.
 

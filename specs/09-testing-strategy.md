@@ -55,6 +55,12 @@ clocks.
 Field parsing, hex decoding, size/sha/signature/buildNumber gate ordering
 (FR-010…FR-012) with the download and flash layers faked.
 
+*Implementation status (2026-08-07):* Nine native cases exercise typed
+ArduinoJson parsing, malformed/root/key-confusion rejection, bounded string and
+integer fields, hex/SHA validation, and the required preflight and downloaded
+image gate order. The hardware download and flash adapters are excluded from
+the pure validation module.
+
 ## 11.3 Integration tests (CI, real broker)
 
 **TEST-020 — End-to-end ingest** `MUST`
@@ -85,6 +91,12 @@ installs Mosquitto solely for this isolated test.
 A written checklist executed on the USB-recoverable bench device before any
 fleet rollout: AC-001, AC-020/021, AC-030…AC-032, AC-044. Results recorded
 (date, firmware build, outcome) in the ops log.
+
+*Release execution (2026-08-08):* exact committed build `2026080703` passed
+signed OTA success, 60-minute cadence/plausibility soak, retained config
+apply/reject/restore, signed rollback, and invalid firmware-signature rejection.
+The unchanged recovery path retains its earlier production-duration AC-044
+bench validation. The exact release binary is identified in the progress log.
 
 **TEST-031 — Restore drill** `MUST`
 Quarterly, and after backup schedule changes: restore the latest local

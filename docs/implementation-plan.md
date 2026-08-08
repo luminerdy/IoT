@@ -207,7 +207,11 @@ Priority 4: Security Hardening Without Fleet Disruption
   setup script; no live broker configuration was changed.
 - Extract firmware filter and publish-policy logic for native host tests. Done
   on 2026-08-07 with six passing PlatformIO native cases for TEST-010/011;
-  TEST-012 manifest validation remains paired with the ArduinoJson milestone.
+  ArduinoJson OTA parsing and nine TEST-012 manifest-validation cases are also
+  complete. The combined 15-case native suite passes, and the exact ESP32
+  candidate passed task-focused parser/preflight checks on the USB-connected
+  Sunroom Test device. The complete TEST-030 release checklist remains required
+  before any fleet rollout.
 
 Acceptance criteria:
 

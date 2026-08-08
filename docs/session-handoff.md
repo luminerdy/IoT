@@ -31,9 +31,10 @@ Last updated: 2026-08-07
 ## Current State
 
 The local-first IoT stack is running on PiServer. Mosquitto, the collector, and
-the dashboard are active and enabled. The active mapped fleet remains on
-`0.1.6-recovery`. The USB-connected `Sunroom Test` bench device is present on
-`/dev/ttyUSB0` and reporting over Wi-Fi.
+the dashboard are active and enabled. Twenty-one active mapped devices remain
+on `0.1.6-recovery`; the USB-connected `Sunroom Test` bench device is on
+`0.1.8-arduinojson` and reporting over Wi-Fi from `/dev/ttyUSB0`. No fleet OTA
+was sent for the ArduinoJson candidate.
 
 Firmware downloads on live port `8000` now require a constant-time-checked
 capability key or dashboard Basic auth. Missing/wrong keys return 401; a keyed
@@ -91,10 +92,44 @@ Bench validation completed:
 - PlatformIO build passed, all 30 Python tests passed, and PlatformIO static
   analysis passed with only the existing five low-level style notices.
 
+## ArduinoJson OTA Bench State
+
+- OTA command parsing uses pinned ArduinoJson `7.4.3`; typed, bounded manifest
+  parsing and pure hex/SHA/preflight/download validation live in
+  `firmware/lib/ota_manifest/`.
+- Nine TEST-012 cases plus the six sensor-core cases pass natively. The ESP32
+  build and static analysis pass, and 114 Python tests pass at 91.93% coverage.
+- The exact `0.1.8-arduinojson` build `2026080702` was USB-flashed to Sunroom
+  Test. The 839,344-byte binary SHA-256 is
+  `a58577ffba350b39b209b976b75413b7901b15875c2e5c9e5087cd4b7e0ec855`.
+- The device returned online with fresh telemetry and passed three safe,
+  download-blocked MQTT probes: nested-command key confusion, string-typed
+  size, and current-build rollback. No fleet OTA was sent.
+- The requested 30-minute observation passed using a clean 60-minute window
+  after the final USB-monitor-induced reset. Six successive intervals were
+  600, 600, 600, 601, 600, and 600 seconds; sequence advanced monotonically, every
+  status was `OK`, readings remained plausible, and there were no early
+  publishes.
+- The requested 30-minute observation is complete, but this was task-focused
+  parser/preflight validation rather than the complete TEST-030 release
+  checklist or a real signed OTA cycle. Run and
+  record the full checklist before treating this candidate as fleet-ready.
+- Opening PlatformIO's serial monitor toggled the USB control lines and reset
+  the bench device; closing it and reading serial directly produced a clean
+  boot. Keep the monitor detached during MQTT assertions on this adapter.
+- Final committed build `2026080703` is 839,344 bytes with SHA-256
+  `76ff6464c2189c029b6bcf57bd660b553b3d8b0fdef90075cdbf8929bd75cf91`.
+  It passed signed OTA (`downloading → rebooting → target-build telemetry`), a
+  3,601-second six-interval soak, config rejection/apply/default restoration,
+  signed same-build rollback rejection, and post-download invalid firmware-
+  signature rejection without reboot. This supersedes the preliminary
+  `2026080702` candidate for release.
+
 ## Pick Up Next
 
-1. Continue with ArduinoJson manifest-validation tests, NVS-provisioned
-   per-device credentials/TLS, and dashboard static-asset extraction.
+1. Continue with NVS-provisioned per-device credentials/TLS, then complete the
+   remaining SEC-015 config parsing and device-side JSON construction work.
+   Dashboard static-asset extraction follows those security milestones.
 2. Continue watchdog/fleet/attic monitoring and decide whether to remap or
    re-retire the returned `UNMAPPED` device.
 
@@ -104,8 +139,10 @@ The capability-key and authenticated-write batch was published in commit
 `6c4f8fd`. The database-maintenance, migration/dedupe, CI safeguards, coverage
 expansion, firmware native-test, ACL matrix, operator-only OTA authority, spec,
 and documentation batch was published in `789c308`; concurrent migration
-startup was fixed and pushed in `cacfceb`. Draft PR #4 contains the work. No
-fleet command, live ACL change, or firmware deployment was performed.
+startup was fixed and pushed in `cacfceb`. PR #4 was merged to `main` as
+`e67fa2e`. ArduinoJson release commit `37d6ba5` is pushed on
+`agent/arduinojson-manifest-tests`; draft PR #5 is green and awaiting the final
+bench-evidence documentation commit and merge. No fleet OTA was performed.
 
 `AGENTS.md` remains local/untracked because it identifies the local machine and
 workspace. `IoT-code-review.md` remains local/untracked because it contains
@@ -120,11 +157,11 @@ approval and restore verification. Continue with the ordered `Pick Up Next`
 list above.
 
 The Python suite now has 114 passing tests at 91.9% branch-aware coverage, with
-an enforced 80% CI floor. Six PlatformIO native tests cover the extracted
-sensor-filter and publish-policy logic. Local firmware candidate
-`0.1.7-testable-core` build `2026080701` compiles for ESP32, but it has not been
-USB-bench validated, staged, or deployed. ArduinoJson-based OTA manifest native
-tests remain part of the later SEC-015 milestone.
+an enforced 80% CI floor. Fifteen PlatformIO native tests cover sensor filtering,
+publish policy, and ArduinoJson OTA manifest validation. Local firmware
+candidate `0.1.8-arduinojson` build `2026080703` passed the committed-artifact
+signed OTA and release soak gates on Sunroom Test. It is staged but has not yet
+been deployed to fleet devices.
 
 DR-022 resolves the collector/ACL conflict: desired-version mismatches are
 recorded, but the collector has no OTA publish option or command authority.

@@ -190,6 +190,13 @@ iot-home-ota-v2
 
 The device rejects OTA commands whose signed `buildNumber` is less than or equal to the highest build number it has booted.
 
+Firmware `0.1.8-arduinojson` and newer parses the command as a JSON object and
+requires correctly typed, bounded top-level fields. SHA-256 and signature
+values must be lowercase hexadecimal, `size` must be a positive integer no
+larger than the signed HTTP length limit, and `buildNumber` must be a positive
+32-bit unsigned integer. Nested or string-embedded field names do not satisfy
+top-level requirements.
+
 ## OTA Status
 
 Topic:

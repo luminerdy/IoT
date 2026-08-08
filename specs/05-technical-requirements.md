@@ -75,8 +75,9 @@ gate (TEST-040), (3) **firmware compile** via `platformio run` (not just
 reporting, gitleaks, and a hash-only current-tree identifier baseline are now
 configured. The 114-test Python suite measures 91.9% with branch coverage and
 enforces TEST-040's normative 80% floor. PlatformIO native tests cover the
-extracted sensor filter and publish policy (TEST-010/011); TEST-012 remains
-paired with the ArduinoJson manifest-validation milestone.
+extracted sensor filter and publish policy (TEST-010/011) plus ArduinoJson OTA
+manifest parsing, hex validation, and preflight/download gate ordering
+(TEST-012). The combined native suite has 15 passing cases.
 
 **TECH-021 — Reproducible firmware builds** `SHOULD`
 CI archives the built `firmware.bin` + its SHA-256 per commit so a staged

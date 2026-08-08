@@ -12,7 +12,7 @@ The project is a local-first Raspberry Pi IoT system with MQTT, SQLite, a boot-e
 
 Phase 5: Fleet operations plus daily dashboard improvements
 
-Status: Phases 0 through 4 are complete for the current local-first system. Signed OTA hardening and signed build-number anti-rollback are live. Firmware `0.1.6-recovery` build `2026072401` was deployed to all 23 devices; the USB-connected Sunroom Test device is now running the local `0.1.8-arduinojson` candidate. `AtticChimney` is temporarily retired pending safe physical replacement, leaving 22 active devices online and non-stale. The active work is Phase 5: fleet operations, dashboard maintenance workflows, backups, tests/CI, and staged security hardening.
+Status: Phases 0 through 4 are complete for the current local-first system. Signed OTA hardening and signed build-number anti-rollback are live. Firmware `0.1.8-arduinojson` build `2026080703` is deployed to all 22 active mapped devices after passing the USB-connected Sunroom Test release gate. `AtticChimney` is temporarily retired pending safe physical replacement; its separate `UNMAPPED` record remains on `0.1.6-recovery`. The active work is Phase 5: fleet operations, dashboard maintenance workflows, backups, tests/CI, and staged security hardening.
 
 ## Accomplished
 
@@ -132,6 +132,13 @@ Status: Phases 0 through 4 are complete for the current local-first system. Sign
   target build, passed a 3,601-second six-interval soak, passed config
   apply/reject/restore and signed rollback checks, and rejected an invalid
   firmware signature after download without rebooting. PR #5 CI is green.
+- Merged PR #5 as `9029754`, rebuilt the merged `main` artifact, and confirmed
+  it exact-matched the signed and bench-tested binary. Rolled it to the 21
+  remaining active devices in five acknowledged batches. GarageDriveway's
+  first download ended with `firmware stream failed`; one isolated retry
+  installed the target build and returned fresh `OK` telemetry, although its
+  transient `rebooting` status was not observed. All 22 active mapped devices
+  are now online, non-stale, and on `0.1.8-arduinojson`.
 - Kept OTA command authority operator-only by removing collector `--auto-ota`
   and its MQTT publish path. Desired-version reconciliation still records one
   `detected` attempt per cooldown window. Added TEST-023, which validates the
@@ -161,11 +168,11 @@ Status: Phases 0 through 4 are complete for the current local-first system. Sign
 
 ## Live Dashboard State
 
-The latest dashboard API check on 2026-08-07 shows 22 active mapped devices
-online and non-stale: 21 on `0.1.6-recovery` and the USB-connected Sunroom Test
-bench device on `0.1.8-arduinojson`. The additional `UNMAPPED` record
-associated with the temporarily retired `AtticChimney` is also online and
-currently non-stale. The dashboard code includes the dedicated Attic graph group,
+The latest dashboard API check on 2026-08-07 shows all 22 active mapped devices
+online, non-stale, `OK`, and on `0.1.8-arduinojson`. The additional `UNMAPPED`
+record associated with the temporarily retired `AtticChimney` remains on
+`0.1.6-recovery`; it is online but stale and was excluded from the rollout. The
+dashboard code includes the dedicated Attic graph group,
 alphabetical device cards, hottest-first Latest Readings, and 75 F / 100 F
 graph references.
 
@@ -183,18 +190,20 @@ production build was reflashed and reverified on `Sunroom Test`.
 
 - Live fleet count: 22 active mapped devices online, 0 offline, and 0 stale at
   the latest check on 2026-08-07. One additional `UNMAPPED` record associated
-  with the temporarily retired `AtticChimney` is online and currently non-stale.
-- Recovery firmware count: 21 active devices on `0.1.6-recovery` build `2026072401`, plus the temporarily retired `AtticChimney` device on the same build.
-- ArduinoJson candidate count: 1 USB-connected bench device on
-  `0.1.8-arduinojson` build `2026080703`; no fleet rollout has started.
-- Final signed-OTA release candidate: build `2026080703` has passed the
-  committed-artifact signed OTA and release soak gates. Its staged, served, and
-  clean-rebuilt binaries exact-match the recorded SHA-256.
+  with the temporarily retired `AtticChimney` is online but stale.
+- Recovery firmware count: 0 active devices; only the excluded retired
+  `UNMAPPED` record remains on `0.1.6-recovery` build `2026072401`.
+- ArduinoJson firmware count: all 22 active mapped devices on
+  `0.1.8-arduinojson` build `2026080703`.
+- Deployed signed-OTA release: build `2026080703` passed the committed-artifact
+  signed OTA and release soak gates. Its staged, served, clean-rebuilt, and
+  merged-main binaries exact-match the recorded SHA-256.
 - Previous firmware count: 0 devices.
 - Remaining old firmware count: 0 devices on `0.1.3-signed-ota`.
 - `Sunroom` / `esp32-device-id`: online again after wire replacement; current sequence is increasing normally.
 - Current suspect humidity flag: `Porch` at `99.9%`.
-- `UNMAPPED` count: 1 online and non-stale record at the latest check on 2026-08-07.
+- `UNMAPPED` count: 1 online but stale retired record at the latest check on
+  2026-08-07; it was intentionally excluded from OTA.
 
 ## Active Blockers
 
@@ -222,9 +231,9 @@ production build was reflashed and reverified on `Sunroom Test`.
     retired `AtticChimney` only when attic access is safe, continue attic heat
     monitoring, upload the house image, and keep periodic backup restore checks.
 
-The `0.1.8-arduinojson` release gate is complete. Fleet rollout remains an
-explicit operator action and must use acknowledged small batches with
-stop-on-failure checks.
+The `0.1.8-arduinojson` release gate and fleet rollout are complete. Continue
+to use the same USB bench gate, acknowledged small batches, and stop-on-failure
+checks for future firmware releases.
 
 ## Decisions To Revisit Soon
 

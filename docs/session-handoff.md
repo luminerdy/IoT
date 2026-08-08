@@ -31,10 +31,11 @@ Last updated: 2026-08-07
 ## Current State
 
 The local-first IoT stack is running on PiServer. Mosquitto, the collector, and
-the dashboard are active and enabled. Twenty-one active mapped devices remain
-on `0.1.6-recovery`; the USB-connected `Sunroom Test` bench device is on
-`0.1.8-arduinojson` and reporting over Wi-Fi from `/dev/ttyUSB0`. No fleet OTA
-was sent for the ArduinoJson candidate.
+the dashboard are active and enabled. All 22 active mapped devices are online,
+non-stale, `OK`, and on `0.1.8-arduinojson` build `2026080703`; this includes
+the USB-connected `Sunroom Test` bench device on `/dev/ttyUSB0`. The separate
+retired `UNMAPPED` AtticChimney record remains on `0.1.6-recovery`, is stale,
+and was intentionally excluded from the rollout.
 
 Firmware downloads on live port `8000` now require a constant-time-checked
 capability key or dashboard Basic auth. Missing/wrong keys return 401; a keyed
@@ -124,6 +125,17 @@ Bench validation completed:
   signed same-build rollback rejection, and post-download invalid firmware-
   signature rejection without reboot. This supersedes the preliminary
   `2026080702` candidate for release.
+- PR #5 was merged to `main` as `9029754`; a clean post-merge rebuild
+  exact-matched the staged and bench-tested artifact. The 21 non-bench active
+  devices were updated in five acknowledged batches: Kitchen; Den/Entryway/
+  Office; Garage/LaundryroomAC/Studio/Sunroom; Attic/AtticDoor/Laundryroom/
+  WaterHeater/UnderAC/WallBehindWH; and BunkHouse/FrontBedroom/GarageDriveway/
+  Lightpole/MasterBedroom/Porch/SunroomDoor.
+- GarageDriveway's first download reported `firmware stream failed` and stopped
+  the coordinator. It remained healthy on the old build. After fresh telemetry,
+  one isolated retry downloaded and installed the candidate and produced fresh
+  target-build `OK` telemetry; the `rebooting` status acknowledgement was lost,
+  consistent with its weak `-82` RSSI. No further command was sent.
 
 ## Pick Up Next
 
@@ -140,9 +152,9 @@ The capability-key and authenticated-write batch was published in commit
 expansion, firmware native-test, ACL matrix, operator-only OTA authority, spec,
 and documentation batch was published in `789c308`; concurrent migration
 startup was fixed and pushed in `cacfceb`. PR #4 was merged to `main` as
-`e67fa2e`. ArduinoJson release commit `37d6ba5` is pushed on
-`agent/arduinojson-manifest-tests`; draft PR #5 is green and awaiting the final
-bench-evidence documentation commit and merge. No fleet OTA was performed.
+`e67fa2e`. ArduinoJson release commit `37d6ba5` and bench-evidence commit
+`9a8ce9d` were merged through PR #5 as `9029754`; all PR and post-merge `main`
+checks passed. The fleet rollout then converged on the exact merged artifact.
 
 `AGENTS.md` remains local/untracked because it identifies the local machine and
 workspace. `IoT-code-review.md` remains local/untracked because it contains
@@ -158,17 +170,17 @@ list above.
 
 The Python suite now has 114 passing tests at 91.9% branch-aware coverage, with
 an enforced 80% CI floor. Fifteen PlatformIO native tests cover sensor filtering,
-publish policy, and ArduinoJson OTA manifest validation. Local firmware
-candidate `0.1.8-arduinojson` build `2026080703` passed the committed-artifact
-signed OTA and release soak gates on Sunroom Test. It is staged but has not yet
-been deployed to fleet devices.
+publish policy, and ArduinoJson OTA manifest validation. Firmware
+`0.1.8-arduinojson` build `2026080703` passed the committed-artifact signed OTA
+and release soak gates on Sunroom Test and is now deployed to all 22 active
+mapped devices. The retired `UNMAPPED` record was not changed.
 
 DR-022 resolves the collector/ACL conflict: desired-version mismatches are
 recorded, but the collector has no OTA publish option or command authority.
 `iot_home.publish_ota` remains the explicit admin-authenticated path after the
 bench gate. TEST-023 passes against an isolated broker using the same tracked
-per-device ACL installed by the TLS setup script. The live Mosquitto listener,
-credentials, services, and fleet were not changed.
+per-device ACL installed by the TLS setup script. That isolated ACL test did
+not change the live Mosquitto listener, credentials, or services.
 
 Numbered migrations `001` and `002` now replace ad hoc schema initialization
 and record version 2 in `PRAGMA user_version`. The live database is at version
@@ -187,9 +199,9 @@ warning, traceback, or migration error. Post-restart schema, integrity, row
 preservation, and fresh telemetry checks all passed.
 
 The final 2026-08-07 read-only API check showed all 22 active mapped devices
-online and non-stale on deployed `0.1.6-recovery`. The separate `UNMAPPED`
-record associated with retired `AtticChimney` is also online and currently
-non-stale. All three core services remain active and enabled.
+online, non-stale, `OK`, and on deployed `0.1.8-arduinojson`. The separate
+`UNMAPPED` record associated with retired `AtticChimney` is online but stale on
+`0.1.6-recovery`. All three core services remain active and enabled.
 
 ## Verification
 

@@ -46,6 +46,25 @@
   and preserved table counts were verified. Core services were active/enabled.
   Restic's read-only metadata/subset check found no repository errors; an
   84-hour stale lock was observed and intentionally left untouched.
+- Merged PR #5 as `9029754` after all checks passed, clean-rebuilt from merged
+  `main`, and confirmed the artifact still exact-matched the signed and staged
+  839,344-byte binary with SHA-256
+  `76ff6464c2189c029b6bcf57bd660b553b3d8b0fdef90075cdbf8929bd75cf91`.
+- Rolled the exact artifact to the 21 remaining active devices in five
+  acknowledged batches with fresh preflight and postflight checks. Kitchen;
+  Den/Entryway/Office; Garage/LaundryroomAC/Studio/Sunroom; Attic/AtticDoor/
+  Laundryroom/WaterHeater/UnderAC/WallBehindWH; and BunkHouse/FrontBedroom/
+  GarageDriveway/Lightpole/MasterBedroom/Porch/SunroomDoor all returned on the
+  target firmware.
+- GarageDriveway's first attempt reported `firmware stream failed`; the
+  coordinator stopped and the device remained healthy on the prior build. One
+  isolated retry after fresh telemetry installed the target and returned fresh
+  build `2026080703` `OK` telemetry. Its `rebooting` acknowledgement was not
+  observed, so success was established from post-reboot target-build telemetry
+  rather than the transient status. No second retry was sent.
+- Final read-only API verification found all 22 active mapped devices online,
+  non-stale, `OK`, and on `0.1.8-arduinojson`. The separate retired `UNMAPPED`
+  AtticChimney record remains stale on `0.1.6-recovery` and was not modified.
 - Replaced ad hoc SQLite schema initialization with packaged forward-only
   migrations `001` and `002`, transactionally tracked through
   `PRAGMA user_version`.

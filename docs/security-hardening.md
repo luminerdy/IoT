@@ -100,7 +100,7 @@ password through argv:
 PYTHONPATH=app .venv/bin/python -m iot_home.provision_mqtt \
   --serial-port /dev/ttyUSB0 \
   --device-id esp32-device-id \
-  --host iot-pi.local \
+  --host PiServer.local \
   --mqtt-port 8883 \
   --ca-cert /etc/mosquitto/certs/iot-home/ca.crt
 ```

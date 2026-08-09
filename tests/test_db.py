@@ -3,11 +3,13 @@ from contextlib import closing
 from iot_home.db import (
     connect,
     init_db,
+    latest_monitoring_events,
     latest_readings,
     latest_system_metric,
     reading_history,
     recent_deployment_attempt_exists,
     record_deployment_attempt,
+    record_monitoring_event,
     record_status,
     record_system_metric,
     record_telemetry,
@@ -24,6 +26,41 @@ def test_record_and_read_latest_system_metric(tmp_path):
 
     assert row is not None
     assert row["value"] == 123.1
+
+
+def test_record_and_read_latest_monitoring_events(tmp_path):
+    db_path = tmp_path / "iot.db"
+    with closing(connect(db_path)) as conn:
+        init_db(conn)
+        record_monitoring_event(
+            conn,
+            source="PiServer",
+            event_type="post_reboot_check",
+            severity="info",
+            status="ok",
+            message="post-reboot verification passed",
+            details={"checks": [{"name": "services", "ok": True}]},
+            created_at="2026-08-09 12:00:00",
+        )
+        record_monitoring_event(
+            conn,
+            source="pi-watchdog",
+            event_type="watchdog_relay",
+            severity="critical",
+            status="recovery",
+            message="Target power restored after 15s",
+            created_at="2026-08-09 12:05:00",
+        )
+
+        all_events = latest_monitoring_events(conn)
+        relay_events = latest_monitoring_events(conn, event_type="watchdog_relay")
+
+    assert [row["event_type"] for row in all_events] == [
+        "watchdog_relay",
+        "post_reboot_check",
+    ]
+    assert relay_events[0]["message"] == "Target power restored after 15s"
+    assert '"services"' in all_events[1]["details_json"]
 
 
 def test_record_telemetry_updates_latest_device_state(tmp_path):

@@ -1,5 +1,61 @@
 # Progress Log
 
+## 2026-08-09
+
+### Watchdog and Post-Reboot Monitoring
+
+- Added persistent `monitoring_events` storage for local health events. The
+  dashboard `/api/system` response now includes recent monitoring events, the
+  latest post-reboot check, and the latest Pi3 watchdog relay event.
+- Added a System Health dashboard panel showing post-reboot and watchdog status
+  separately from fleet stale/offline device state.
+- Added `python -m iot_home.post_reboot_check` to record core service,
+  dashboard API, SQLite integrity/schema, latest backup, and database
+  maintenance status. With `--import-watchdog`, it imports recent Pi3
+  `pi-watchdog.service` relay entries over SSH into SQLite.
+- Added `deploy/iot-home-post-reboot-check.service` plus
+  `scripts/install_post_reboot_monitoring.sh` so the post-reboot recorder can
+  run automatically after boot.
+- Ran the recorder once against the live database and imported the 2026-08-08
+  Pi3 relay activation/restoration entries. Live SQLite is now schema version
+  3 with integrity `ok`.
+- Installed and enabled `iot-home-post-reboot-check.service`; it ran once and
+  recorded a fresh successful post-reboot check. Restarted
+  `iot-home-dashboard.service` so `/api/system` exposes the monitoring payload.
+
+## 2026-08-08
+
+### Incremental Production MQTT TLS Migration
+
+- Activated a parallel production Mosquitto TLS listener on `8883` with
+  per-listener settings and the tracked per-device ACL, leaving the existing
+  shared-credential `1883` listener active for the fleet.
+- Fixed the TLS installer for this Pi's Mosquitto package by skipping the
+  unsupported `mosquitto -t` check, using `sudo find` for protected certificate
+  ownership updates, adding `PiServer.local` / `piserver.local` SANs, and
+  regenerating the server certificate whenever it does not verify against the
+  active local CA.
+- Created and loaded a unique broker password for only the USB-connected
+  Sunroom Test device, then provisioned its NVS MQTT TLS profile over
+  `/dev/ttyUSB0`.
+- The first live profile used `iot-pi.local`; USB serial showed ESP32 DNS
+  failures for that host. Reprovisioning with `PiServer.local` succeeded.
+- Verified the TLS chain with `openssl`, verified local per-device TLS
+  authentication, observed Mosquitto accept Sunroom Test on port `8883` as
+  user `esp32-9c9c1fda3670`, and confirmed the dashboard API returned 22 active
+  mapped devices online, 0 offline, 0 stale, with Sunroom Test fresh, `OK`, and
+  still on `0.1.9-nvs-tls`.
+- Started the approved one-device-per-hour non-attic OTA rollout of
+  `0.1.9-nvs-tls` build `2026080707` using the signed, bench-matched
+  970,976-byte artifact with SHA-256
+  `3420e492e3d450886326885c65d1b3b6706f97ccab21724f5b58f75f1c61d501`.
+  Den, Kitchen, Office, and MasterBedroom each returned online/non-stale with
+  `OK` telemetry on `0.1.9-nvs-tls`.
+- The hourly controller stopped before sending LaundryroomAC because
+  SunroomDoor, still on `0.1.8-arduinojson` and not part of the completed
+  updates, reported `offline` through the pre-flight and follow-up watch. No
+  further OTA command was sent.
+
 ## 2026-08-07
 
 - Added USB-provisioned, hardware-bound MQTT profiles in a dedicated NVS

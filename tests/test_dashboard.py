@@ -20,7 +20,13 @@ from iot_home.dashboard import (
     query_int,
     valid_client_address,
 )
-from iot_home.db import connect, init_db, record_system_metric, record_telemetry
+from iot_home.db import (
+    connect,
+    init_db,
+    record_monitoring_event,
+    record_system_metric,
+    record_telemetry,
+)
 from iot_home.locations import load_locations
 
 
@@ -37,6 +43,8 @@ def test_dashboard_page_keeps_attic_and_thermal_sorting_contract() -> None:
     assert "Math.max(100," in html
     assert "[max, 100, 75, min]" in html
     assert 'id="pi-temperature"' in html
+    assert 'id="post-reboot-status"' in html
+    assert 'id="watchdog-status"' in html
     assert 'fetch("/api/system"' in html
 
 
@@ -232,6 +240,23 @@ def _configure_handler(tmp_path, *, with_metric=True, allow_read=True):
         )
         if with_metric:
             record_system_metric(conn, "pi_cpu_temperature_f", 120.5)
+        record_monitoring_event(
+            conn,
+            source="PiServer",
+            event_type="post_reboot_check",
+            status="ok",
+            message="post-reboot verification passed",
+            created_at="2026-08-09 12:00:00",
+        )
+        record_monitoring_event(
+            conn,
+            source="pi-watchdog",
+            event_type="watchdog_relay",
+            severity="critical",
+            status="recovery",
+            message="Target power restored after 15s",
+            created_at="2026-08-09 12:05:00",
+        )
 
     Handler.db_path = db_path
     Handler.locations_path = locations_path
@@ -284,6 +309,10 @@ def test_dashboard_read_routes_and_static_assets(tmp_path) -> None:
         assert history[0]["deviceId"] == "esp32-test"
         assert floorplan["zones"][0]["location"] == "Test Room"
         assert system["temperatureF"] == 120.5
+        assert system["monitoring"]["latestPostReboot"]["status"] == "ok"
+        assert system["monitoring"]["latestWatchdogRelay"]["message"] == (
+            "Target power restored after 15s"
+        )
         assert len(locations["devices"]) == 2
 
         for path in (
@@ -313,11 +342,11 @@ def test_dashboard_read_auth_floorplan_error_and_empty_system(tmp_path) -> None:
 
         request = Request(f"{base}/api/system", headers={"Authorization": f"Basic {auth}"})
         with closing(urlopen(request)) as response:
-            assert json.loads(response.read()) == {
-                "temperatureF": None,
-                "sampledAt": None,
-                "ageSeconds": None,
-            }
+            system = json.loads(response.read())
+        assert system["temperatureF"] is None
+        assert system["sampledAt"] is None
+        assert system["ageSeconds"] is None
+        assert system["monitoring"]["latestPostReboot"]["eventType"] == "post_reboot_check"
 
         floorplan_path.write_text("[]", encoding="utf-8")
         request = Request(f"{base}/api/floorplan", headers={"Authorization": f"Basic {auth}"})

@@ -1,6 +1,6 @@
 # Session Handoff
 
-Last updated: 2026-08-07
+Last updated: 2026-08-08
 
 ## Pi3 External Watchdog
 
@@ -27,17 +27,35 @@ Last updated: 2026-08-07
   the protected configuration reads `WATCHDOG_FAILURES_BEFORE_RECOVERY=10`,
   and GPIO17 is output-low at idle. The 15-second relay interruption and
   one-hour between-cycle cooldown remain unchanged.
+- On 2026-08-08, the Pi3 recorded 10 consecutive failed checks from 21:43:42
+  through 21:52:37 CDT, activated GPIO17 at 21:52:37, restored target power
+  after 15 seconds at 21:52:52, and reported PiServer healthy at 21:53:31.
+  This should be treated as a real recovery event to monitor for recurrence.
+- `monitoring_events` now stores post-reboot checks and imported watchdog relay
+  events. `python -m iot_home.post_reboot_check --import-watchdog` records core
+  service/API/database/backup status and imports recent Pi3 relay entries. The
+  dashboard System Health panel reads this through `/api/system`.
+- The live database was migrated to schema version 3 and contains fresh
+  post-reboot checks plus the two Aug 8 watchdog relay entries.
+  `iot-home-post-reboot-check.service` is installed and enabled, and
+  `iot-home-dashboard.service` was restarted so `/api/system` exposes the new
+  System Health payload.
 
 ## Current State
 
 The local-first IoT stack is running on PiServer. Mosquitto, the collector, and
-the dashboard are active and enabled. All 22 active mapped devices are online,
-non-stale, and `OK`; 21 remain on `0.1.8-arduinojson` build `2026080703`, while
-the USB-connected `Sunroom Test` bench device on `/dev/ttyUSB0` is on
-`0.1.9-nvs-tls` build `2026080707` using its cleared NVS profile's unchanged
-production fallback. The separate
-retired `UNMAPPED` AtticChimney record remains on `0.1.6-recovery`, is stale,
-and was intentionally excluded from the rollout.
+the dashboard are active and enabled. A parallel production MQTT TLS listener is
+active on `8883` alongside the unchanged shared-credential listener on `1883`.
+The latest check shows 22 active mapped devices, with SunroomDoor currently
+`offline` and no active stale devices. Seventeen active mapped devices remain
+on `0.1.8-arduinojson` build `2026080703`; five are on `0.1.9-nvs-tls` build
+`2026080707`: Sunroom Test, Den, Kitchen, Office, and MasterBedroom. Sunroom
+Test uses its NVS MQTT TLS profile and per-device username on `8883`; the four
+OTA-updated devices still use the compiled shared `1883` fallback until they
+are physically USB-provisioned.
+The separate retired `UNMAPPED` AtticChimney record remains on
+`0.1.6-recovery`; it is currently online/non-stale but was intentionally
+excluded from active fleet operations.
 
 Firmware downloads on live port `8000` now require a constant-time-checked
 capability key or dashboard Basic auth. Missing/wrong keys return 401; a keyed
@@ -142,23 +160,41 @@ Bench validation completed:
 
 ## Pick Up Next
 
-1. Plan the separately approved incremental production MQTT TLS/per-device
-   credential migration, or continue the remaining SEC-015 config parsing and
-   device-side JSON construction work. Do not alter the live broker or fleet
-   credentials without explicit authorization.
-2. Continue watchdog/fleet/attic monitoring and decide whether to remap or
-   re-retire the returned `UNMAPPED` device.
+1. Resolve or intentionally exempt SunroomDoor before resuming the hourly
+   non-attic `0.1.9-nvs-tls` OTA rollout. The rollout stopped before
+   LaundryroomAC because SunroomDoor, which had not yet been updated, reported
+   `offline` for the full follow-up watch.
+2. Continue the incremental production MQTT TLS/per-device credential migration
+   one physical USB device at a time, or continue the remaining SEC-015 config
+   parsing and device-side JSON construction work. Do not retire the shared
+   `1883` listener or shared fleet credential until every active device has
+   been individually provisioned and observed.
+3. Continue watchdog/fleet/attic monitoring. If another watchdog relay recovery
+   occurs within 24 hours or repeated recoveries appear within a week,
+   investigate PiServer power/network/system health before relying on the relay.
+4. Decide whether to remap or re-retire the returned `UNMAPPED` device.
 
 ## Working Tree
 
-Branch `agent/nvs-mqtt-tls` contains the NVS MQTT TLS implementation in commits
-`a22fe6d`, `cb72338`, `1ab1e86`, and `2ea0e6b`, plus the final paced USB-write
-fix and bench evidence. Exact firmware
+`main` contains the NVS MQTT TLS implementation from PR #7, plus the live
+installer/doc fixes for production mDNS hostname support and Mosquitto builds
+without `-t`. Exact firmware
 `0.1.9-nvs-tls` build `2026080707` is 970,976 bytes with SHA-256
 `3420e492e3d450886326885c65d1b3b6706f97ccab21724f5b58f75f1c61d501`.
 TEST-033 passed against an isolated TLS listener and production ACL, then the
-NVS profile was cleared and production fallback telemetry recovered. No live
-broker, ACL, credential, service, or fleet setting changed.
+NVS profile was cleared and production fallback telemetry recovered. On
+2026-08-08, the separately approved incremental production migration activated
+listener `8883`, generated a local CA and server certificate with `PiServer`,
+`PiServer.local`, `piserver.local`, and `iot-pi.local` SANs, installed the
+tracked per-device ACL, and provisioned only Sunroom Test with a per-device
+credential over USB. The first `iot-pi.local` profile failed on ESP32 DNS
+resolution and was replaced with a verified `PiServer.local` profile signed by
+the same local CA. Broker logs showed Sunroom Test connecting on `8883` as
+`esp32-9c9c1fda3670`, and the dashboard API then showed it online, non-stale,
+and `OK`. A separately approved hourly OTA rollout then updated Den, Kitchen,
+Office, and MasterBedroom to the same TLS-capable firmware on the compiled
+`1883` fallback. The controller stopped before LaundryroomAC because
+SunroomDoor was offline; no further OTA command was sent.
 
 The capability-key and authenticated-write batch was published in commit
 `6c4f8fd`. The database-maintenance, migration/dedupe, CI safeguards, coverage
@@ -211,11 +247,14 @@ deterministic concurrent-start test passes. The collector was restarted at
 warning, traceback, or migration error. Post-restart schema, integrity, row
 preservation, and fresh telemetry checks all passed.
 
-The final 2026-08-07/08 read-only API check showed all 22 active mapped devices
-online, non-stale, and `OK`; 21 are on deployed `0.1.8-arduinojson` and Sunroom
-Test is on bench-only `0.1.9-nvs-tls` using the production fallback. The separate
-`UNMAPPED` record associated with retired `AtticChimney` is online but stale on
-`0.1.6-recovery`. All three core services remain active and enabled.
+The final 2026-08-08 read-only API check showed 22 active mapped devices, with
+SunroomDoor offline and 0 active stale devices. Seventeen active mapped devices
+are on deployed `0.1.8-arduinojson`; five are on `0.1.9-nvs-tls`. Sunroom Test
+uses production TLS listener `8883`; Den, Kitchen, Office, and MasterBedroom
+use the compiled `1883` fallback. The separate
+`UNMAPPED` record associated with retired `AtticChimney` is online/non-stale on
+`0.1.6-recovery` but still excluded from the active mapped fleet. All three
+core services remain active and enabled.
 
 ## Verification
 

@@ -8,6 +8,9 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 acl_source="${script_dir}/../deploy/mosquitto/iot-home-per-device.acl"
 
 hostname="$(hostname -f 2>/dev/null || hostname)"
+short_hostname="$(hostname)"
+mdns_hostname="${short_hostname}.local"
+lower_mdns_hostname="$(printf '%s' "${mdns_hostname}" | tr '[:upper:]' '[:lower:]')"
 
 echo "Configuring Mosquitto TLS listener on 8883 for host: ${hostname}"
 echo "Certificate directory: ${cert_dir}"
@@ -24,7 +27,17 @@ if [[ ! -f "${cert_dir}/ca.crt" ]]; then
     -out "${cert_dir}/ca.crt"
 fi
 
-if [[ ! -f "${cert_dir}/server.crt" ]]; then
+regenerate_server_cert=0
+if ! sudo test -f "${cert_dir}/server.crt"; then
+  regenerate_server_cert=1
+elif ! sudo openssl verify -CAfile "${cert_dir}/ca.crt" "${cert_dir}/server.crt" >/dev/null; then
+  regenerate_server_cert=1
+elif ! sudo openssl x509 -in "${cert_dir}/server.crt" -noout -ext subjectAltName \
+  | grep -Fq "DNS:${mdns_hostname}"; then
+  regenerate_server_cert=1
+fi
+
+if [[ "${regenerate_server_cert}" -eq 1 ]]; then
   tmp_conf="$(mktemp)"
   cat > "${tmp_conf}" <<CONFIG
 [req]
@@ -40,8 +53,10 @@ subjectAltName=@alt_names
 
 [alt_names]
 DNS.1=${hostname}
-DNS.2=$(hostname)
-DNS.3=iot-pi.local
+DNS.2=${short_hostname}
+DNS.3=${mdns_hostname}
+DNS.4=${lower_mdns_hostname}
+DNS.5=iot-pi.local
 CONFIG
 
   sudo openssl ecparam -name prime256v1 -genkey -noout -out "${cert_dir}/server.key"
@@ -77,11 +92,16 @@ CONFIG
 sudo install -o root -g root -m 0644 "${tmp_config}" "${config_path}"
 rm -f "${tmp_config}"
 
-sudo chown root:mosquitto "${cert_dir}"/*.key "${cert_dir}"/*.crt
-sudo chmod 0640 "${cert_dir}"/*.key
-sudo chmod 0644 "${cert_dir}"/*.crt
+sudo find "${cert_dir}" -maxdepth 1 -type f \( -name "*.key" -o -name "*.crt" \) \
+  -exec chown root:mosquitto {} +
+sudo find "${cert_dir}" -maxdepth 1 -type f -name "*.key" -exec chmod 0640 {} +
+sudo find "${cert_dir}" -maxdepth 1 -type f -name "*.crt" -exec chmod 0644 {} +
 
-sudo mosquitto -c /etc/mosquitto/mosquitto.conf -t
+if mosquitto -h 2>&1 | grep -q -- " -t "; then
+  sudo mosquitto -c /etc/mosquitto/mosquitto.conf -t
+else
+  echo "Installed mosquitto does not support -t config testing; relying on systemd restart." >&2
+fi
 sudo systemctl restart mosquitto
 sudo systemctl --no-pager status mosquitto
 

@@ -20,6 +20,7 @@ from iot_home.db import (
     DEFAULT_DB_PATH,
     connect,
     init_db,
+    latest_monitoring_events,
     latest_readings,
     latest_system_metric,
     reading_history,
@@ -190,6 +191,25 @@ def location_payload(rows: list, stale_seconds: int, locations: dict[str, str]) 
                 }
             )
     return {"locations": locations, "devices": devices}
+
+
+def monitoring_event_to_dict(row) -> dict:
+    details = None
+    if row["details_json"]:
+        try:
+            details = json.loads(row["details_json"])
+        except json.JSONDecodeError:
+            details = None
+    return {
+        "id": row["id"],
+        "source": row["source"],
+        "eventType": row["event_type"],
+        "severity": row["severity"],
+        "status": row["status"],
+        "message": row["message"],
+        "details": details,
+        "createdAt": row["created_at"],
+    }
 
 
 def valid_client_address(value: str) -> bool:
@@ -422,6 +442,35 @@ def page() -> bytes:
     .panel {
       overflow: hidden;
       margin-top: 18px;
+    }
+    .system-health {
+      margin-bottom: 18px;
+    }
+    .health-list {
+      display: grid;
+      gap: 0;
+    }
+    .health-row {
+      display: grid;
+      grid-template-columns: 170px minmax(0, 1fr) 160px;
+      gap: 12px;
+      align-items: center;
+      padding: 10px 14px;
+      border-top: 1px solid #e7ebf0;
+      font-size: 13px;
+    }
+    .health-row:first-child {
+      border-top: 0;
+    }
+    .health-message {
+      min-width: 0;
+      color: #24313d;
+      overflow-wrap: anywhere;
+    }
+    .health-time {
+      color: var(--ink-soft);
+      text-align: right;
+      white-space: nowrap;
     }
     .dashboard-view {
       display: none;
@@ -909,6 +958,13 @@ def page() -> bytes:
       .summary, .metrics {
         grid-template-columns: 1fr;
       }
+      .health-row {
+        grid-template-columns: 1fr;
+        gap: 5px;
+      }
+      .health-time {
+        text-align: left;
+      }
       .house-wrap {
         padding: 10px;
       }
@@ -963,6 +1019,25 @@ def page() -> bytes:
         <div class="label">Signal</div>
         <div class="value" id="avg-rssi">--</div>
         <div class="subvalue">Average RSSI</div>
+      </div>
+    </section>
+
+    <section class="panel system-health" aria-label="System health">
+      <div class="panel-head">
+        <h2>System Health</h2>
+        <span class="muted" id="monitoring-count">No monitoring events</span>
+      </div>
+      <div class="health-list">
+        <div class="health-row">
+          <span class="status" id="post-reboot-status"><span class="dot"></span> Post Reboot</span>
+          <span class="health-message" id="post-reboot-message">No check recorded</span>
+          <span class="health-time" id="post-reboot-time">--</span>
+        </div>
+        <div class="health-row">
+          <span class="status" id="watchdog-status"><span class="dot"></span> Watchdog</span>
+          <span class="health-message" id="watchdog-message">No relay event recorded</span>
+          <span class="health-time" id="watchdog-time">--</span>
+        </div>
       </div>
     </section>
 
@@ -1256,10 +1331,41 @@ def page() -> bytes:
       if (!metric || typeof metric.temperatureF !== "number") {
         element.textContent = "Pi --";
         element.title = "No Raspberry Pi temperature sample available";
+        renderSystemHealth(metric);
         return;
       }
       element.textContent = `Pi ${metric.temperatureF.toFixed(1)} F`;
       element.title = `CPU temperature sampled ${metric.ageSeconds ?? "?"} seconds ago`;
+      renderSystemHealth(metric);
+    }
+
+    function eventStateClass(event) {
+      if (!event) return "stale";
+      if (event.status === "ok") return "online";
+      if (event.severity === "critical" || event.status === "recovery") return "offline";
+      return "stale";
+    }
+
+    function setHealthRow(prefix, event, emptyMessage) {
+      const status = document.getElementById(`${prefix}-status`);
+      const message = document.getElementById(`${prefix}-message`);
+      const time = document.getElementById(`${prefix}-time`);
+      status.className = `status ${eventStateClass(event)}`;
+      if (event) {
+        message.textContent = event.message || event.eventType || emptyMessage;
+        time.textContent = relativeTime(event.createdAt);
+      } else {
+        message.textContent = emptyMessage;
+        time.textContent = "--";
+      }
+    }
+
+    function renderSystemHealth(system) {
+      const monitoring = system?.monitoring || {};
+      const events = Array.isArray(monitoring.latestEvents) ? monitoring.latestEvents : [];
+      setText("monitoring-count", `${events.length} recent monitoring event${events.length === 1 ? "" : "s"}`);
+      setHealthRow("post-reboot", monitoring.latestPostReboot, "No check recorded");
+      setHealthRow("watchdog", monitoring.latestWatchdogRelay, "No relay event recorded");
     }
 
     function renderDevices(rows) {
@@ -1894,6 +2000,17 @@ class Handler(BaseHTTPRequestHandler):
         if parsed_path == "/api/system":
             with closing(connect(self.db_path)) as conn:
                 row = latest_system_metric(conn, "pi_cpu_temperature_f")
+                events = [monitoring_event_to_dict(event) for event in latest_monitoring_events(conn)]
+                post_reboot_events = [
+                    monitoring_event_to_dict(event)
+                    for event in latest_monitoring_events(
+                        conn, limit=1, event_type="post_reboot_check"
+                    )
+                ]
+                watchdog_events = [
+                    monitoring_event_to_dict(event)
+                    for event in latest_monitoring_events(conn, limit=1, event_type="watchdog_relay")
+                ]
             if row is None:
                 result = {"temperatureF": None, "sampledAt": None, "ageSeconds": None}
             else:
@@ -1906,6 +2023,11 @@ class Handler(BaseHTTPRequestHandler):
                     "sampledAt": row["created_at"],
                     "ageSeconds": age_seconds,
                 }
+            result["monitoring"] = {
+                "latestEvents": events,
+                "latestPostReboot": post_reboot_events[0] if post_reboot_events else None,
+                "latestWatchdogRelay": watchdog_events[0] if watchdog_events else None,
+            }
             payload = json.dumps(result).encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "application/json")

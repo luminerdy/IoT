@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ipaddress
+import json
 import re
 import sqlite3
 from pathlib import Path
@@ -49,6 +50,17 @@ REQUIRED_COLUMNS = {
         "updated_at",
     },
     "system_metrics": {"id", "metric", "value", "created_at"},
+}
+
+MONITORING_EVENT_COLUMNS = {
+    "id",
+    "source",
+    "event_type",
+    "severity",
+    "status",
+    "message",
+    "details_json",
+    "created_at",
 }
 
 
@@ -117,6 +129,26 @@ def validate_schema(conn: sqlite3.Connection, version: int) -> None:
         ).fetchone()
         if index is None:
             raise RuntimeError("database is missing the readings dedupe index")
+    if version >= 3:
+        columns = {
+            str(row["name"])
+            for row in conn.execute("PRAGMA table_info(monitoring_events)").fetchall()
+        }
+        missing = MONITORING_EVENT_COLUMNS - columns
+        if missing:
+            raise RuntimeError(
+                f"database table monitoring_events is missing columns: {sorted(missing)}"
+            )
+        for index_name in (
+            "idx_monitoring_events_created",
+            "idx_monitoring_events_type_created",
+        ):
+            index = conn.execute(
+                "SELECT sql FROM sqlite_master WHERE type = 'index' AND name = ?",
+                (index_name,),
+            ).fetchone()
+            if index is None:
+                raise RuntimeError(f"database is missing monitoring index: {index_name}")
 
 
 def apply_migrations(conn: sqlite3.Connection, target_version: int | None = None) -> None:
@@ -364,6 +396,71 @@ def latest_system_metric(conn: sqlite3.Connection, metric: str) -> sqlite3.Row |
         """,
         (metric,),
     ).fetchone()
+
+
+def record_monitoring_event(
+    conn: sqlite3.Connection,
+    *,
+    source: str,
+    event_type: str,
+    severity: str = "info",
+    status: str = "ok",
+    message: str | None = None,
+    details: dict | None = None,
+    created_at: str | None = None,
+) -> int:
+    details_json = json.dumps(details or {}, sort_keys=True) if details is not None else None
+    with conn:
+        if created_at is None:
+            cursor = conn.execute(
+                """
+                INSERT INTO monitoring_events (
+                    source, event_type, severity, status, message, details_json
+                )
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (source, event_type, severity, status, message, details_json),
+            )
+        else:
+            cursor = conn.execute(
+                """
+                INSERT INTO monitoring_events (
+                    source, event_type, severity, status, message, details_json, created_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (source, event_type, severity, status, message, details_json, created_at),
+            )
+        return int(cursor.lastrowid)
+
+
+def latest_monitoring_events(
+    conn: sqlite3.Connection,
+    *,
+    limit: int = 10,
+    event_type: str | None = None,
+) -> list[sqlite3.Row]:
+    safe_limit = max(1, min(int(limit), 100))
+    if event_type is None:
+        return conn.execute(
+            """
+            SELECT id, source, event_type, severity, status, message, details_json, created_at
+            FROM monitoring_events
+            ORDER BY created_at DESC, id DESC
+            LIMIT ?
+            """,
+            (safe_limit,),
+        ).fetchall()
+    return conn.execute(
+        """
+        SELECT id, source, event_type, severity, status, message, details_json, created_at
+        FROM monitoring_events
+        WHERE event_type = ?
+        ORDER BY created_at DESC, id DESC
+        LIMIT ?
+        """,
+        (event_type, safe_limit),
+    ).fetchall()
 
 
 def latest_readings(conn: sqlite3.Connection) -> list[sqlite3.Row]:

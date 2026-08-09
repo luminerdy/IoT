@@ -65,6 +65,29 @@ Do not manually toggle GPIO17 or initiate a PiServer shutdown merely to test the
 watchdog without explicit approval. Investigate repeated relay recoveries as a
 system, power, or network fault.
 
+Import recent watchdog relay events into the dashboard-visible monitoring table:
+
+```bash
+cd /home/scotty/IoT
+PYTHONPATH=app python3 -m iot_home.post_reboot_check \
+  --db data/iot.db \
+  --backup-dir data/backups \
+  --import-watchdog \
+  --watchdog-since '24 hours ago'
+```
+
+The command also records the current post-reboot health check. It is read-only
+except for inserting `monitoring_events` rows in SQLite.
+
+Install or refresh the boot-time recorder:
+
+```bash
+scripts/install_post_reboot_monitoring.sh
+```
+
+The unit is `iot-home-post-reboot-check.service`; it runs once after boot and
+imports the previous two hours of Pi3 watchdog journal entries.
+
 ## Backup Check
 
 Scheduled backups:
@@ -201,16 +224,17 @@ its unique broker user without using batch-mode passwords, and keep its CA and
 password outside the repository:
 
 The `--host` value must be a DNS/mDNS hostname present in the broker
-certificate's DNS subject-alternative-name. The pinned-CA bench gate proved
-that path; this ESP32 Arduino/mbedTLS version did not accept an IP-literal host
-with an IP subject-alternative-name.
+certificate's DNS subject-alternative-name. Use the Pi's resolvable mDNS name
+(`PiServer.local` on this installation). This ESP32 Arduino/mbedTLS version did
+not accept an IP-literal host with an IP subject-alternative-name, and
+`iot-pi.local` did not resolve from the ESP32 during the first live migration.
 
 ```bash
 scripts/add_mqtt_device_user.sh esp32-device-id
 PYTHONPATH=app .venv/bin/python -m iot_home.provision_mqtt \
   --serial-port /dev/ttyUSB0 \
   --device-id esp32-device-id \
-  --host iot-pi.local \
+  --host PiServer.local \
   --mqtt-port 8883 \
   --ca-cert /etc/mosquitto/certs/iot-home/ca.crt
 ```
@@ -351,4 +375,5 @@ After any reboot or restart:
 systemctl is-active mosquitto.service iot-home-collector.service iot-home-dashboard.service
 systemctl is-enabled mosquitto.service iot-home-collector.service iot-home-dashboard.service
 curl -fsS http://127.0.0.1:8000/api/latest
+PYTHONPATH=app python3 -m iot_home.post_reboot_check --db data/iot.db --backup-dir data/backups
 ```

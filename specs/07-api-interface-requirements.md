@@ -160,6 +160,14 @@ mapping, and an empty location clears it. Invalid JSON, invalid device IDs,
 and overlong locations are rejected with 400. Writes from non-local clients
 are rejected with 403 unless authenticated by a stronger deployment policy.
 
+**API-024A — `GET /api/system`** `SHOULD` (R5)
+Returns hub and monitoring status for the dashboard:
+`temperatureF, sampledAt, ageSeconds, monitoring`. `monitoring` contains
+`latestEvents[]`, `latestPostReboot`, and `latestWatchdogRelay`; monitoring
+events include `source, eventType, severity, status, message, details,
+createdAt`. Secrets and raw OTA URLs MUST NOT be included in monitoring event
+messages or details.
+
 **API-025 — `GET /firmware/<version>/firmware.bin?key=…`** `SHOULD` (R4)
 Serves staged firmware with correct `Content-Length`. Requires the SEC-016
 capability key (`?key=` query parameter) or operator Basic auth; anything

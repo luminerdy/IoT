@@ -46,13 +46,13 @@ Last updated: 2026-08-08
 The local-first IoT stack is running on PiServer. Mosquitto, the collector, and
 the dashboard are active and enabled. A parallel production MQTT TLS listener is
 active on `8883` alongside the unchanged shared-credential listener on `1883`.
-The latest check shows 22 active mapped devices, with SunroomDoor currently
-`offline` and no active stale devices. Seventeen active mapped devices remain
-on `0.1.8-arduinojson` build `2026080703`; five are on `0.1.9-nvs-tls` build
-`2026080707`: Sunroom Test, Den, Kitchen, Office, and MasterBedroom. Sunroom
-Test uses its NVS MQTT TLS profile and per-device username on `8883`; the four
-OTA-updated devices still use the compiled shared `1883` fallback until they
-are physically USB-provisioned.
+The last recorded TLS-rollout checkpoint showed 22 active mapped devices, with
+SunroomDoor offline and no active stale devices. After that, Sunroom Test was
+recovered over USB and is intentionally back on the compiled shared `1883`
+fallback. The active `0.1.9-nvs-tls` firmware set includes Sunroom Test, Den,
+Kitchen, Office, MasterBedroom, and LaundryroomAC, but only Sunroom Test has
+ever been USB-provisioned with a per-device TLS profile; that profile is now
+cleared pending a hostname-resolution fix.
 The separate retired `UNMAPPED` AtticChimney record remains on
 `0.1.6-recovery`; it is currently online/non-stale but was intentionally
 excluded from active fleet operations.
@@ -65,6 +65,14 @@ Read-only dashboard access remains explicitly open on the home LAN, while
 are locked against concurrent lost updates, request database connections close
 explicitly, and schema initialization runs only at startup. Credentials remain
 local in protected environment files and are not tracked.
+
+On 2026-08-09, `Sunroom Test` was recovered over `/dev/ttyUSB0` after reporting
+offline. Serial logs showed the NVS TLS profile failing ESP32 DNS resolution for
+`PiServer.local:8883`; clearing the NVS profile restored the compiled fallback
+profile, and a USB reflash of the exact staged `0.1.9-nvs-tls` artifact
+`3420e492e3d450886326885c65d1b3b6706f97ccab21724f5b58f75f1c61d501` restored
+fresh fallback MQTT telemetry at 17:38:02. Do not re-provision TLS on Sunroom
+Test until the ESP32 broker hostname strategy is fixed or deliberately changed.
 
 ## Recovery Firmware Bench State
 
@@ -164,15 +172,19 @@ Bench validation completed:
    non-attic `0.1.9-nvs-tls` OTA rollout. The rollout stopped before
    LaundryroomAC because SunroomDoor, which had not yet been updated, reported
    `offline` for the full follow-up watch.
-2. Continue the incremental production MQTT TLS/per-device credential migration
+2. Fix the ESP32 MQTT TLS hostname-resolution path before re-provisioning
+   Sunroom Test or migrating another physical device to per-device TLS. The
+   recovered Sunroom Test should remain on compiled shared `1883` fallback for
+   now.
+3. Continue the incremental production MQTT TLS/per-device credential migration
    one physical USB device at a time, or continue the remaining SEC-015 config
    parsing and device-side JSON construction work. Do not retire the shared
    `1883` listener or shared fleet credential until every active device has
    been individually provisioned and observed.
-3. Continue watchdog/fleet/attic monitoring. If another watchdog relay recovery
+4. Continue watchdog/fleet/attic monitoring. If another watchdog relay recovery
    occurs within 24 hours or repeated recoveries appear within a week,
    investigate PiServer power/network/system health before relying on the relay.
-4. Decide whether to remap or re-retire the returned `UNMAPPED` device.
+5. Decide whether to remap or re-retire the returned `UNMAPPED` device.
 
 ## Working Tree
 

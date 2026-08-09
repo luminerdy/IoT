@@ -177,13 +177,15 @@ Status: Phases 0 through 4 are complete for the current local-first system. Sign
 
 ## Live Dashboard State
 
-The latest dashboard API check on 2026-08-08 shows 22 active mapped devices,
-with SunroomDoor currently `offline` and no active stale devices. Seventeen
-active mapped devices remain on `0.1.8-arduinojson`; five are on
-`0.1.9-nvs-tls`: Sunroom Test, Den, Kitchen, Office, and MasterBedroom. Sunroom
-Test uses its NVS MQTT TLS profile on production listener `8883`; the four OTA
-updated devices are still on the compiled shared-credential fallback through
-`1883` until they are physically USB-provisioned. The additional `UNMAPPED`
+The latest documented 2026-08-08 TLS-rollout checkpoint showed 22 active mapped
+devices, with SunroomDoor offline and no active stale devices. On 2026-08-09,
+Sunroom Test was recovered over `/dev/ttyUSB0`: its NVS MQTT TLS profile failed
+ESP32 DNS resolution for `PiServer.local:8883`, the profile was cleared, and a
+USB reflash of exact build `0.1.9-nvs-tls` `2026080707` restored fresh compiled
+fallback telemetry through shared `1883`. The active TLS-capable firmware set
+includes Sunroom Test, Den, Kitchen, Office, MasterBedroom, and LaundryroomAC,
+but no device should be re-provisioned onto per-device TLS until the ESP32
+broker hostname strategy is fixed or deliberately changed. The additional `UNMAPPED`
 record associated with the temporarily retired `AtticChimney` remains on
 `0.1.6-recovery`; it is currently online/non-stale but remains excluded from
 the active mapped fleet until it is intentionally remapped or re-retired. The
@@ -210,11 +212,10 @@ production build was reflashed and reverified on `Sunroom Test`.
   still excluded from the active mapped fleet.
 - Recovery firmware count: 0 active devices; only the excluded retired
   `UNMAPPED` record remains on `0.1.6-recovery` build `2026072401`.
-- Firmware count: 17 active mapped devices on `0.1.8-arduinojson` build
-  `2026080703`; 5 active mapped devices on `0.1.9-nvs-tls` build
-  `2026080707`. Sunroom Test connects through MQTT TLS on `8883`; Den,
-  Kitchen, Office, and MasterBedroom are on the TLS-capable firmware but still
-  use the compiled shared `1883` fallback.
+- Firmware count at the latest live recovery checkpoint: 16 active mapped
+  devices on `0.1.8-arduinojson` build `2026080703`; 6 active mapped devices
+  on `0.1.9-nvs-tls` build `2026080707`. Sunroom Test's NVS TLS profile is
+  cleared; it uses compiled shared `1883` fallback after USB reflash.
 - Deployed signed-OTA release: build `2026080703` passed the committed-artifact
   signed OTA and release soak gates. Its staged, served, clean-rebuilt, and
   merged-main binaries exact-match the recorded SHA-256.
@@ -236,20 +237,22 @@ production build was reflashed and reverified on `Sunroom Test`.
 
 ## Next Actions
 
-1. Plan a separately approved, incremental production MQTT TLS/per-device
+1. Fix the ESP32 MQTT TLS broker hostname-resolution path before re-provisioning
+   Sunroom Test or migrating another physical device to per-device TLS.
+2. Plan a separately approved, incremental production MQTT TLS/per-device
    credential migration; do not retire the shared fallback until every active
    device has passed its migration check.
-2. Convert remaining firmware config parsing and JSON construction to
+3. Convert remaining firmware config parsing and JSON construction to
    ArduinoJson to complete SEC-015.
-3. Extract dashboard HTML/CSS/JavaScript into static assets after the security
+4. Extract dashboard HTML/CSS/JavaScript into static assets after the security
    and data milestones above.
-4. Monitor the Pi3 watchdog with its production threshold of 10 consecutive
+5. Monitor the Pi3 watchdog with its production threshold of 10 consecutive
    one-minute failures; repeated recovery cycles should be recorded through
    `iot_home.post_reboot_check --import-watchdog` and investigated rather than
    treated as normal.
-5. Decide whether to remap or re-retire the online `UNMAPPED` device that
+6. Decide whether to remap or re-retire the online `UNMAPPED` device that
    returned after the 2026-08-05 power-cycle test.
-6. Keep the USB bench device on `/dev/ttyUSB0` for firmware validation; replace
+7. Keep the USB bench device on `/dev/ttyUSB0` for firmware validation; replace
     retired `AtticChimney` only when attic access is safe, continue attic heat
     monitoring, upload the house image, and keep periodic backup restore checks.
 

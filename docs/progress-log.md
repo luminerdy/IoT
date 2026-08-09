@@ -2,6 +2,27 @@
 
 ## 2026-08-09
 
+### Sunroom Test USB Recovery
+
+- Investigated `Sunroom Test` / `esp32-9c9c1fda3670` after it appeared
+  offline while physically connected on `/dev/ttyUSB0`. USB enumeration was
+  present and readable/writable by the `dialout` user.
+- Captured direct serial logs. Firmware `0.1.9-nvs-tls` build `2026080707`
+  booted, connected to Wi-Fi at `10.10.10.124`, and synchronized time. Its NVS
+  TLS profile attempted `PiServer.local:8883` but failed ESP32 DNS resolution.
+- Cleared only the NVS MQTT profile over USB. The device rebooted into the
+  compiled fallback profile and attempted `10.10.10.123:1883`, but initially
+  still reported `MQTT connect failed, state=-2`.
+- Reflashed the exact staged `0.1.9-nvs-tls` build over USB. The flashed app
+  binary exact-matched staged SHA-256
+  `3420e492e3d450886326885c65d1b3b6706f97ccab21724f5b58f75f1c61d501`; the
+  upload succeeded and verified all written segments.
+- The collector then recorded fresh `Sunroom Test` telemetry at
+  `2026-08-09 17:38:02`, confirming the device recovered on the compiled
+  fallback MQTT path. Do not re-provision TLS on this device until the ESP32
+  hostname-resolution issue is understood or a stable broker hostname strategy
+  is chosen.
+
 ### Watchdog and Post-Reboot Monitoring
 
 - Added persistent `monitoring_events` storage for local health events. The

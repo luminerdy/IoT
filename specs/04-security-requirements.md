@@ -40,6 +40,9 @@ to equal its hardware-derived device ID, and stores the complete profile as one
 NVS string. A valid NVS profile overrides the compiled shared fallback. The
 fallback remains only to keep unprovisioned devices reachable during staged
 migration and must be retired after every active device is provisioned.
+Schema version 2 separates the TCP connect endpoint from the DNS hostname used
+for SNI and certificate verification, so devices may connect to a stable hub IP
+while still validating a broker certificate DNS SAN.
 
 **SEC-003 — Topic ACLs on every listener** `MUST` `[CHANGE]`
 ACLs restrict each device user to its own topic subtree: write telemetry/

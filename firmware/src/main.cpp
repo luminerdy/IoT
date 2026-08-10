@@ -64,6 +64,49 @@ DHT dht(DHT_PIN, DHT_TYPE);
 
 WiFiClient plainWifiClient;
 WiFiClientSecure secureWifiClient;
+class TlsNamedHostClient : public Client {
+ public:
+  explicit TlsNamedHostClient(WiFiClientSecure &client) : client_(client) {}
+
+  void configure(const char *tls_hostname, const char *ca_cert)
+  {
+    tls_hostname_ = tls_hostname;
+    ca_cert_ = ca_cert;
+    client_.setCACert(ca_cert_);
+  }
+
+  int connect(IPAddress ip, uint16_t port) override
+  {
+    return client_.connect(ip, port, tls_hostname_, ca_cert_, nullptr, nullptr);
+  }
+
+  int connect(const char *host, uint16_t port) override
+  {
+    IPAddress address;
+    if (!address.fromString(host) && !WiFi.hostByName(host, address)) {
+      return 0;
+    }
+    return client_.connect(address, port, tls_hostname_, ca_cert_, nullptr, nullptr);
+  }
+
+  size_t write(uint8_t value) override { return client_.write(value); }
+  size_t write(const uint8_t *buffer, size_t size) override { return client_.write(buffer, size); }
+  int available() override { return client_.available(); }
+  int read() override { return client_.read(); }
+  int read(uint8_t *buffer, size_t size) override { return client_.read(buffer, size); }
+  int peek() override { return client_.peek(); }
+  void flush() override { client_.flush(); }
+  void stop() override { client_.stop(); }
+  uint8_t connected() override { return client_.connected(); }
+  operator bool() override { return client_; }
+
+ private:
+  WiFiClientSecure &client_;
+  const char *tls_hostname_ = "";
+  const char *ca_cert_ = "";
+};
+
+TlsNamedHostClient tlsNamedHostClient(secureWifiClient);
 PubSubClient mqtt;
 mqtt_provisioning::Settings mqttSettings{};
 mqtt_provisioning::Settings mqttProvisioningCandidate{};
@@ -283,7 +326,8 @@ void buildDeviceIdentity()
 
 void loadCompiledMqttSettings()
 {
-  snprintf(mqttSettings.host, sizeof(mqttSettings.host), "%s", MQTT_HOST);
+  snprintf(mqttSettings.connect_host, sizeof(mqttSettings.connect_host), "%s", MQTT_HOST);
+  snprintf(mqttSettings.tls_hostname, sizeof(mqttSettings.tls_hostname), "%s", MQTT_HOST);
   mqttSettings.port = MQTT_PORT;
   snprintf(mqttSettings.username, sizeof(mqttSettings.username), "%s", MQTT_USER);
   snprintf(mqttSettings.password, sizeof(mqttSettings.password), "%s", MQTT_PASSWORD);
@@ -338,12 +382,12 @@ void loadMqttSettings()
 void configureMqttTransport()
 {
   if (mqttSettings.use_tls) {
-    secureWifiClient.setCACert(mqttSettings.ca_cert);
-    mqtt.setClient(secureWifiClient);
+    tlsNamedHostClient.configure(mqttSettings.tls_hostname, mqttSettings.ca_cert);
+    mqtt.setClient(tlsNamedHostClient);
   } else {
     mqtt.setClient(plainWifiClient);
   }
-  mqtt.setServer(mqttSettings.host, mqttSettings.port);
+  mqtt.setServer(mqttSettings.connect_host, mqttSettings.port);
 }
 
 bool storeMqttProfile(const String &profile)
@@ -982,11 +1026,12 @@ bool connectMqtt()
   );
 
   Serial.printf(
-    "Connecting to MQTT %s:%u as %s tls=%d\n",
-    mqttSettings.host,
+    "Connecting to MQTT %s:%u as %s tls=%d tlsHost=%s\n",
+    mqttSettings.connect_host,
     static_cast<unsigned int>(mqttSettings.port),
     deviceId,
-    mqttSettings.use_tls ? 1 : 0
+    mqttSettings.use_tls ? 1 : 0,
+    mqttSettings.tls_hostname
   );
   bool connected = mqtt.connect(
     deviceId,

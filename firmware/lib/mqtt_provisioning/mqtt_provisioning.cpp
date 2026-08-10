@@ -9,8 +9,10 @@
 namespace mqtt_provisioning {
 namespace {
 
-constexpr int PROFILE_SCHEMA_VERSION = 1;
-constexpr size_t EXPECTED_FIELD_COUNT = 7;
+constexpr int PROFILE_SCHEMA_VERSION_V1 = 1;
+constexpr int PROFILE_SCHEMA_VERSION_V2 = 2;
+constexpr size_t EXPECTED_FIELD_COUNT_V1 = 7;
+constexpr size_t EXPECTED_FIELD_COUNT_V2 = 8;
 constexpr const char *CA_BEGIN = "-----BEGIN CERTIFICATE-----\n";
 constexpr const char *CA_END = "\n-----END CERTIFICATE-----\n";
 
@@ -35,7 +37,7 @@ bool copy_bounded(char *target, size_t target_length, const char *value)
   return true;
 }
 
-bool valid_host(const char *host)
+bool valid_host_name_or_ip(const char *host)
 {
   if (host == nullptr) {
     return false;
@@ -51,6 +53,35 @@ bool valid_host(const char *host)
     }
   }
   return true;
+}
+
+bool valid_dns_hostname(const char *host)
+{
+  if (!valid_host_name_or_ip(host)) {
+    return false;
+  }
+  size_t length = strlen(host);
+  bool has_alpha = false;
+  bool has_dot = false;
+  char previous = '\0';
+  for (size_t index = 0; index < length; index++) {
+    char value = host[index];
+    if (isalpha(static_cast<unsigned char>(value))) {
+      has_alpha = true;
+    }
+    if (value == '.') {
+      if (index == 0 || index + 1 == length || previous == '.') {
+        return false;
+      }
+      has_dot = true;
+    }
+    if ((value == '-' && (index == 0 || index + 1 == length || previous == '.')) ||
+        (previous == '-' && value == '.')) {
+      return false;
+    }
+    previous = value;
+  }
+  return has_alpha && has_dot;
 }
 
 bool valid_ca_certificate(const char *certificate)
@@ -101,6 +132,7 @@ bool valid_ca_certificate(const char *certificate)
 bool known_field(const char *key)
 {
   return strcmp(key, "schemaVersion") == 0 || strcmp(key, "mqttHost") == 0 ||
+    strcmp(key, "mqttConnectHost") == 0 || strcmp(key, "mqttTlsHostname") == 0 ||
     strcmp(key, "mqttPort") == 0 || strcmp(key, "mqttUsername") == 0 ||
     strcmp(key, "mqttPassword") == 0 || strcmp(key, "mqttUseTls") == 0 ||
     strcmp(key, "mqttCaCert") == 0;
@@ -138,7 +170,19 @@ bool parse_profile(
   }
 
   JsonObject object = document.as<JsonObject>();
-  if (object.size() != EXPECTED_FIELD_COUNT) {
+  if (!object["schemaVersion"].is<int>()) {
+    set_error(error, error_length, "provisioning schema invalid");
+    return false;
+  }
+  int schema_version = object["schemaVersion"].as<int>();
+  if (schema_version != PROFILE_SCHEMA_VERSION_V1 && schema_version != PROFILE_SCHEMA_VERSION_V2) {
+    set_error(error, error_length, "provisioning schema invalid");
+    return false;
+  }
+
+  size_t expected_field_count =
+    schema_version == PROFILE_SCHEMA_VERSION_V1 ? EXPECTED_FIELD_COUNT_V1 : EXPECTED_FIELD_COUNT_V2;
+  if (object.size() != expected_field_count) {
     set_error(error, error_length, "provisioning profile fields invalid");
     return false;
   }
@@ -149,13 +193,17 @@ bool parse_profile(
     }
   }
 
-  if (!object["schemaVersion"].is<int>() ||
-      object["schemaVersion"].as<int>() != PROFILE_SCHEMA_VERSION) {
-    set_error(error, error_length, "provisioning schema invalid");
+  if (schema_version == PROFILE_SCHEMA_VERSION_V1 && !object["mqttHost"].is<const char *>()) {
+    set_error(error, error_length, "provisioning field types invalid");
     return false;
   }
-  if (!object["mqttHost"].is<const char *>() ||
-      !object["mqttUsername"].is<const char *>() ||
+  if (schema_version == PROFILE_SCHEMA_VERSION_V2 &&
+      (!object["mqttConnectHost"].is<const char *>() ||
+       !object["mqttTlsHostname"].is<const char *>())) {
+    set_error(error, error_length, "provisioning field types invalid");
+    return false;
+  }
+  if (!object["mqttUsername"].is<const char *>() ||
       !object["mqttPassword"].is<const char *>() ||
       !object["mqttCaCert"].is<const char *>() ||
       !object["mqttPort"].is<unsigned int>() || !object["mqttUseTls"].is<bool>()) {
@@ -163,15 +211,24 @@ bool parse_profile(
     return false;
   }
 
-  const char *host = object["mqttHost"].as<const char *>();
+  const char *connect_host = schema_version == PROFILE_SCHEMA_VERSION_V1
+    ? object["mqttHost"].as<const char *>()
+    : object["mqttConnectHost"].as<const char *>();
+  const char *tls_hostname = schema_version == PROFILE_SCHEMA_VERSION_V1
+    ? object["mqttHost"].as<const char *>()
+    : object["mqttTlsHostname"].as<const char *>();
   unsigned int port = object["mqttPort"].as<unsigned int>();
   const char *username = object["mqttUsername"].as<const char *>();
   const char *password = object["mqttPassword"].as<const char *>();
   bool use_tls = object["mqttUseTls"].as<bool>();
   const char *ca_cert = object["mqttCaCert"].as<const char *>();
 
-  if (!valid_host(host)) {
-    set_error(error, error_length, "MQTT host invalid");
+  if (!valid_host_name_or_ip(connect_host)) {
+    set_error(error, error_length, "MQTT connect host invalid");
+    return false;
+  }
+  if (!valid_dns_hostname(tls_hostname)) {
+    set_error(error, error_length, "MQTT TLS hostname invalid");
     return false;
   }
   if (port == 0 || port > 65535) {
@@ -204,7 +261,8 @@ bool parse_profile(
   }
 
   memset(settings, 0, sizeof(*settings));
-  if (!copy_bounded(settings->host, sizeof(settings->host), host) ||
+  if (!copy_bounded(settings->connect_host, sizeof(settings->connect_host), connect_host) ||
+      !copy_bounded(settings->tls_hostname, sizeof(settings->tls_hostname), tls_hostname) ||
       !copy_bounded(settings->username, sizeof(settings->username), username) ||
       !copy_bounded(settings->password, sizeof(settings->password), password) ||
       !copy_bounded(settings->ca_cert, sizeof(settings->ca_cert), ca_cert)) {

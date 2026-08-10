@@ -213,6 +213,10 @@ using its unique identity and the production ACL. A mismatched identity was
 rejected, cross-device publish was denied, and clearing the profile restored
 fresh `OK` telemetry through the unchanged production fallback.
 
+*Follow-up fix (2026-08-10):* schema version 2 profiles separate
+`mqttConnectHost` from `mqttTlsHostname` so the bench device can connect to the
+hub IP while preserving certificate/SNI verification against the broker DNS SAN.
+
 ## Operations
 
 **AC-040** (FR-044, DATA-007, TEST-030)

@@ -223,18 +223,20 @@ the live Mosquitto listener. First confirm the target on `/dev/ttyUSB0`, create
 its unique broker user without using batch-mode passwords, and keep its CA and
 password outside the repository:
 
-The `--host` value must be a DNS/mDNS hostname present in the broker
-certificate's DNS subject-alternative-name. Use the Pi's resolvable mDNS name
-(`PiServer.local` on this installation). This ESP32 Arduino/mbedTLS version did
-not accept an IP-literal host with an IP subject-alternative-name, and
-`iot-pi.local` did not resolve from the ESP32 during the first live migration.
+Schema v2 separates the TCP endpoint from the TLS verification name. Use a
+reliable `--connect-host` endpoint, such as the Pi LAN IP, and a
+`--tls-hostname` value that appears in the broker certificate's DNS
+subject-alternative-name (`PiServer.local` on this installation). This preserves
+certificate/SNI validation while avoiding ESP32 mDNS resolution failures. The
+legacy `--host` alias still sends one hostname for both roles.
 
 ```bash
 scripts/add_mqtt_device_user.sh esp32-device-id
 PYTHONPATH=app .venv/bin/python -m iot_home.provision_mqtt \
   --serial-port /dev/ttyUSB0 \
   --device-id esp32-device-id \
-  --host PiServer.local \
+  --connect-host 10.10.10.123 \
+  --tls-hostname PiServer.local \
   --mqtt-port 8883 \
   --ca-cert /etc/mosquitto/certs/iot-home/ca.crt
 ```

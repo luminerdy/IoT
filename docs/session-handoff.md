@@ -46,13 +46,12 @@ Last updated: 2026-08-08
 The local-first IoT stack is running on PiServer. Mosquitto, the collector, and
 the dashboard are active and enabled. A parallel production MQTT TLS listener is
 active on `8883` alongside the unchanged shared-credential listener on `1883`.
-The last recorded TLS-rollout checkpoint showed 22 active mapped devices, with
-SunroomDoor offline and no active stale devices. After that, Sunroom Test was
-recovered over USB and is intentionally back on the compiled shared `1883`
-fallback. The active `0.1.9-nvs-tls` firmware set includes Sunroom Test, Den,
-Kitchen, Office, MasterBedroom, and LaundryroomAC, but only Sunroom Test has
-ever been USB-provisioned with a per-device TLS profile; that profile is now
-cleared pending a hostname-resolution fix.
+The fleet rollout remains paused; no fleet OTA was sent for the TLS hostname
+fix. Sunroom Test is now USB-flashed with bench-only `0.1.10-tls-host` build
+`2026081001`; Den, Kitchen, Office, MasterBedroom, and LaundryroomAC remain on
+`0.1.9-nvs-tls`, and the rest of the active mapped fleet remains on
+`0.1.8-arduinojson`. Sunroom Test's NVS MQTT profile is cleared after bench
+validation, so it is intentionally back on compiled shared `1883` fallback.
 The separate retired `UNMAPPED` AtticChimney record remains on
 `0.1.6-recovery`; it is currently online/non-stale but was intentionally
 excluded from active fleet operations.
@@ -73,6 +72,20 @@ profile, and a USB reflash of the exact staged `0.1.9-nvs-tls` artifact
 `3420e492e3d450886326885c65d1b3b6706f97ccab21724f5b58f75f1c61d501` restored
 fresh fallback MQTT telemetry at 17:38:02. Do not re-provision TLS on Sunroom
 Test until the ESP32 broker hostname strategy is fixed or deliberately changed.
+
+On 2026-08-10, schema version 2 profiles fixed that hostname strategy by
+separating `mqttConnectHost` from `mqttTlsHostname`. Exact firmware
+`0.1.10-tls-host` build `2026081001` was USB-flashed to Sunroom Test; binary
+SHA-256 was `afae56195002d97e2b397b51519f1a06df505d08c5ec180b32bbd25a79650ea8`.
+An isolated user-owned Mosquitto TLS listener on port `8884` used a temporary
+CA and a server certificate for `PiServer.local`. Sunroom Test was provisioned
+with `mqttConnectHost=10.10.10.123` and `mqttTlsHostname=PiServer.local`,
+connected from `10.10.10.124` as `esp32-9c9c1fda3670`, subscribed to its own
+command/config topics, and published retained status plus non-retained
+telemetry. The temporary broker was stopped, the NVS MQTT profile was cleared,
+and fresh production fallback telemetry through shared `1883` was verified.
+Production Mosquitto and listener `8883` were not changed because sudo access
+was unavailable in this session.
 
 ## Recovery Firmware Bench State
 
@@ -168,14 +181,12 @@ Bench validation completed:
 
 ## Pick Up Next
 
-1. Resolve or intentionally exempt SunroomDoor before resuming the hourly
-   non-attic `0.1.9-nvs-tls` OTA rollout. The rollout stopped before
-   LaundryroomAC because SunroomDoor, which had not yet been updated, reported
-   `offline` for the full follow-up watch.
-2. Fix the ESP32 MQTT TLS hostname-resolution path before re-provisioning
-   Sunroom Test or migrating another physical device to per-device TLS. The
-   recovered Sunroom Test should remain on compiled shared `1883` fallback for
-   now.
+1. Before resuming any rollout, run a fresh `/api/latest` fleet gate and confirm
+   no active mapped device is offline or stale.
+2. Decide whether to run a production `8883` schema v2 per-device TLS check on
+   Sunroom Test. Use `--connect-host 10.10.10.123 --tls-hostname PiServer.local`;
+   keep the NVS profile cleared afterward unless deliberately continuing the
+   production migration.
 3. Continue the incremental production MQTT TLS/per-device credential migration
    one physical USB device at a time, or continue the remaining SEC-015 config
    parsing and device-side JSON construction work. Do not retire the shared
@@ -188,10 +199,14 @@ Bench validation completed:
 
 ## Working Tree
 
+The working tree contains the schema v2 MQTT TLS hostname fix on top of `main`.
+Exact firmware `0.1.10-tls-host` build `2026081001` is 972,368 bytes when
+uploaded and has SHA-256
+`afae56195002d97e2b397b51519f1a06df505d08c5ec180b32bbd25a79650ea8`.
 `main` contains the NVS MQTT TLS implementation from PR #7, plus the live
 installer/doc fixes for production mDNS hostname support and Mosquitto builds
-without `-t`. Exact firmware
-`0.1.9-nvs-tls` build `2026080707` is 970,976 bytes with SHA-256
+without `-t`. Previous exact firmware `0.1.9-nvs-tls` build `2026080707` was
+970,976 bytes with SHA-256
 `3420e492e3d450886326885c65d1b3b6706f97ccab21724f5b58f75f1c61d501`.
 TEST-033 passed against an isolated TLS listener and production ACL, then the
 NVS profile was cleared and production fallback telemetry recovered. On

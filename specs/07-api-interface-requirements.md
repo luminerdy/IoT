@@ -210,9 +210,15 @@ USB serial port:
   state, stored-profile and parsed/active CA byte counts, and non-secret FNV-1a
   CA diagnostic fingerprints; it returns no endpoint, username, password, or
   certificate content.
-- `IOT_MQTT_PROVISION <json>` accepts exactly seven top-level fields:
-  `schemaVersion=1`, `mqttHost`, `mqttPort`, `mqttUsername`, `mqttPassword`,
-  `mqttUseTls=true`, and one PEM `mqttCaCert`. The username MUST equal the
+- `IOT_MQTT_PROVISION <json>` accepts bounded schema-versioned profiles. Schema
+  version 2 accepts exactly eight top-level fields: `schemaVersion=2`,
+  `mqttConnectHost`, `mqttTlsHostname`, `mqttPort`, `mqttUsername`,
+  `mqttPassword`, `mqttUseTls=true`, and one PEM `mqttCaCert`.
+  `mqttConnectHost` is the TCP endpoint and may be a resolvable hostname or IP
+  address; `mqttTlsHostname` MUST be a DNS hostname present in the broker
+  certificate SAN and is used for SNI/certificate verification. Firmware also
+  reads legacy schema version 1 with exactly seven fields, where `mqttHost` is
+  used for both TCP connection and TLS hostname. The username MUST equal the
   hardware-derived device ID. String, port, password, certificate, and total
   NVS-profile lengths are bounded. Unknown, nested, missing, incorrectly typed,
   plaintext, or oversized profiles are rejected without changing NVS.

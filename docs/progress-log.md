@@ -1,5 +1,32 @@
 # Progress Log
 
+## 2026-08-10
+
+### ESP32 TLS Hostname/Profile Bench Fix
+
+- Implemented schema version 2 for USB MQTT TLS provisioning profiles with
+  separate `mqttConnectHost` and `mqttTlsHostname` fields. The ESP32 now
+  connects to the TCP endpoint while passing the TLS hostname into
+  `WiFiClientSecure` for SNI and certificate verification.
+- Kept legacy schema version 1 readable, where `mqttHost` is used for both
+  roles. The host provisioning CLI now emits schema v2 and keeps the old
+  `--host` argument as a compatibility alias.
+- Built and USB-flashed exact bench firmware `0.1.10-tls-host` build
+  `2026081001` to Sunroom Test. Binary SHA-256:
+  `afae56195002d97e2b397b51519f1a06df505d08c5ec180b32bbd25a79650ea8`.
+- Because sudo was unavailable for production cert/password files, ran an
+  isolated user-owned Mosquitto TLS listener on port `8884` with a temporary CA
+  and a server certificate for `PiServer.local`. Provisioned Sunroom Test with
+  `mqttConnectHost=10.10.10.123` and `mqttTlsHostname=PiServer.local`.
+- Bench evidence: broker logs showed Sunroom Test connecting from
+  `10.10.10.124` as `esp32-9c9c1fda3670`, subscribing to its own
+  command/config topics, and publishing retained status plus non-retained
+  telemetry over TLS. The NVS MQTT profile was then cleared, the temporary
+  broker stopped, and fresh production fallback telemetry through shared
+  `1883` was verified.
+- Verification passed: full Python suite, all PlatformIO native tests, ESP32
+  firmware build, and firmware static analysis.
+
 ## 2026-08-09
 
 ### Sunroom Test USB Recovery

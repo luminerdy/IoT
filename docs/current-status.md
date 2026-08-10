@@ -186,11 +186,16 @@ The exact USB-flashed binary SHA-256 is
 Sunroom Test successfully connected to an isolated TLS Mosquitto listener on
 port `8884` using `10.10.10.123` as the TCP endpoint and `PiServer.local` as
 the TLS hostname, then published retained status and non-retained telemetry as
-its per-device username. The NVS MQTT profile was then cleared and fresh
-production fallback telemetry through shared `1883` was verified. The
-production `8883` listener was not restarted or changed. The active TLS-capable
-firmware set includes Sunroom Test, Den, Kitchen, Office, MasterBedroom, and
-LaundryroomAC, but only Sunroom Test has bench-tested the schema v2 profile.
+its per-device username. After that, Sunroom Test was provisioned against the
+real production `8883` listener with the same schema v2 endpoint split.
+`ss` showed an established `10.10.10.124` to `10.10.10.123:8883` socket owned
+by Mosquitto, retained status showed `0.1.10-tls-host`, and the dashboard API
+showed fresh `OK` telemetry. The NVS MQTT profile was then cleared and fresh
+production fallback telemetry through shared `1883` was verified. The Sunroom
+Test broker user password was rotated after the check and the temporary
+plaintext credential file was deleted. The active TLS-capable firmware set
+includes Sunroom Test, Den, Kitchen, Office, MasterBedroom, and LaundryroomAC,
+but only Sunroom Test has bench-tested the schema v2 profile on production TLS.
 The additional `UNMAPPED` record associated with the temporarily retired
 `AtticChimney` remains on `0.1.6-recovery`; it remains excluded from the active
 mapped fleet until it is intentionally remapped or re-retired. The dashboard
@@ -212,7 +217,7 @@ production build was reflashed and reverified on `Sunroom Test`.
 
 - Live fleet count: re-check `/api/latest` before acting; the latest
   documented 2026-08-10 post-bench check showed Sunroom Test online/non-stale
-  on `0.1.10-tls-host` after clearing the isolated TLS profile back to the
+  on `0.1.10-tls-host` after clearing the production TLS profile back to the
   compiled shared `1883` fallback.
 - Recovery firmware count: 0 active devices; only the excluded retired
   `UNMAPPED` record remains on `0.1.6-recovery` build `2026072401`.
@@ -220,7 +225,8 @@ production build was reflashed and reverified on `Sunroom Test`.
   on `0.1.8-arduinojson` build `2026080703`; 5 active mapped devices on
   `0.1.9-nvs-tls` build `2026080707`; Sunroom Test on `0.1.10-tls-host` build
   `2026081001`. Sunroom Test's NVS TLS profile is cleared; it uses compiled
-  shared `1883` fallback after USB reflash and isolated TLS validation.
+  shared `1883` fallback after USB reflash, isolated TLS validation, and a
+  production `8883` TLS validation.
 - Deployed signed-OTA release: build `2026080703` passed the committed-artifact
   signed OTA and release soak gates. Its staged, served, clean-rebuilt, and
   merged-main binaries exact-match the recorded SHA-256.
@@ -242,17 +248,15 @@ production build was reflashed and reverified on `Sunroom Test`.
 
 ## Next Actions
 
-1. Decide whether to run a production `8883` per-device TLS check on Sunroom
-   Test using schema v2 (`--connect-host 10.10.10.123 --tls-hostname
-   PiServer.local`) before migrating any additional physical device.
-2. Plan a separately approved, incremental production MQTT TLS/per-device
-   credential migration; do not retire the shared fallback until every active
-   device has passed its migration check.
-3. Convert remaining firmware config parsing and JSON construction to
+1. Plan a separately approved, incremental production MQTT TLS/per-device
+   credential migration, starting from a fresh fleet gate and one accessible
+   non-attic device at a time. Do not retire the shared fallback until every
+   active device has passed its migration check.
+2. Convert remaining firmware config parsing and JSON construction to
    ArduinoJson to complete SEC-015.
-4. Extract dashboard HTML/CSS/JavaScript into static assets after the security
+3. Extract dashboard HTML/CSS/JavaScript into static assets after the security
    and data milestones above.
-5. Monitor the Pi3 watchdog with its production threshold of 10 consecutive
+4. Monitor the Pi3 watchdog with its production threshold of 10 consecutive
    one-minute failures; repeated recovery cycles should be recorded through
    `iot_home.post_reboot_check --import-watchdog` and investigated rather than
    treated as normal.

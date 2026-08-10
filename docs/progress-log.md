@@ -24,6 +24,16 @@
   telemetry over TLS. The NVS MQTT profile was then cleared, the temporary
   broker stopped, and fresh production fallback telemetry through shared
   `1883` was verified.
+- Production `8883` check: after committing the fix, reset only the Sunroom
+  Test broker user to a generated temporary password, reloaded Mosquitto, and
+  verified local TLS auth against `PiServer.local:8883`. Provisioned Sunroom
+  Test with `mqttConnectHost=10.10.10.123` and
+  `mqttTlsHostname=PiServer.local`; `ss` showed an established
+  `10.10.10.124` to `10.10.10.123:8883` Mosquitto socket, retained status
+  showed `0.1.10-tls-host`, and the dashboard API showed fresh `OK` telemetry.
+  Cleared the NVS profile afterward, verified fresh fallback telemetry through
+  shared `1883`, rotated the broker user again to an unstored random password,
+  and deleted temporary credential/CA files.
 - Verification passed: full Python suite, all PlatformIO native tests, ESP32
   firmware build, and firmware static analysis.
 

@@ -82,10 +82,15 @@ CA and a server certificate for `PiServer.local`. Sunroom Test was provisioned
 with `mqttConnectHost=10.10.10.123` and `mqttTlsHostname=PiServer.local`,
 connected from `10.10.10.124` as `esp32-9c9c1fda3670`, subscribed to its own
 command/config topics, and published retained status plus non-retained
-telemetry. The temporary broker was stopped, the NVS MQTT profile was cleared,
-and fresh production fallback telemetry through shared `1883` was verified.
-Production Mosquitto and listener `8883` were not changed because sudo access
-was unavailable in this session.
+telemetry. After the fix was committed, production `8883` was checked too:
+Mosquitto was reloaded after resetting only the Sunroom Test broker user to a
+temporary generated password, Sunroom Test accepted the schema v2 production
+profile, `ss` showed an established `10.10.10.124` to
+`10.10.10.123:8883` socket, retained status showed `0.1.10-tls-host`, and the
+dashboard API showed fresh `OK` telemetry. The NVS MQTT profile was then
+cleared, fresh production fallback telemetry through shared `1883` was
+verified, the Sunroom Test broker user was rotated again to an unstored random
+password, and all temporary credential/CA files were deleted.
 
 ## Recovery Firmware Bench State
 
@@ -183,19 +188,15 @@ Bench validation completed:
 
 1. Before resuming any rollout, run a fresh `/api/latest` fleet gate and confirm
    no active mapped device is offline or stale.
-2. Decide whether to run a production `8883` schema v2 per-device TLS check on
-   Sunroom Test. Use `--connect-host 10.10.10.123 --tls-hostname PiServer.local`;
-   keep the NVS profile cleared afterward unless deliberately continuing the
-   production migration.
-3. Continue the incremental production MQTT TLS/per-device credential migration
+2. Continue the incremental production MQTT TLS/per-device credential migration
    one physical USB device at a time, or continue the remaining SEC-015 config
    parsing and device-side JSON construction work. Do not retire the shared
    `1883` listener or shared fleet credential until every active device has
    been individually provisioned and observed.
-4. Continue watchdog/fleet/attic monitoring. If another watchdog relay recovery
+3. Continue watchdog/fleet/attic monitoring. If another watchdog relay recovery
    occurs within 24 hours or repeated recoveries appear within a week,
    investigate PiServer power/network/system health before relying on the relay.
-5. Decide whether to remap or re-retire the returned `UNMAPPED` device.
+4. Decide whether to remap or re-retire the returned `UNMAPPED` device.
 
 ## Working Tree
 

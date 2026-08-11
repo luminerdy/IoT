@@ -12,7 +12,7 @@ The project is a local-first Raspberry Pi IoT system with MQTT, SQLite, a boot-e
 
 Phase 5: Fleet operations plus daily dashboard improvements
 
-Status: Phases 0 through 4 are complete for the current local-first system. Signed OTA hardening and signed build-number anti-rollback are live. USB-connected Sunroom Test is on bench-only `0.1.10-tls-host` build `2026081001`, which fixes the ESP32 MQTT TLS profile path by separating the TCP connect host from the TLS/SNI verification hostname. Den, Kitchen, Office, MasterBedroom, and LaundryroomAC remain on `0.1.9-nvs-tls` while continuing to use the unchanged shared-credential `1883` fallback. The hourly rollout remains paused; no fleet OTA was sent for the hostname fix. `AtticChimney` is temporarily retired pending safe physical replacement; its separate `UNMAPPED` record remains on `0.1.6-recovery`. Watchdog/post-reboot events are stored in `monitoring_events` and surfaced in the dashboard System Health panel. The active work is Phase 5: fleet operations, dashboard maintenance workflows, backups, tests/CI, and staged security hardening.
+Status: Phases 0 through 4 are complete for the current local-first system. Signed OTA hardening and signed build-number anti-rollback are live. USB-connected Sunroom Test, Den, Kitchen, Office, and MasterBedroom are on `0.1.11-sec015-json` build `2026081002`, which keeps the MQTT TLS hostname fix and completes SEC-015 device JSON parsing/construction. LaundryroomAC remains on `0.1.9-nvs-tls` while continuing to use the unchanged shared-credential `1883` fallback. The one-device-at-a-time SEC-015 rollout is paused after Kitchen reported `restartReason=Brownout`, `uptimeSeconds=7`, and `seq=1` during burn-in and then continued showing repeated normalized `seq=1` resets; after explicit acceptance to continue, MasterBedroom accepted the OTA but failed burn-in with `restartReason=InterruptWatchdog`, `uptimeSeconds=5`, and `seq=1` at `2026-08-10T23:59:22Z`. No further OTA should be sent until the reset behavior on Kitchen and MasterBedroom is understood or explicitly accepted. Office passed its separate one-hour burn-in. `AtticChimney` is temporarily retired pending safe physical replacement; its separate `UNMAPPED` record remains on `0.1.6-recovery`. Watchdog/post-reboot events are stored in `monitoring_events` and surfaced in the dashboard System Health panel. The active work is Phase 5: fleet operations, dashboard maintenance workflows, backups, tests/CI, and staged security hardening.
 
 ## Accomplished
 
@@ -141,6 +141,20 @@ Status: Phases 0 through 4 are complete for the current local-first system. Sign
   target build, passed a 3,601-second six-interval soak, passed config
   apply/reject/restore and signed rollback checks, and rejected an invalid
   firmware signature after download without rebooting. PR #5 CI is green.
+- Completed the remaining SEC-015 source refactor on 2026-08-10: retained
+  config parsing and device-side status/LWT/config-response/OTA-status/
+  telemetry JSON construction now use ArduinoJson with bounded serialization.
+  The exact `0.1.11-sec015-json` build `2026081002` was USB-flashed to Sunroom
+  Test, rejected malformed/wrong-type config and OTA probes without download,
+  restored default config through an empty retained payload, and passed the next
+  600-second interval telemetry check. No fleet OTA was sent.
+- Started the separately approved one-device-at-a-time SEC-015 signed OTA
+  rollout. Den updated cleanly and passed a one-hour burn-in. Kitchen updated
+  and returned `OK` telemetry, but raw telemetry during burn-in reported
+  `restartReason=Brownout`, `uptimeSeconds=7`, and `seq=1`; after explicit
+  acceptance to continue, Office updated cleanly and passed a one-hour burn-in.
+  The rollout is paused again because Kitchen continued showing repeated
+  normalized `seq=1` resets afterward.
 - Merged PR #5 as `9029754`, rebuilt the merged `main` artifact, and confirmed
   it exact-matched the signed and bench-tested binary. Rolled it to the 21
   remaining active devices in five acknowledged batches. GarageDriveway's
@@ -177,25 +191,33 @@ Status: Phases 0 through 4 are complete for the current local-first system. Sign
 
 ## Live Dashboard State
 
-The latest documented 2026-08-10 TLS bench checkpoint has Sunroom Test on
-`0.1.10-tls-host` build `2026081001`. Schema version 2 MQTT profiles now carry
-separate `mqttConnectHost` and `mqttTlsHostname` fields, allowing the ESP32 to
-connect to the hub IP while still validating the broker certificate DNS SAN.
-The exact USB-flashed binary SHA-256 is
-`afae56195002d97e2b397b51519f1a06df505d08c5ec180b32bbd25a79650ea8`.
-Sunroom Test successfully connected to an isolated TLS Mosquitto listener on
-port `8884` using `10.10.10.123` as the TCP endpoint and `PiServer.local` as
-the TLS hostname, then published retained status and non-retained telemetry as
-its per-device username. After that, Sunroom Test was provisioned against the
-real production `8883` listener with the same schema v2 endpoint split.
-`ss` showed an established `10.10.10.124` to `10.10.10.123:8883` socket owned
-by Mosquitto, retained status showed `0.1.10-tls-host`, and the dashboard API
-showed fresh `OK` telemetry. The NVS MQTT profile was then cleared and fresh
-production fallback telemetry through shared `1883` was verified. The Sunroom
-Test broker user password was rotated after the check and the temporary
-plaintext credential file was deleted. The active TLS-capable firmware set
-includes Sunroom Test, Den, Kitchen, Office, MasterBedroom, and LaundryroomAC,
-but only Sunroom Test has bench-tested the schema v2 profile on production TLS.
+The latest documented 2026-08-10 bench checkpoint has Sunroom Test on
+`0.1.11-sec015-json` build `2026081002`, SHA-256
+`91440aa1077ea305d0b8c672b856e16119b14f6156cac1051cfea34a45da6c22`,
+977,040 bytes. It keeps schema version 2 MQTT profiles with separate
+`mqttConnectHost` and `mqttTlsHostname` fields, allowing the ESP32 to connect to
+the hub IP while still validating the broker certificate DNS SAN, and completes
+SEC-015 by using ArduinoJson for retained config parsing plus device-side JSON
+payload construction. Bench validation on Sunroom Test verified fresh target
+telemetry, valid config apply, malformed JSON rejection, wrong-type config
+rejection, empty retained config clear back to defaults, safe OTA malformed/
+unsupported/wrong-type rejection without download, and the next normal
+600-second telemetry interval. No fleet OTA was sent.
+
+The prior `0.1.10-tls-host` build `2026081001` successfully connected to an
+isolated TLS Mosquitto listener on port `8884` using `10.10.10.123` as the TCP
+endpoint and `PiServer.local` as the TLS hostname, then published retained
+status and non-retained telemetry as its per-device username. After that,
+Sunroom Test was provisioned against the real production `8883` listener with
+the same schema v2 endpoint split. `ss` showed an established `10.10.10.124` to
+`10.10.10.123:8883` socket owned by Mosquitto, retained status showed
+`0.1.10-tls-host`, and the dashboard API showed fresh `OK` telemetry. The NVS
+MQTT profile was then cleared and fresh production fallback telemetry through
+shared `1883` was verified. The Sunroom Test broker user password was rotated
+after the check and the temporary plaintext credential file was deleted. The
+active TLS-capable firmware set includes Sunroom Test, Den, Kitchen, Office,
+MasterBedroom, and LaundryroomAC, but only Sunroom Test has bench-tested the
+schema v2 profile on production TLS.
 The additional `UNMAPPED` record associated with the temporarily retired
 `AtticChimney` remains on `0.1.6-recovery`; it remains excluded from the active
 mapped fleet until it is intentionally remapped or re-retired. The dashboard
@@ -215,18 +237,17 @@ cleared it to `none` on the next successful telemetry. The real 7–8 day
 constants and direct production MQTT port were then restored and the exact
 production build was reflashed and reverified on `Sunroom Test`.
 
-- Live fleet count: re-check `/api/latest` before acting; the latest
-  documented 2026-08-10 post-bench check showed Sunroom Test online/non-stale
-  on `0.1.10-tls-host` after clearing the production TLS profile back to the
-  compiled shared `1883` fallback.
+- Live fleet count: re-check `/api/latest` before acting; the latest documented
+  2026-08-10 SEC-015 bench check showed Sunroom Test online/non-stale on
+  `0.1.11-sec015-json` after clearing retained config back to defaults.
 - Recovery firmware count: 0 active devices; only the excluded retired
   `UNMAPPED` record remains on `0.1.6-recovery` build `2026072401`.
-- Firmware count at the latest TLS bench checkpoint: 16 active mapped devices
-  on `0.1.8-arduinojson` build `2026080703`; 5 active mapped devices on
-  `0.1.9-nvs-tls` build `2026080707`; Sunroom Test on `0.1.10-tls-host` build
-  `2026081001`. Sunroom Test's NVS TLS profile is cleared; it uses compiled
-  shared `1883` fallback after USB reflash, isolated TLS validation, and a
-  production `8883` TLS validation.
+- Firmware count at the latest rollout pause: 16 active mapped devices on
+  `0.1.8-arduinojson` build `2026080703`; 1 active mapped device on
+  `0.1.9-nvs-tls` build `2026080707`; Sunroom Test, Den, Kitchen, Office, and
+  MasterBedroom on `0.1.11-sec015-json` build `2026081002`. Sunroom Test's NVS TLS profile is
+  cleared; it uses compiled shared `1883` fallback after USB reflash, isolated
+  TLS validation, and a production `8883` TLS validation.
 - Deployed signed-OTA release: build `2026080703` passed the committed-artifact
   signed OTA and release soak gates. Its staged, served, clean-rebuilt, and
   merged-main binaries exact-match the recorded SHA-256.
@@ -242,27 +263,36 @@ production build was reflashed and reverified on `Sunroom Test`.
 - MasterBedroom completed the `0.1.6-recovery` rollout in an isolated acknowledged attempt. Its power supply was replaced by the operator before the 2026-08-04 check; it is currently reporting normally, so the prior reconnect issue is no longer active unless it recurs.
 - `BunkHouse` also received replacement power before the 2026-08-04 check and is currently online and reporting normally; its prior long-offline issue is no longer active unless it recurs.
 - `AtticChimney` stopped reporting and was temporarily retired from the dashboard fleet on 2026-08-04 until it is safe to enter the attic and replace it. Historical readings were preserved.
+- Kitchen installed `0.1.11-sec015-json` but failed the one-hour burn-in on
+  brownout/reboot evidence and continued showing repeated normalized `seq=1`
+  resets afterward. MasterBedroom also installed `0.1.11-sec015-json` after
+  explicit acceptance to continue, but failed burn-in when raw telemetry
+  reported `restartReason=InterruptWatchdog`, `uptimeSeconds=5`, and `seq=1`.
+  Do not continue firmware rollout until Kitchen's and MasterBedroom's
+  power/reset behavior is investigated or accepted as a known pre-existing
+  hardware issue.
 - The actual house image has not been uploaded yet. The dashboard is ready for it through `data/dashboard-assets/` plus `config/floorplan.json`.
 - The four-view rotating dashboard is active on normal port `8000`, including the pause/resume control, floorplan-derived Temperature Graph groups, 1080p-fit Device List Grid and Latest Readings views, collector-receipt-time stale calculation, and `Manage Devices` panel.
 - Live operator credentials for `iot-admin` are stored locally in `/home/scotty/.config/iot-home/operator-credentials.env` with mode `0600`. Dashboard read access is intentionally open to clients on the home network; separate dashboard credentials in `/home/scotty/.config/iot-home/dashboard-credentials.env`, also mode `0600`, protect location-mapping writes.
 
 ## Next Actions
 
-1. Plan a separately approved, incremental production MQTT TLS/per-device
+1. Investigate Kitchen's and MasterBedroom's reboot behavior before resuming the SEC-015
+   firmware rollout. Re-check raw telemetry for `restartReason`,
+   `uptimeSeconds`, and sequence behavior, and inspect power if needed.
+2. Plan a separately approved, incremental production MQTT TLS/per-device
    credential migration, starting from a fresh fleet gate and one accessible
    non-attic device at a time. Do not retire the shared fallback until every
    active device has passed its migration check.
-2. Convert remaining firmware config parsing and JSON construction to
-   ArduinoJson to complete SEC-015.
 3. Extract dashboard HTML/CSS/JavaScript into static assets after the security
    and data milestones above.
 4. Monitor the Pi3 watchdog with its production threshold of 10 consecutive
    one-minute failures; repeated recovery cycles should be recorded through
    `iot_home.post_reboot_check --import-watchdog` and investigated rather than
    treated as normal.
-6. Decide whether to remap or re-retire the online `UNMAPPED` device that
+5. Decide whether to remap or re-retire the online `UNMAPPED` device that
    returned after the 2026-08-05 power-cycle test.
-7. Keep the USB bench device on `/dev/ttyUSB0` for firmware validation; replace
+6. Keep the USB bench device on `/dev/ttyUSB0` for firmware validation; replace
     retired `AtticChimney` only when attic access is safe, continue attic heat
     monitoring, upload the house image, and keep periodic backup restore checks.
 

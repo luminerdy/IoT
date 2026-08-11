@@ -153,9 +153,12 @@ Firmware builds and parses JSON with a real JSON library (ArduinoJson), not
 substring scanning and unescaped `snprintf`, eliminating malformed-output
 and key-confusion bugs in config/OTA parsing.
 
-*Implementation status (2026-08-07):* OTA command parsing now uses
-ArduinoJson with typed, bounded top-level field validation. Config parsing and
-device-side JSON construction still need conversion before SEC-015 is complete.
+*Implementation status (2026-08-10):* OTA command parsing, retained config
+parsing, config responses, OTA status responses, status/LWT payloads, and
+telemetry payload construction now use ArduinoJson with typed field handling
+and bounded serialization. Exact build `0.1.11-sec015-json` / `2026081002`
+passed USB bench validation on Sunroom Test; fleet deployment still requires
+an explicit rollout decision.
 
 **SEC-016 — Firmware download capability key** `MUST` *(added 2026-07-02)*
 `/firmware/` responses require either operator Basic auth (SEC-009) or a

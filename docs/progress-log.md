@@ -2,6 +2,84 @@
 
 ## 2026-08-10
 
+### SEC-015 One-at-a-Time OTA Rollout
+
+- Staged exact firmware `0.1.11-sec015-json` build `2026081002` for signed OTA
+  from the bench-tested binary. Served artifact verification matched SHA-256
+  `91440aa1077ea305d0b8c672b856e16119b14f6156cac1051cfea34a45da6c22` and size
+  977,040 bytes.
+- Started an explicitly approved one-device-at-a-time rollout with a one-hour
+  burn-in before any next device. A fresh fleet gate showed 22 active mapped
+  devices, 0 offline, and 0 stale; the retired `UNMAPPED` record remained
+  excluded.
+- Den accepted the signed OTA: observed `downloading`, `rebooting`, and fresh
+  `0.1.11-sec015-json` telemetry. Its one-hour burn-in passed with active fleet
+  health clean throughout; Den stayed online, non-stale, and `OK`, with sequence
+  observations from 2 through 9.
+- Kitchen accepted the signed OTA: observed `downloading`, `rebooting`, and
+  fresh `0.1.11-sec015-json` `OK` telemetry. During burn-in, raw non-retained
+  telemetry at `2026-08-10T15:36:33Z` reported `restartReason=Brownout`,
+  `uptimeSeconds=7`, and `seq=1`. The rollout was stopped immediately after
+  that burn-in failure.
+- After explicit acceptance to continue one device at a time, Office accepted
+  the signed OTA: observed `downloading`, `rebooting`, and fresh
+  `0.1.11-sec015-json` `OK` telemetry. Its one-hour burn-in passed from
+  `2026-08-10T17:02:07Z` through `2026-08-10T18:02:07Z`; Office stayed online,
+  non-stale, and `OK`, with sequence observations from 2 through 12 and active
+  fleet offline/stale gates clear throughout.
+- The rollout is paused again before another device because Kitchen continued
+  showing repeated normalized `seq=1` resets after the earlier brownout, with
+  samples at `2026-08-10T16:43:40Z`, `16:50:32Z`, `16:59:43Z`, `17:02:58Z`,
+  `17:06:13Z`, `17:10:45Z`, `17:16:02Z`, `17:19:24Z`, `17:21:42Z`,
+  `17:47:01Z`, `17:57:13Z`, `17:59:41Z`, and `18:00:52Z`.
+- After explicit acceptance to continue despite Kitchen, MasterBedroom accepted
+  the signed OTA: observed `downloading`, `rebooting`, and fresh
+  `0.1.11-sec015-json` telemetry at `2026-08-10T23:30:59Z`. It initially
+  advanced to `seq=2` with `uptimeSeconds=605` at `2026-08-10T23:51:10Z`, but
+  then failed burn-in when raw non-retained telemetry at
+  `2026-08-10T23:59:22Z` reported `seq=1`, `uptimeSeconds=5`, and
+  `restartReason=InterruptWatchdog`. The active mapped fleet gate remained
+  clear. Stop the rollout again; do not send another OTA until the repeated
+  reset pattern on Kitchen and MasterBedroom is understood or explicitly
+  accepted.
+- Current rollout state after the stop: Den, Kitchen, Office, MasterBedroom,
+  and Sunroom Test are on `0.1.11-sec015-json`; LaundryroomAC remains on
+  `0.1.9-nvs-tls`; the remaining active mapped fleet remains on
+  `0.1.8-arduinojson`.
+
+### SEC-015 Device JSON Refactor
+
+- Ran a fresh read-only fleet gate before continuing work. The 22 active mapped
+  devices were online and non-stale; the only stale row was the excluded retired
+  `UNMAPPED` record.
+- Completed the remaining SEC-015 source refactor. Retained config parsing now
+  uses ArduinoJson typed field handling instead of manual substring/number
+  extraction.
+- Device-side status, LWT, config response, OTA status, and telemetry payloads
+  now use ArduinoJson bounded serialization rather than hand-built JSON strings.
+- Bumped the bench candidate identity to `0.1.11-sec015-json` build
+  `2026081002`, then built and USB-flashed it to Sunroom Test on `/dev/ttyUSB0`.
+  Binary SHA-256:
+  `91440aa1077ea305d0b8c672b856e16119b14f6156cac1051cfea34a45da6c22`; size:
+  977,040 bytes.
+- Bench config validation passed: valid retained config applied
+  (`reportIntervalSeconds=60`, `changeThresholdF=1.5`), malformed JSON was
+  rejected without changing active config, wrong-type `reportIntervalSeconds`
+  was rejected without changing active config, and an empty retained payload
+  cleared the device back to defaults (`600`, `1.0`).
+- Safe OTA rejection probes passed without download: malformed command rejected
+  as `invalid json`, unsupported command rejected as `unsupported command`, and
+  string-typed OTA `size` rejected as `invalid ota size`.
+- The default-cadence soak passed: after retained config was cleared, Sunroom
+  Test published the next normal telemetry exactly ten minutes later at
+  `2026-08-10 13:21:39`, advanced `seq` from 4 to 5, and remained online,
+  non-stale, and `OK` on `0.1.11-sec015-json`.
+- Verification passed: ESP32 firmware build, all 24 PlatformIO native firmware
+  cases, the full Python suite with enforced coverage, firmware static analysis,
+  and `git diff --check`. A focused Python subset also passed functionally but
+  tripped the global coverage gate because it intentionally ran only part of the
+  suite.
+
 ### ESP32 TLS Hostname/Profile Bench Fix
 
 - Implemented schema version 2 for USB MQTT TLS provisioning profiles with

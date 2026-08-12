@@ -480,7 +480,14 @@ def latest_readings(conn: sqlite3.Connection) -> list[sqlite3.Row]:
             r.humidity,
             r.sensor_type,
             r.seq,
-            r.created_at
+            r.created_at,
+            (
+                SELECT COUNT(*)
+                FROM readings recent
+                WHERE recent.device_id = d.device_id
+                  AND recent.seq <= 1
+                  AND recent.created_at >= datetime('now', '-24 hours')
+            ) AS recent_seq_resets
         FROM devices d
         LEFT JOIN readings r ON r.id = (
             SELECT id

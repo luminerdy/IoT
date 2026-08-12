@@ -282,8 +282,7 @@ def main(argv: list[str] | None = None) -> int:
         tls_hostname = args.tls_hostname or args.host
         if not args.device_id or not connect_host or not tls_hostname or not args.ca_cert:
             raise SystemExit(
-                "provisioning requires --device-id, --connect-host, --tls-hostname, "
-                "and --ca-cert"
+                "provisioning requires --device-id, --connect-host, --tls-hostname, and --ca-cert"
             )
         password = (
             read_password_file(args.password_file)

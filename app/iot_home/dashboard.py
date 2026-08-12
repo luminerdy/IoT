@@ -106,22 +106,40 @@ def parse_utc(value: str | None) -> datetime | None:
     return parsed.astimezone(UTC)
 
 
+def format_utc(value: datetime | None) -> str | None:
+    if value is None:
+        return None
+    return value.astimezone(UTC).isoformat().replace("+00:00", "Z")
+
+
 def row_to_dict(row, stale_seconds: int, locations: dict[str, str]) -> dict:
     last_seen = parse_utc(row["last_seen"])
     updated_at = parse_utc(row["updated_at"])
-    observed_at = updated_at or last_seen
+    telemetry_observed_at = parse_utc(row["created_at"])
+    observed_at = telemetry_observed_at or updated_at or last_seen
+    device_observed_at = updated_at or last_seen
     age_seconds = None
     if observed_at:
         age_seconds = int((datetime.now(UTC) - observed_at).total_seconds())
+    device_age_seconds = None
+    if device_observed_at:
+        device_age_seconds = int((datetime.now(UTC) - device_observed_at).total_seconds())
     is_stale = bool(row["online"]) and age_seconds is not None and age_seconds > stale_seconds
 
     device_id = row["device_id"]
+    recent_seq_resets = row["recent_seq_resets"] or 0
+    stability = device_stability(
+        online=bool(row["online"]),
+        stale=is_stale,
+        seq=row["seq"],
+        recent_seq_resets=recent_seq_resets,
+    )
 
     return {
         "deviceId": device_id,
         "location": mapped_location(device_id, row["location"], locations),
         "firmwareVersion": row["firmware_version"],
-        "lastSeen": row["last_seen"],
+        "lastSeen": format_utc(last_seen),
         "online": bool(row["online"]),
         "stale": is_stale,
         "ageSeconds": age_seconds,
@@ -131,9 +149,37 @@ def row_to_dict(row, stale_seconds: int, locations: dict[str, str]) -> dict:
         "humidity": row["humidity"],
         "sensorType": row["sensor_type"],
         "seq": row["seq"],
-        "updatedAt": row["updated_at"],
-        "observedAt": row["updated_at"] or row["last_seen"],
+        "stability": stability,
+        "recentSeqResets": recent_seq_resets,
+        "updatedAt": format_utc(updated_at),
+        "observedAt": format_utc(observed_at),
+        "telemetryObservedAt": format_utc(telemetry_observed_at),
+        "telemetryAgeSeconds": age_seconds if row["created_at"] else None,
+        "deviceObservedAt": format_utc(device_observed_at),
+        "deviceAgeSeconds": device_age_seconds,
     }
+
+
+def device_stability(
+    *, online: bool, stale: bool, seq: int | None, recent_seq_resets: int
+) -> dict[str, str]:
+    if not online:
+        return {"state": "offline", "label": "Offline", "detail": "Not reporting"}
+    if stale:
+        return {"state": "stale", "label": "Stale", "detail": "Last reading is old"}
+    if seq is None:
+        return {"state": "unknown", "label": "Unknown", "detail": "No sequence data"}
+    if recent_seq_resets >= 2:
+        return {
+            "state": "unstable",
+            "label": "Unstable",
+            "detail": f"{recent_seq_resets} restarts/24h",
+        }
+    if seq <= 1:
+        return {"state": "watch", "label": "Restarted", "detail": "Latest seq is 1"}
+    if recent_seq_resets == 1:
+        return {"state": "watch", "label": "Watch", "detail": "1 restart/24h"}
+    return {"state": "stable", "label": "Stable", "detail": "No resets/24h"}
 
 
 def history_row_to_dict(row, locations: dict[str, str]) -> dict:
@@ -186,8 +232,16 @@ def location_payload(rows: list, stale_seconds: int, locations: dict[str, str]) 
                     "humidity": None,
                     "sensorType": None,
                     "seq": None,
+                    "stability": device_stability(
+                        online=False, stale=False, seq=None, recent_seq_resets=0
+                    ),
+                    "recentSeqResets": 0,
                     "updatedAt": None,
                     "observedAt": None,
+                    "telemetryObservedAt": None,
+                    "telemetryAgeSeconds": None,
+                    "deviceObservedAt": None,
+                    "deviceAgeSeconds": None,
                 }
             )
     return {"locations": locations, "devices": devices}
@@ -208,7 +262,7 @@ def monitoring_event_to_dict(row) -> dict:
         "status": row["status"],
         "message": row["message"],
         "details": details,
-        "createdAt": row["created_at"],
+        "createdAt": format_utc(parse_utc(row["created_at"])),
     }
 
 
@@ -787,8 +841,8 @@ def page() -> bytes:
       text-transform: uppercase;
       color: #4b5b6b;
     }
-    th:nth-child(8),
-    td:nth-child(8) {
+    th:nth-child(10),
+    td:nth-child(10) {
       display: none;
     }
     tr:last-child td {
@@ -810,6 +864,49 @@ def page() -> bytes:
     .online .dot { background: var(--green); }
     .offline .dot { background: var(--red); }
     .stale .dot { background: var(--amber); }
+    .stability {
+      display: inline-flex;
+      flex-direction: column;
+      gap: 2px;
+      min-width: 82px;
+    }
+    .stability-label {
+      display: inline-flex;
+      align-items: center;
+      width: fit-content;
+      min-height: 20px;
+      padding: 2px 7px;
+      border-radius: 999px;
+      border: 1px solid #ccd6e0;
+      background: #f8fafc;
+      color: var(--ink);
+      font-size: 11px;
+      font-weight: 780;
+      line-height: 1;
+    }
+    .stability-detail {
+      color: var(--ink-soft);
+      font-size: 10px;
+      line-height: 1;
+    }
+    .stability.stable .stability-label {
+      border-color: rgb(39 174 96 / 0.35);
+      background: #ecfdf3;
+      color: #1f7a45;
+    }
+    .stability.watch .stability-label,
+    .stability.stale .stability-label,
+    .stability.unknown .stability-label {
+      border-color: rgb(183 121 31 / 0.38);
+      background: #fff7ed;
+      color: var(--amber);
+    }
+    .stability.unstable .stability-label,
+    .stability.offline .stability-label {
+      border-color: rgb(192 57 43 / 0.32);
+      background: #fef2f2;
+      color: var(--red);
+    }
     .humidity-value {
       display: inline-flex;
       align-items: center;
@@ -841,13 +938,15 @@ def page() -> bytes:
     .table-wrap table {
       table-layout: fixed;
     }
-    .table-wrap th:nth-child(1) { width: 18%; }
-    .table-wrap th:nth-child(2) { width: 11%; }
-    .table-wrap th:nth-child(3) { width: 13%; }
-    .table-wrap th:nth-child(4) { width: 13%; }
-    .table-wrap th:nth-child(5) { width: 11%; }
-    .table-wrap th:nth-child(6) { width: 15%; }
-    .table-wrap th:nth-child(7) { width: 19%; }
+    .table-wrap th:nth-child(1) { width: 14%; }
+    .table-wrap th:nth-child(2) { width: 9%; }
+    .table-wrap th:nth-child(3) { width: 11%; }
+    .table-wrap th:nth-child(4) { width: 11%; }
+    .table-wrap th:nth-child(5) { width: 9%; }
+    .table-wrap th:nth-child(6) { width: 7%; }
+    .table-wrap th:nth-child(7) { width: 13%; }
+    .table-wrap th:nth-child(8) { width: 12%; }
+    .table-wrap th:nth-child(9) { width: 14%; }
     .admin-view {
       display: none;
       margin-top: 18px;
@@ -1094,13 +1193,15 @@ def page() -> bytes:
               <th>Temperature</th>
               <th>Humidity</th>
               <th>RSSI</th>
+              <th>Seq</th>
+              <th>Stability</th>
               <th>Last Seen</th>
               <th>Firmware</th>
               <th>Device</th>
             </tr>
           </thead>
           <tbody id="readings">
-            <tr><td colspan="8" class="empty">No readings yet.</td></tr>
+            <tr><td colspan="10" class="empty">No readings yet.</td></tr>
           </tbody>
         </table>
       </div>
@@ -1399,7 +1500,7 @@ def page() -> bytes:
         for (const [label, value, note] of [
           ["Temp", fmt(row.temperature, " F"), ""],
           ["Humid", humidityText(row), isHumiditySuspect(row) ? "suspect" : ""],
-          ["Seen", relativeTime(row.lastSeen), ""],
+          ["Seen", relativeTime(row.observedAt || row.lastSeen), ""],
         ]) {
           const metric = document.createElement("div");
           metric.className = "metric";
@@ -1459,7 +1560,7 @@ def page() -> bytes:
         const meta = document.createElement("div");
         meta.className = "room-meta";
         meta.textContent = row
-          ? `${humidityText(row)} humidity${isHumiditySuspect(row) ? " suspect" : ""} - ${relativeTime(row.lastSeen)}`
+          ? `${humidityText(row)} humidity${isHumiditySuspect(row) ? " suspect" : ""} - ${relativeTime(row.observedAt || row.lastSeen)}`
           : "Waiting for reading";
 
         room.append(top, meta);
@@ -1470,7 +1571,7 @@ def page() -> bytes:
     function render(rows) {
       const body = document.getElementById("readings");
       if (!rows.length) {
-        body.innerHTML = '<tr><td colspan="8" class="empty">No readings yet.</td></tr>';
+        body.innerHTML = '<tr><td colspan="10" class="empty">No readings yet.</td></tr>';
         return;
       }
       body.replaceChildren();
@@ -1488,7 +1589,9 @@ def page() -> bytes:
           fmt(row.temperature, " F"),
           humidityText(row),
           fmt(row.rssi, " dBm"),
-          relativeTime(row.lastSeen),
+          row.seq ?? "-",
+          row.stability || {state: "unknown", label: "Unknown", detail: "No sequence data"},
+          relativeTime(row.observedAt || row.lastSeen),
           firmwareLabel(row.firmwareVersion),
           row.deviceId,
         ];
@@ -1510,6 +1613,17 @@ def page() -> bytes:
             flag.textContent = "suspect";
             wrap.appendChild(flag);
             td.appendChild(wrap);
+          } else if (index === 6) {
+            const stability = document.createElement("span");
+            stability.className = `stability ${value.state || "unknown"}`;
+            const label = document.createElement("span");
+            label.className = "stability-label";
+            label.textContent = value.label || "Unknown";
+            const detail = document.createElement("span");
+            detail.className = "stability-detail";
+            detail.textContent = value.detail || "";
+            stability.append(label, detail);
+            td.appendChild(stability);
           } else {
             td.textContent = value;
           }
@@ -2000,7 +2114,9 @@ class Handler(BaseHTTPRequestHandler):
         if parsed_path == "/api/system":
             with closing(connect(self.db_path)) as conn:
                 row = latest_system_metric(conn, "pi_cpu_temperature_f")
-                events = [monitoring_event_to_dict(event) for event in latest_monitoring_events(conn)]
+                events = [
+                    monitoring_event_to_dict(event) for event in latest_monitoring_events(conn)
+                ]
                 post_reboot_events = [
                     monitoring_event_to_dict(event)
                     for event in latest_monitoring_events(
@@ -2009,7 +2125,9 @@ class Handler(BaseHTTPRequestHandler):
                 ]
                 watchdog_events = [
                     monitoring_event_to_dict(event)
-                    for event in latest_monitoring_events(conn, limit=1, event_type="watchdog_relay")
+                    for event in latest_monitoring_events(
+                        conn, limit=1, event_type="watchdog_relay"
+                    )
                 ]
             if row is None:
                 result = {"temperatureF": None, "sampledAt": None, "ageSeconds": None}

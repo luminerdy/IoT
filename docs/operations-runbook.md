@@ -226,7 +226,7 @@ password outside the repository:
 Schema v2 separates the TCP endpoint from the TLS verification name. Use a
 reliable `--connect-host` endpoint, such as the Pi LAN IP, and a
 `--tls-hostname` value that appears in the broker certificate's DNS
-subject-alternative-name (`PiServer.local` on this installation). This preserves
+subject-alternative-name (`<hub-tls-hostname>` on this installation). This preserves
 certificate/SNI validation while avoiding ESP32 mDNS resolution failures. The
 legacy `--host` alias still sends one hostname for both roles.
 
@@ -235,8 +235,8 @@ scripts/add_mqtt_device_user.sh esp32-device-id
 PYTHONPATH=app .venv/bin/python -m iot_home.provision_mqtt \
   --serial-port /dev/ttyUSB0 \
   --device-id esp32-device-id \
-  --connect-host 10.10.10.123 \
-  --tls-hostname PiServer.local \
+  --connect-host <hub-ip> \
+  --tls-hostname <hub-tls-hostname> \
   --mqtt-port 8883 \
   --ca-cert /etc/mosquitto/certs/iot-home/ca.crt
 ```

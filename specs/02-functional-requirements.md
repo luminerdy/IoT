@@ -143,15 +143,21 @@ view, save, and clear these mappings without hand-editing the JSON file.
 ## 4.3 Hub — Dashboard
 
 **FR-030 — Latest view** `MUST`
-The dashboard shows, per device: location, temperature, humidity, RSSI,
-firmware version, online/offline/stale state, and last-seen age. Devices are
-ordered by location in the device-card view. The Latest Readings table is
-ordered by temperature descending (hottest first), with location as the
-tie-breaker, so thermal hotspots are immediately visible.
+The dashboard shows, per device: location, temperature, humidity, RSSI, latest
+sequence number, firmware version, online/offline/stale state, stability, and
+last-seen age.
+Stability is derived from persisted telemetry signals and flags repeated
+`seq <= 1` observations within the last 24 hours. Devices are ordered by
+location in the device-card view. The Latest Readings table is ordered by
+temperature descending (hottest first), with location as the tie-breaker, so
+thermal hotspots are immediately visible.
 
 **FR-031 — Stale detection** `MUST`
-A device marked online whose last observation is older than a configurable
-threshold (default 1200 s) is displayed as **stale**, distinct from offline.
+A device marked online whose latest telemetry observation is older than a
+configurable threshold (default 1200 s) is displayed as **stale**, distinct
+from offline. If a device has no telemetry row yet, staleness falls back to the
+latest status/device observation. A fresh retained or live status update MUST
+NOT make an old temperature, humidity, or sequence reading appear fresh.
 
 **FR-032 — History view** `MUST`
 The dashboard charts temperature history for a selectable window (1–168 h,

@@ -72,7 +72,9 @@ def check_dashboard(url: str) -> CheckResult:
     except (OSError, urllib.error.URLError, json.JSONDecodeError) as exc:
         return CheckResult("dashboard_api", False, f"dashboard API failed: {exc}", {"url": url})
     if not isinstance(rows, list):
-        return CheckResult("dashboard_api", False, "dashboard API did not return a list", {"url": url})
+        return CheckResult(
+            "dashboard_api", False, "dashboard API did not return a list", {"url": url}
+        )
     stale = [row.get("location") or row.get("deviceId") for row in rows if row.get("stale")]
     offline = [row.get("location") or row.get("deviceId") for row in rows if not row.get("online")]
     return CheckResult(
@@ -101,7 +103,9 @@ def check_database(db_path: Path) -> CheckResult:
 def check_latest_backup(backup_dir: Path) -> CheckResult:
     backups = sorted(backup_dir.glob("iot-*.sqlite.gz"), key=lambda path: path.stat().st_mtime)
     if not backups:
-        return CheckResult("latest_backup", False, "no SQLite backups found", {"backup_dir": str(backup_dir)})
+        return CheckResult(
+            "latest_backup", False, "no SQLite backups found", {"backup_dir": str(backup_dir)}
+        )
     latest = backups[-1]
     try:
         with gzip.open(latest, "rb") as handle:
@@ -123,7 +127,12 @@ def check_latest_backup(backup_dir: Path) -> CheckResult:
 
 def check_db_maintenance() -> CheckResult:
     result = run_command(
-        ["systemctl", "is-active", "iot-home-db-maintenance.timer", "iot-home-db-maintenance.service"]
+        [
+            "systemctl",
+            "is-active",
+            "iot-home-db-maintenance.timer",
+            "iot-home-db-maintenance.service",
+        ]
     )
     ok = result.returncode in {0, 3} and "failed" not in result.stdout
     return CheckResult(
@@ -157,7 +166,7 @@ def record_post_reboot_check(
         init_db(conn)
         return record_monitoring_event(
             conn,
-            source="PiServer",
+            source="hub",
             event_type="post_reboot_check",
             severity="info" if status == "ok" else "warning",
             status=status,

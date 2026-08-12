@@ -17,7 +17,7 @@ std::string valid_profile()
 {
   return std::string("{") +
     "\"schemaVersion\":2,"
-    "\"mqttConnectHost\":\"10.10.10.123\","
+    "\"mqttConnectHost\":\"203.0.113.10\","
     "\"mqttTlsHostname\":\"broker.test\","
     "\"mqttPort\":8883,"
     "\"mqttUsername\":\"" + DEVICE_ID + "\","
@@ -40,7 +40,7 @@ void test_valid_tls_profile_parses()
   mqtt_provisioning::Settings settings{};
   char error[96];
   TEST_ASSERT_TRUE(parse(valid_profile(), &settings, error));
-  TEST_ASSERT_EQUAL_STRING("10.10.10.123", settings.connect_host);
+  TEST_ASSERT_EQUAL_STRING("203.0.113.10", settings.connect_host);
   TEST_ASSERT_EQUAL_STRING("broker.test", settings.tls_hostname);
   TEST_ASSERT_EQUAL_UINT16(8883, settings.port);
   TEST_ASSERT_EQUAL_STRING(DEVICE_ID, settings.username);
@@ -100,12 +100,12 @@ void test_host_and_port_bounds_are_enforced()
   mqtt_provisioning::Settings settings{};
   char error[96];
   std::string bad_connect_host = valid_profile();
-  bad_connect_host.replace(bad_connect_host.find("10.10.10.123"), 12, "https://bad/");
+  bad_connect_host.replace(bad_connect_host.find("203.0.113.10"), 12, "https://bad/");
   TEST_ASSERT_FALSE(parse(bad_connect_host, &settings, error));
   TEST_ASSERT_EQUAL_STRING("MQTT connect host invalid", error);
 
   std::string bad_tls_hostname = valid_profile();
-  bad_tls_hostname.replace(bad_tls_hostname.find("broker.test"), 11, "10.10.10.123");
+  bad_tls_hostname.replace(bad_tls_hostname.find("broker.test"), 11, "203.0.113.10");
   TEST_ASSERT_FALSE(parse(bad_tls_hostname, &settings, error));
   TEST_ASSERT_EQUAL_STRING("MQTT TLS hostname invalid", error);
 

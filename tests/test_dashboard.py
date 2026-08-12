@@ -23,7 +23,9 @@ from iot_home.dashboard import (
 from iot_home.db import (
     connect,
     init_db,
+    latest_readings,
     record_monitoring_event,
+    record_status,
     record_system_metric,
     record_telemetry,
 )
@@ -242,7 +244,7 @@ def _configure_handler(tmp_path, *, with_metric=True, allow_read=True):
             record_system_metric(conn, "pi_cpu_temperature_f", 120.5)
         record_monitoring_event(
             conn,
-            source="PiServer",
+            source="hub",
             event_type="post_reboot_check",
             status="ok",
             message="post-reboot verification passed",
@@ -306,6 +308,12 @@ def test_dashboard_read_routes_and_static_assets(tmp_path) -> None:
         locations = _read_json(f"{base}/api/locations")
 
         assert latest[0]["location"] == "Test Room"
+        assert latest[0]["stability"] == {
+            "state": "stable",
+            "label": "Stable",
+            "detail": "No resets/24h",
+        }
+        assert latest[0]["recentSeqResets"] == 0
         assert history[0]["deviceId"] == "esp32-test"
         assert floorplan["zones"][0]["location"] == "Test Room"
         assert system["temperatureF"] == 120.5
@@ -327,6 +335,54 @@ def test_dashboard_read_routes_and_static_assets(tmp_path) -> None:
         server.shutdown()
         server.server_close()
         thread.join(timeout=5)
+
+
+def test_latest_staleness_uses_telemetry_age_not_status_age(tmp_path) -> None:
+    db_path = tmp_path / "iot.db"
+    with closing(connect(db_path)) as conn:
+        init_db(conn)
+        record_telemetry(
+            conn,
+            {
+                "deviceId": "esp32-test",
+                "location": "GarageDriveway",
+                "firmwareVersion": "1.0.0",
+                "datetime": "2026-08-11T22:38:25Z",
+                "temperature": 100.0,
+                "humidity": 28.5,
+                "rssi": -85,
+                "status": "OK",
+                "seq": 164,
+            },
+        )
+        conn.execute(
+            "UPDATE readings SET created_at = datetime('now', '-1 hour') WHERE device_id = ?",
+            ("esp32-test",),
+        )
+        record_status(
+            conn,
+            {
+                "deviceId": "esp32-test",
+                "firmwareVersion": "1.0.0",
+                "datetime": "2026-08-12T00:46:22Z",
+                "status": "online",
+                "ip": "203.0.113.20",
+            },
+        )
+
+        latest = latest_readings(conn)[0]
+        payload = dashboard.row_to_dict(latest, stale_seconds=120, locations={})
+
+    assert payload["online"] is True
+    assert payload["stale"] is True
+    assert payload["seq"] == 164
+    assert payload["status"] == "online"
+    assert payload["ageSeconds"] > 120
+    assert payload["deviceAgeSeconds"] < 120
+    assert payload["observedAt"] == payload["telemetryObservedAt"]
+    assert payload["observedAt"].endswith("Z")
+    assert payload["updatedAt"].endswith("Z")
+    assert payload["deviceObservedAt"].endswith("Z")
 
 
 def test_dashboard_read_auth_floorplan_error_and_empty_system(tmp_path) -> None:

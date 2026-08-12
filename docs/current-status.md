@@ -1,6 +1,6 @@
 # Current Status
 
-Last updated: 2026-08-10
+Last updated: 2026-08-11
 
 This is the first file to read after a reboot, context switch, or long pause.
 
@@ -12,7 +12,7 @@ The project is a local-first Raspberry Pi IoT system with MQTT, SQLite, a boot-e
 
 Phase 5: Fleet operations plus daily dashboard improvements
 
-Status: Phases 0 through 4 are complete for the current local-first system. Signed OTA hardening and signed build-number anti-rollback are live. USB-connected Sunroom Test, Den, Kitchen, Office, and MasterBedroom are on `0.1.11-sec015-json` build `2026081002`, which keeps the MQTT TLS hostname fix and completes SEC-015 device JSON parsing/construction. LaundryroomAC remains on `0.1.9-nvs-tls` while continuing to use the unchanged shared-credential `1883` fallback. The one-device-at-a-time SEC-015 rollout is paused after Kitchen reported `restartReason=Brownout`, `uptimeSeconds=7`, and `seq=1` during burn-in and then continued showing repeated normalized `seq=1` resets; after explicit acceptance to continue, MasterBedroom accepted the OTA but failed burn-in with `restartReason=InterruptWatchdog`, `uptimeSeconds=5`, and `seq=1` at `2026-08-10T23:59:22Z`. No further OTA should be sent until the reset behavior on Kitchen and MasterBedroom is understood or explicitly accepted. Office passed its separate one-hour burn-in. `AtticChimney` is temporarily retired pending safe physical replacement; its separate `UNMAPPED` record remains on `0.1.6-recovery`. Watchdog/post-reboot events are stored in `monitoring_events` and surfaced in the dashboard System Health panel. The active work is Phase 5: fleet operations, dashboard maintenance workflows, backups, tests/CI, and staged security hardening.
+Status: Phases 0 through 4 are complete for the current local-first system. Signed OTA hardening and signed build-number anti-rollback are live. USB-connected Sunroom Test, Den, Kitchen, Office, and MasterBedroom are on `0.1.11-sec015-json` build `2026081002`, which keeps the MQTT TLS hostname fix and completes SEC-015 device JSON parsing/construction. LaundryroomAC remains on `0.1.9-nvs-tls` while continuing to use the unchanged shared-credential `1883` fallback. The one-device-at-a-time SEC-015 rollout is paused after Kitchen reported `restartReason=Brownout`, `uptimeSeconds=7`, and `seq=1` during burn-in and then continued showing repeated normalized `seq=1` resets; after explicit acceptance to continue, MasterBedroom accepted the OTA but failed burn-in with `restartReason=InterruptWatchdog`, `uptimeSeconds=5`, and `seq=1` at `2026-08-10T23:59:22Z`. No further OTA should be sent until the reset behavior on Kitchen and MasterBedroom is understood or explicitly accepted. Office passed its separate one-hour burn-in. `AtticChimney` is temporarily retired pending safe physical replacement; its separate `UNMAPPED` record remains on `0.1.6-recovery`. Watchdog/post-reboot events are stored in `monitoring_events` and surfaced in the dashboard System Health panel. The dashboard Latest Readings/API now separates telemetry freshness from status freshness, shows sequence/reset stability, and returns explicit UTC `Z` timestamps to avoid browser `0s ago` rendering errors. The active work is Phase 5: fleet operations, dashboard maintenance workflows, backups, tests/CI, and staged security hardening.
 
 ## Accomplished
 
@@ -205,12 +205,12 @@ unsupported/wrong-type rejection without download, and the next normal
 600-second telemetry interval. No fleet OTA was sent.
 
 The prior `0.1.10-tls-host` build `2026081001` successfully connected to an
-isolated TLS Mosquitto listener on port `8884` using `10.10.10.123` as the TCP
-endpoint and `PiServer.local` as the TLS hostname, then published retained
+isolated TLS Mosquitto listener on port `8884` using `<hub-ip>` as the TCP
+endpoint and `<hub-tls-hostname>` as the TLS hostname, then published retained
 status and non-retained telemetry as its per-device username. After that,
 Sunroom Test was provisioned against the real production `8883` listener with
-the same schema v2 endpoint split. `ss` showed an established `10.10.10.124` to
-`10.10.10.123:8883` socket owned by Mosquitto, retained status showed
+the same schema v2 endpoint split. `ss` showed an established `<device-ip>` to
+`<hub-ip>:8883` socket owned by Mosquitto, retained status showed
 `0.1.10-tls-host`, and the dashboard API showed fresh `OK` telemetry. The NVS
 MQTT profile was then cleared and fresh production fallback telemetry through
 shared `1883` was verified. The Sunroom Test broker user password was rotated

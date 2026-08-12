@@ -68,7 +68,7 @@ local in protected environment files and are not tracked.
 
 On 2026-08-09, `Sunroom Test` was recovered over `/dev/ttyUSB0` after reporting
 offline. Serial logs showed the NVS TLS profile failing ESP32 DNS resolution for
-`PiServer.local:8883`; clearing the NVS profile restored the compiled fallback
+the hub TLS hostname on `8883`; clearing the NVS profile restored the compiled fallback
 profile, and a USB reflash of the exact staged `0.1.9-nvs-tls` artifact
 `3420e492e3d450886326885c65d1b3b6706f97ccab21724f5b58f75f1c61d501` restored
 fresh fallback MQTT telemetry at 17:38:02. Do not re-provision TLS on Sunroom
@@ -79,15 +79,15 @@ separating `mqttConnectHost` from `mqttTlsHostname`. Exact firmware
 `0.1.10-tls-host` build `2026081001` was USB-flashed to Sunroom Test; binary
 SHA-256 was `afae56195002d97e2b397b51519f1a06df505d08c5ec180b32bbd25a79650ea8`.
 An isolated user-owned Mosquitto TLS listener on port `8884` used a temporary
-CA and a server certificate for `PiServer.local`. Sunroom Test was provisioned
-with `mqttConnectHost=10.10.10.123` and `mqttTlsHostname=PiServer.local`,
-connected from `10.10.10.124` as `esp32-9c9c1fda3670`, subscribed to its own
+CA and a server certificate for `<hub-tls-hostname>`. Sunroom Test was provisioned
+with `mqttConnectHost=<hub-ip>` and `mqttTlsHostname=<hub-tls-hostname>`,
+connected from `<device-ip>` as `<device-user>`, subscribed to its own
 command/config topics, and published retained status plus non-retained
 telemetry. After the fix was committed, production `8883` was checked too:
 Mosquitto was reloaded after resetting only the Sunroom Test broker user to a
 temporary generated password, Sunroom Test accepted the schema v2 production
-profile, `ss` showed an established `10.10.10.124` to
-`10.10.10.123:8883` socket, retained status showed `0.1.10-tls-host`, and the
+profile, `ss` showed an established `<device-ip>` to
+`<hub-ip>:8883` socket, retained status showed `0.1.10-tls-host`, and the
 dashboard API showed fresh `OK` telemetry. The NVS MQTT profile was then
 cleared, fresh production fallback telemetry through shared `1883` was
 verified, the Sunroom Test broker user was rotated again to an unstored random
@@ -241,6 +241,38 @@ Bench validation completed:
    investigate PiServer power/network/system health before relying on the relay.
 5. Decide whether to remap or re-retire the returned `UNMAPPED` device.
 
+## Recent Physical Maintenance
+
+- On 2026-08-11, the user replaced power for `GarageDriveway` and
+  `Laundryroom`. A read-only `/api/latest` check at 19:43 CDT showed both
+  online and non-stale afterward: `GarageDriveway` on `0.1.8-arduinojson`,
+  `status=online`, `seq=164`, `ageSeconds=701`, `rssi=-68`; `Laundryroom` on
+  `0.1.8-arduinojson`, `status=OK`, `seq=3`, `ageSeconds=213`, `rssi=-53`.
+  The low `Laundryroom` sequence is expected immediately after power
+  replacement; verify it advances before drawing conclusions about resets.
+- The user also reported the `GarageDriveway` ESP32 is not in good shape and
+  has ordered a replacement. A follow-up read-only `/api/latest` check at
+  19:45 CDT still showed it online/non-stale on `0.1.8-arduinojson`, with
+  `status=online`, `seq=164`, `ageSeconds=821`, and `rssi=-68`. Treat this
+  board as suspect hardware until replaced.
+
+## Recent Dashboard Maintenance
+
+- On 2026-08-11, the dashboard Latest Readings view was updated to show latest
+  `seq` and derived reset stability from persisted telemetry. The API now
+  exposes `recentSeqResets`, `stability`, telemetry freshness fields, and
+  separate device/status freshness fields.
+- Staleness is based on the latest telemetry observation when telemetry exists,
+  not a fresh status/device-row update. This keeps stale temperature and
+  humidity data from appearing fresh when a retained or live status message
+  arrives.
+- The dashboard `0s ago` display was fixed by returning explicit UTC ISO-8601
+  `Z` timestamp strings from `/api/latest`; JavaScript had been parsing
+  SQLite-style UTC strings as local time. `iot-home-dashboard.service` was
+  restarted at 21:23 CDT to load the fix. Read-only verification showed 23
+  rows, all latest timestamp fields with `Z` suffixes, 21 online/non-stale
+  rows, 2 stale rows (`GarageDriveway` and `UNMAPPED`), and 0 offline rows.
+
 ## Working Tree
 
 The working tree contains the schema v2 MQTT TLS hostname fix plus the SEC-015
@@ -258,13 +290,13 @@ without `-t`. Previous exact firmware `0.1.9-nvs-tls` build `2026080707` was
 TEST-033 passed against an isolated TLS listener and production ACL, then the
 NVS profile was cleared and production fallback telemetry recovered. On
 2026-08-08, the separately approved incremental production migration activated
-listener `8883`, generated a local CA and server certificate with `PiServer`,
-`PiServer.local`, `piserver.local`, and `iot-pi.local` SANs, installed the
+listener `8883`, generated a local CA and server certificate with hub hostname
+SANs, installed the
 tracked per-device ACL, and provisioned only Sunroom Test with a per-device
-credential over USB. The first `iot-pi.local` profile failed on ESP32 DNS
-resolution and was replaced with a verified `PiServer.local` profile signed by
+credential over USB. The first mDNS profile failed on ESP32 DNS
+resolution and was replaced with a verified hub TLS hostname profile signed by
 the same local CA. Broker logs showed Sunroom Test connecting on `8883` as
-`esp32-9c9c1fda3670`, and the dashboard API then showed it online, non-stale,
+its per-device user, and the dashboard API then showed it online, non-stale,
 and `OK`. A separately approved hourly OTA rollout then updated Den, Kitchen,
 Office, and MasterBedroom to the same TLS-capable firmware on the compiled
 `1883` fallback. The controller stopped before LaundryroomAC because

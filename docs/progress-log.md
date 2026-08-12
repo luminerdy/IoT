@@ -1,5 +1,45 @@
 # Progress Log
 
+## 2026-08-11
+
+### Dashboard Latest Readings
+
+- Added dashboard/API support for persisted reset visibility: `/api/latest`
+  now exposes `recentSeqResets` and a derived `stability` object, and the
+  Latest Readings table shows `seq` plus stability so repeated low-sequence
+  resets are visible without raw MQTT capture.
+- Fixed stale/latest-age semantics so `observedAt` and `ageSeconds` follow the
+  latest telemetry row when one exists, while `deviceObservedAt` and
+  `deviceAgeSeconds` separately expose status/device-row freshness. A fresh
+  retained or live status update no longer makes old temperature/humidity data
+  appear fresh.
+- Fixed the dashboard `0s ago` display by serializing latest-reading timestamp
+  fields as explicit UTC ISO-8601 `Z` strings. The old API response used
+  SQLite `YYYY-MM-DD HH:MM:SS` UTC strings, which browser JavaScript parsed as
+  local time and then clamped as a future timestamp.
+- Restarted only `iot-home-dashboard.service` at 21:23 CDT so the timestamp
+  fix was live. A read-only `/api/latest` verification returned 23 rows, all
+  latest timestamp fields with `Z` suffixes, 21 online/non-stale rows, 2 stale
+  rows (`GarageDriveway` and `UNMAPPED`), and 0 offline rows.
+
+### Device Power Maintenance
+
+- User replaced power for `GarageDriveway` and `Laundryroom`.
+- Read-only `/api/latest` check at 19:43 CDT showed both devices online and
+  non-stale after the power replacement. `GarageDriveway` reported
+  `0.1.8-arduinojson`, `status=online`, `seq=164`, `ageSeconds=701`, and
+  `rssi=-68`. `Laundryroom` reported `0.1.8-arduinojson`, `status=OK`,
+  `seq=3`, `ageSeconds=213`, and `rssi=-53`.
+- Treat `Laundryroom`'s low sequence number as consistent with the recent power
+  replacement; keep watching for repeated low-sequence resets before attributing
+  it to firmware.
+- User reported the `GarageDriveway` ESP32 itself is not in good shape and has
+  ordered a replacement. A follow-up read-only `/api/latest` check at 19:45 CDT
+  still showed `GarageDriveway` online/non-stale on `0.1.8-arduinojson`, with
+  `status=online`, `seq=164`, `ageSeconds=821`, and `rssi=-68`. Treat the
+  current hardware as suspect pending replacement; avoid drawing firmware
+  conclusions from intermittent behavior on this board without corroboration.
+
 ## 2026-08-10
 
 ### SEC-015 One-at-a-Time OTA Rollout
@@ -94,20 +134,20 @@
   `afae56195002d97e2b397b51519f1a06df505d08c5ec180b32bbd25a79650ea8`.
 - Because sudo was unavailable for production cert/password files, ran an
   isolated user-owned Mosquitto TLS listener on port `8884` with a temporary CA
-  and a server certificate for `PiServer.local`. Provisioned Sunroom Test with
-  `mqttConnectHost=10.10.10.123` and `mqttTlsHostname=PiServer.local`.
+  and a server certificate for `<hub-tls-hostname>`. Provisioned Sunroom Test with
+  `mqttConnectHost=<hub-ip>` and `mqttTlsHostname=<hub-tls-hostname>`.
 - Bench evidence: broker logs showed Sunroom Test connecting from
-  `10.10.10.124` as `esp32-9c9c1fda3670`, subscribing to its own
+  `<device-ip>` as `<device-user>`, subscribing to its own
   command/config topics, and publishing retained status plus non-retained
   telemetry over TLS. The NVS MQTT profile was then cleared, the temporary
   broker stopped, and fresh production fallback telemetry through shared
   `1883` was verified.
 - Production `8883` check: after committing the fix, reset only the Sunroom
   Test broker user to a generated temporary password, reloaded Mosquitto, and
-  verified local TLS auth against `PiServer.local:8883`. Provisioned Sunroom
-  Test with `mqttConnectHost=10.10.10.123` and
-  `mqttTlsHostname=PiServer.local`; `ss` showed an established
-  `10.10.10.124` to `10.10.10.123:8883` Mosquitto socket, retained status
+  verified local TLS auth against `<hub-tls-hostname>:8883`. Provisioned Sunroom
+  Test with `mqttConnectHost=<hub-ip>` and
+  `mqttTlsHostname=<hub-tls-hostname>`; `ss` showed an established
+  `<device-ip>` to `<hub-ip>:8883` Mosquitto socket, retained status
   showed `0.1.10-tls-host`, and the dashboard API showed fresh `OK` telemetry.
   Cleared the NVS profile afterward, verified fresh fallback telemetry through
   shared `1883`, rotated the broker user again to an unstored random password,
@@ -119,14 +159,14 @@
 
 ### Sunroom Test USB Recovery
 
-- Investigated `Sunroom Test` / `esp32-9c9c1fda3670` after it appeared
+- Investigated `Sunroom Test` / `<device-user>` after it appeared
   offline while physically connected on `/dev/ttyUSB0`. USB enumeration was
   present and readable/writable by the `dialout` user.
 - Captured direct serial logs. Firmware `0.1.9-nvs-tls` build `2026080707`
-  booted, connected to Wi-Fi at `10.10.10.124`, and synchronized time. Its NVS
-  TLS profile attempted `PiServer.local:8883` but failed ESP32 DNS resolution.
+  booted, connected to Wi-Fi at `<device-ip>`, and synchronized time. Its NVS
+  TLS profile attempted `<hub-tls-hostname>:8883` but failed ESP32 DNS resolution.
 - Cleared only the NVS MQTT profile over USB. The device rebooted into the
-  compiled fallback profile and attempted `10.10.10.123:1883`, but initially
+  compiled fallback profile and attempted `<hub-ip>:1883`, but initially
   still reported `MQTT connect failed, state=-2`.
 - Reflashed the exact staged `0.1.9-nvs-tls` build over USB. The flashed app
   binary exact-matched staged SHA-256
@@ -168,17 +208,17 @@
   shared-credential `1883` listener active for the fleet.
 - Fixed the TLS installer for this Pi's Mosquitto package by skipping the
   unsupported `mosquitto -t` check, using `sudo find` for protected certificate
-  ownership updates, adding `PiServer.local` / `piserver.local` SANs, and
+  ownership updates, adding hub hostname SANs, and
   regenerating the server certificate whenever it does not verify against the
   active local CA.
 - Created and loaded a unique broker password for only the USB-connected
   Sunroom Test device, then provisioned its NVS MQTT TLS profile over
   `/dev/ttyUSB0`.
-- The first live profile used `iot-pi.local`; USB serial showed ESP32 DNS
-  failures for that host. Reprovisioning with `PiServer.local` succeeded.
+- The first live profile used a local mDNS name; USB serial showed ESP32 DNS
+  failures for that host. Reprovisioning with `<hub-tls-hostname>` succeeded.
 - Verified the TLS chain with `openssl`, verified local per-device TLS
   authentication, observed Mosquitto accept Sunroom Test on port `8883` as
-  user `esp32-9c9c1fda3670`, and confirmed the dashboard API returned 22 active
+  its per-device user, and confirmed the dashboard API returned 22 active
   mapped devices online, 0 offline, 0 stale, with Sunroom Test fresh, `OK`, and
   still on `0.1.9-nvs-tls`.
 - Started the approved one-device-per-hour non-attic OTA rollout of

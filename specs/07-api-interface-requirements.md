@@ -139,7 +139,14 @@ Serves the dashboard HTML shell (static asset).
 **API-021 — `GET /api/latest`** `MUST`
 Array of per-device objects: `deviceId, location, firmwareVersion,
 buildNumber, lastSeen, online, stale, ageSeconds, rssi, status, temperature,
-humidity, sensorType, seq, observedAt`. Staleness computed per FR-031.
+humidity, sensorType, seq, observedAt, telemetryObservedAt,
+telemetryAgeSeconds, deviceObservedAt, deviceAgeSeconds, stability,
+recentSeqResets`. When a telemetry row exists, `observedAt` and `ageSeconds`
+refer to that telemetry row; `deviceObservedAt` and `deviceAgeSeconds` expose
+the latest status/device-row freshness separately. Staleness computed per
+FR-031. Timestamp fields MUST be explicit UTC ISO-8601 strings with a `Z`
+suffix so browser relative-time rendering does not interpret hub UTC values as
+local wall time.
 
 **API-022 — `GET /api/history?hours=&limit=`** `MUST`
 Array of readings within the window, newest first. `hours` clamped 1–168

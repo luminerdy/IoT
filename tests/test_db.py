@@ -34,7 +34,7 @@ def test_record_and_read_latest_monitoring_events(tmp_path):
         init_db(conn)
         record_monitoring_event(
             conn,
-            source="PiServer",
+            source="hub",
             event_type="post_reboot_check",
             severity="info",
             status="ok",
@@ -91,6 +91,29 @@ def test_record_telemetry_updates_latest_device_state(tmp_path):
     assert rows[0]["online"] == 1
     assert rows[0]["temperature"] == 72.4
     assert rows[0]["humidity"] == 45.2
+    assert rows[0]["recent_seq_resets"] == 0
+
+
+def test_latest_readings_counts_recent_sequence_resets(tmp_path):
+    db_path = tmp_path / "iot.db"
+    with closing(connect(db_path)) as conn:
+        init_db(conn)
+        for index, seq in enumerate((1, 8, 1), start=1):
+            record_telemetry(
+                conn,
+                {
+                    "deviceId": "esp32-one",
+                    "location": "Kitchen",
+                    "datetime": f"2026-06-30T12:00:0{index}Z",
+                    "temperature": 72.4,
+                    "humidity": 45.2,
+                    "seq": seq,
+                },
+            )
+
+        rows = latest_readings(conn)
+
+    assert rows[0]["recent_seq_resets"] == 2
 
 
 def test_record_telemetry_tracks_valid_last_ip(tmp_path):

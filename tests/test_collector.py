@@ -20,6 +20,7 @@ def _collector_args(tmp_path):
         tls=True,
         ca_cert=None,
         locations=tmp_path / "locations.json",
+        retired_devices=tmp_path / "retired_devices.json",
         desired_firmware_version=None,
         ota_cooldown_seconds=3600,
         pi_temperature_interval_seconds=1,
@@ -234,3 +235,21 @@ def test_main_processes_messages_reconnects_and_samples_temperature(monkeypatch,
         assert conn.execute("SELECT COUNT(*) FROM system_metrics").fetchone()[0] == 1
         device = conn.execute("SELECT location, online FROM devices").fetchone()
     assert tuple(device) == ("Test Room", 1)
+
+
+def test_main_ignores_retired_devices(monkeypatch, tmp_path):
+    args = _collector_args(tmp_path)
+    args.retired_devices.write_text('["esp32-test"]', encoding="utf-8")
+    client = _ServiceClient()
+
+    monkeypatch.setattr(collector, "parse_args", lambda: args)
+    monkeypatch.setattr(collector.mqtt, "Client", lambda *args, **kwargs: client)
+    monkeypatch.setattr(collector.time, "sleep", lambda seconds: None)
+    monkeypatch.setattr(collector.time, "monotonic", iter([0.0, 11.0]).__next__)
+    monkeypatch.setattr(collector, "read_pi_temperature_f", lambda: 111.2)
+
+    collector.main()
+
+    with closing(connect(args.db)) as conn:
+        assert conn.execute("SELECT COUNT(*) FROM readings").fetchone()[0] == 0
+        assert conn.execute("SELECT COUNT(*) FROM devices").fetchone()[0] == 0

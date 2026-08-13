@@ -32,6 +32,7 @@ from iot_home.locations import (
     mapped_location,
     save_locations,
 )
+from iot_home.retired_devices import DEFAULT_RETIRED_DEVICES_PATH, load_retired_devices
 
 
 def parse_args() -> argparse.Namespace:
@@ -44,6 +45,12 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=DEFAULT_LOCATIONS_PATH,
         help="JSON file mapping device IDs to display locations.",
+    )
+    parser.add_argument(
+        "--retired-devices",
+        type=Path,
+        default=DEFAULT_RETIRED_DEVICES_PATH,
+        help="JSON file listing device IDs hidden from read APIs.",
     )
     parser.add_argument(
         "--stale-seconds",
@@ -207,7 +214,23 @@ def location_admin_row(row, stale_seconds: int, locations: dict[str, str]) -> di
     }
 
 
-def location_payload(rows: list, stale_seconds: int, locations: dict[str, str]) -> dict:
+def visible_rows(rows: list, retired_devices: set[str]) -> list:
+    return [row for row in rows if row["device_id"] not in retired_devices]
+
+
+def location_payload(
+    rows: list,
+    stale_seconds: int,
+    locations: dict[str, str],
+    retired_devices: set[str] | None = None,
+) -> dict:
+    retired_devices = retired_devices or set()
+    rows = visible_rows(rows, retired_devices)
+    locations = {
+        device_id: location
+        for device_id, location in locations.items()
+        if device_id not in retired_devices
+    }
     mapped_devices = {
         row["deviceId"]
         for row in (location_admin_row(raw_row, stale_seconds, locations) for raw_row in rows)
@@ -2020,6 +2043,8 @@ class Handler(BaseHTTPRequestHandler):
     stale_seconds: int = 120
     locations_path: Path = DEFAULT_LOCATIONS_PATH
     locations: dict[str, str] = {}
+    retired_devices_path: Path = DEFAULT_RETIRED_DEVICES_PATH
+    retired_devices: set[str] = set()
     firmware_download_key: str | None = None
     dashboard_username: str | None = None
     dashboard_password: str | None = None
@@ -2066,10 +2091,11 @@ class Handler(BaseHTTPRequestHandler):
 
         if parsed_path == "/api/latest":
             self.locations = load_locations(self.locations_path)
+            self.retired_devices = load_retired_devices(self.retired_devices_path)
             with closing(connect(self.db_path)) as conn:
                 rows = [
                     row_to_dict(row, self.stale_seconds, self.locations)
-                    for row in latest_readings(conn)
+                    for row in visible_rows(latest_readings(conn), self.retired_devices)
                 ]
             payload = json.dumps(rows).encode("utf-8")
             self.send_response(200)
@@ -2084,10 +2110,11 @@ class Handler(BaseHTTPRequestHandler):
             hours = query_int(query, "hours", 24)
             limit = query_int(query, "limit", 500)
             self.locations = load_locations(self.locations_path)
+            self.retired_devices = load_retired_devices(self.retired_devices_path)
             with closing(connect(self.db_path)) as conn:
                 rows = [
                     history_row_to_dict(row, self.locations)
-                    for row in reading_history(conn, hours, limit)
+                    for row in visible_rows(reading_history(conn, hours, limit), self.retired_devices)
                 ]
             payload = json.dumps(rows).encode("utf-8")
             self.send_response(200)
@@ -2157,14 +2184,20 @@ class Handler(BaseHTTPRequestHandler):
         if parsed_path == "/api/locations":
             try:
                 self.locations = load_locations(self.locations_path)
+                self.retired_devices = load_retired_devices(self.retired_devices_path)
             except ValueError as exc:
                 self.send_error(500, str(exc))
                 return
             with closing(connect(self.db_path)) as conn:
                 rows = latest_readings(conn)
-            payload = json.dumps(location_payload(rows, self.stale_seconds, self.locations)).encode(
-                "utf-8"
-            )
+            payload = json.dumps(
+                location_payload(
+                    rows,
+                    self.stale_seconds,
+                    self.locations,
+                    self.retired_devices,
+                )
+            ).encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(payload)))
@@ -2225,8 +2258,9 @@ class Handler(BaseHTTPRequestHandler):
 
         with closing(connect(self.db_path)) as conn:
             rows = latest_readings(conn)
+        self.retired_devices = load_retired_devices(self.retired_devices_path)
         payload_bytes = json.dumps(
-            location_payload(rows, self.stale_seconds, self.locations)
+            location_payload(rows, self.stale_seconds, self.locations, self.retired_devices)
         ).encode("utf-8")
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
@@ -2291,8 +2325,10 @@ def main() -> None:
     Handler.asset_dir = args.asset_dir
     Handler.floorplan_path = args.floorplan
     Handler.locations_path = args.locations
+    Handler.retired_devices_path = args.retired_devices
     Handler.stale_seconds = args.stale_seconds
     Handler.locations = load_locations(args.locations)
+    Handler.retired_devices = load_retired_devices(args.retired_devices)
     Handler.firmware_download_key = args.firmware_download_key
     Handler.dashboard_username = args.username
     Handler.dashboard_password = args.password

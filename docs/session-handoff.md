@@ -43,19 +43,35 @@ Last updated: 2026-08-10
 
 ## Current State
 
-The local-first IoT stack is running on PiServer. Mosquitto, the collector, and
-the dashboard are active and enabled. A parallel production MQTT TLS listener is
-active on `8883` alongside the unchanged shared-credential listener on `1883`.
+The local-first IoT stack is running on PiServer, but the collector/dashboard
+process ownership needs attention. Mosquitto is active through systemd.
+`iot-home-collector.service` and `iot-home-dashboard.service` are currently
+systemd-inactive because a non-interactive restart/start required
+authentication after a clean process stop. Replacement collector and dashboard
+processes are running manually from `/home/scotty/IoT` with the same live
+database, mapping, floorplan, firmware, and retired-device paths. Restore the
+managed units with an interactive `systemctl start iot-home-collector.service
+iot-home-dashboard.service` or a reboot when convenient. A parallel production
+MQTT TLS listener is active on `8883` alongside the unchanged
+shared-credential listener on `1883`.
 The SEC-015 firmware rollout is paused after repeated reset evidence on
-Kitchen and MasterBedroom. Sunroom Test, Den, Kitchen, Office, and
-MasterBedroom are now on `0.1.11-sec015-json` build `2026081002`;
-LaundryroomAC remains on `0.1.9-nvs-tls`, and the rest of the active mapped
-fleet remains on `0.1.8-arduinojson`. Sunroom
+Kitchen and MasterBedroom. All visible active mapped devices except `Attic`
+and `WallBehindWH` are now on `0.1.11-sec015-json` build `2026081002`; those
+two remaining devices are still on `0.1.8-arduinojson`. Sunroom
 Test's NVS MQTT profile is cleared after bench validation, so it is
 intentionally back on compiled shared `1883` fallback.
-The separate retired `UNMAPPED` AtticChimney record remains on
-`0.1.6-recovery`; it is currently online/non-stale but was intentionally
-excluded from active fleet operations.
+An explicit attempt to update `Attic` with rollout
+`20260812-attic-sec015-watch` did not converge: no OTA lifecycle status was
+captured, it remained on `0.1.8-arduinojson`, and it continued rapid `seq=1`
+resets. `WallBehindWH` was not attempted after that stop condition.
+Final wrapup check after the commit found `Kitchen` currently offline:
+last telemetry `2026-08-13T01:28:18Z`, offline status
+`2026-08-13T01:37:51Z`, still on `0.1.11-sec015-json` with prior repeated
+`seq=1` instability. Treat this as an active device-stability follow-up.
+The separate retired `UNMAPPED` AtticChimney record and the suspect
+`GarageDriveway` board are listed in ignored local `config/retired_devices.json`.
+They are excluded from collector writes and hidden from latest/history/location
+dashboard APIs while historical readings remain preserved.
 
 Firmware downloads on live port `8000` now require a constant-time-checked
 capability key or dashboard Basic auth. Missing/wrong keys return 401; a keyed
@@ -328,10 +344,11 @@ PlatformIO native tests cover sensor filtering, publish policy, ArduinoJson OTA
 manifest validation, and MQTT profile validation. SEC-015 source work now uses
 ArduinoJson for retained config parsing and device-side JSON construction, and
 the exact candidate passed the USB bench gate on Sunroom Test. Firmware
-`0.1.8-arduinojson` build `2026080703` remains deployed to 16 active mapped
-devices, one active mapped device remains on `0.1.9-nvs-tls`, and Sunroom
-Test/Den/Kitchen/Office/MasterBedroom are on `0.1.11-sec015-json`. The retired
-`UNMAPPED` record was not changed.
+`0.1.8-arduinojson` build `2026080703` remains deployed to `Attic` and
+`WallBehindWH`; the other 19 visible active mapped devices are on
+`0.1.11-sec015-json`. The retired `UNMAPPED` record and suspect
+`GarageDriveway` board are hidden through
+`config/retired_devices.json` while historical readings remain preserved.
 
 DR-022 resolves the collector/ACL conflict: desired-version mismatches are
 recorded, but the collector has no OTA publish option or command authority.

@@ -31,6 +31,7 @@ dist/
 data/
 config/locations.json
 config/floorplan.json
+config/retired_devices.json
 *.db
 *.sqlite
 *.sqlite3

@@ -12,7 +12,7 @@ Group=scotty
 WorkingDirectory=/home/scotty/IoT
 Environment=PYTHONPATH=/home/scotty/IoT/app
 EnvironmentFile=-/etc/iot-home/iot-home.env
-ExecStart=/usr/bin/python3 -m iot_home.collector --broker localhost --port 1883 --db /home/scotty/IoT/data/iot.db --locations /home/scotty/IoT/config/locations.json
+ExecStart=/usr/bin/python3 -m iot_home.collector --broker localhost --port 1883 --db /home/scotty/IoT/data/iot.db --locations /home/scotty/IoT/config/locations.json --retired-devices /home/scotty/IoT/config/retired_devices.json
 Restart=on-failure
 RestartSec=5
 NoNewPrivileges=true

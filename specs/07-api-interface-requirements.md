@@ -146,13 +146,15 @@ refer to that telemetry row; `deviceObservedAt` and `deviceAgeSeconds` expose
 the latest status/device-row freshness separately. Staleness computed per
 FR-031. Timestamp fields MUST be explicit UTC ISO-8601 strings with a `Z`
 suffix so browser relative-time rendering does not interpret hub UTC values as
-local wall time.
+local wall time. Device IDs listed in the local retired-device config are
+excluded from this current-state response.
 
 **API-022 — `GET /api/history?hours=&limit=`** `MUST`
 Array of readings within the window, newest first. `hours` clamped 1–168
 (default 24), `limit` clamped 1–50000 (default 500) (SEC-012). Fields:
 `deviceId, location, temperature, humidity, rssi, status, seq, datetime,
-createdAt`.
+createdAt`. Device IDs listed in the local retired-device config are excluded
+from this response even though their historical database rows remain preserved.
 
 **API-023 — `GET /api/floorplan`** `MAY` (R5)
 Validated floorplan document `{backgroundImage, zones[]}`; 500 with a clear
@@ -161,7 +163,8 @@ message on invalid config; empty document when absent.
 **API-024 — `GET /api/locations` and `POST /api/locations`** `MAY` (R5)
 `GET` returns `{locations, devices}` where `locations` is the current
 `deviceId → displayLocation` mapping and `devices` contains the latest
-dashboard rows plus `reportedLocation` and `configuredLocation`.
+dashboard rows plus `reportedLocation` and `configuredLocation`. Retired
+device IDs are omitted from both `locations` and `devices`.
 `POST` accepts `{deviceId, location}`; a non-empty location saves the
 mapping, and an empty location clears it. Invalid JSON, invalid device IDs,
 and overlong locations are rejected with 400. Writes from non-local clients

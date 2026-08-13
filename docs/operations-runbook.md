@@ -352,7 +352,11 @@ MQTT_USERNAME="$MQTT_ADMIN_USERNAME" MQTT_PASSWORD="$MQTT_ADMIN_PASSWORD" PYTHON
 
 8. Watch MQTT or the dashboard until the device reports valid telemetry on the expected location.
 9. Check `/api/latest` for 0 stale devices and 0 `UNMAPPED` rows.
-10. If replacing a device, remove stale retained MQTT state and old SQLite device rows only after confirming no historical readings need to be preserved under the retired ID.
+10. If replacing a device, add the retired ID to ignored local
+    `config/retired_devices.json`, remove its active mapping/floorplan entry,
+    and remove only its current `devices` row after a fresh backup. Preserve
+    historical readings unless a separate lossless archival is explicitly
+    approved and restore-tested.
 11. Update `docs/progress-log.md` with the device ID placeholder, location, firmware version, and verification result.
 
 ## Common Recovery

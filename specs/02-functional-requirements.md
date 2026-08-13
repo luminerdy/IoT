@@ -229,8 +229,11 @@ the off-site snapshot.
 **FR-045 — Device retirement** `SHOULD` *(gap found in implementation review)*
 A documented, scripted flow retires a device: delete its broker credential
 (the revocation path for a lost or stolen unit), remove or archive its
-`devices` row, and remove its location mapping. Until the script exists,
-the manual procedure lives in the operations doc.
+`devices` row, remove its location/floorplan mapping, and add its stable
+device ID to the ignored retired-device list so future retained or live
+telemetry/status does not recreate current dashboard state. Historical
+`readings` remain preserved unless a separate lossless archival is explicitly
+approved per DATA-005.
 
 **FR-046 — Fleet version reconciliation** `MAY` *(added 2026-07-05,
 implemented upstream)*

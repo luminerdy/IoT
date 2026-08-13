@@ -41,6 +41,9 @@ sensitivity applies)*, updated_at. Upserted from telemetry and status
 - `locations.json` — `{device_id: display_location}`, strings only.
 - `floorplan.json` — optional `backgroundImage` + `zones[]` with
   `location, x, y, w, h` numeric and optional `type`. Validation per FR-035.
+- `retired_devices.json` — either `["device_id", ...]` or
+  `{"devices": ["device_id", ...]}`. Listed IDs are excluded from current
+  collection/dashboard views while historical rows remain preserved.
 Both are git-ignored with committed `.sample.json` templates; invalid files
 produce clear errors, never crashes.
 

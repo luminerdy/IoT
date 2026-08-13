@@ -1,5 +1,121 @@
 # Progress Log
 
+## 2026-08-12
+
+### SEC-015 Watch Rollout
+
+- After explicit approval to continue the SEC-015 rollout while watching reset
+  behavior, verified the staged and local build artifacts exact-matched the
+  bench-tested `0.1.11-sec015-json` build `2026081002` binary:
+  SHA-256 `91440aa1077ea305d0b8c672b856e16119b14f6156cac1051cfea34a45da6c22`,
+  977,040 bytes.
+- Live pre-check showed 22 active mapped devices, 0 offline, and
+  `GarageDriveway` stale on suspect hardware. Reset-heavy non-SEC-015 devices
+  included `Attic`, `WaterHeater`, `Laundryroom`, and `WallBehindWH`.
+- Published rollout `20260812-waterheater-sec015-watch` to `WaterHeater`
+  (`esp32-9c9c1fc5cf1c`). Observed OTA `downloading` at
+  `2026-08-12T11:32:18Z`, `rebooting` at `2026-08-12T11:32:28Z`, and fresh
+  `0.1.11-sec015-json` `OK` telemetry at `2026-08-12T11:32:50Z` with `seq=2`.
+- Published rollout `20260812-wallbehindwh-sec015-watch` to `WallBehindWH`
+  (`esp32-240ac4fa418c`), but no OTA status was observed and the device
+  remained online/non-stale on `0.1.8-arduinojson`. The rollout was stopped
+  without retrying or expanding further.
+
+### GarageDriveway And UNMAPPED Retirement
+
+- Added a local ignored `config/retired_devices.json` retirement list and wired
+  the collector and dashboard to load it. Retired devices are ignored before
+  collector database writes and hidden from `/api/latest`, `/api/history`, and
+  `/api/locations`.
+- Retired `GarageDriveway` (`esp32-0cb815c288f4`) pending replacement this
+  weekend and the separate retired `UNMAPPED` device (`esp32-240ac4f9019c`).
+  Removed the `GarageDriveway` active location mapping and floorplan zone.
+- Created fresh pre-change backup `data/backups/iot-20260812T153514Z.sqlite.gz`.
+  Removed only the current `devices` rows for the two retired IDs. Historical
+  readings were preserved; verification found 9,464 readings retained and 0
+  current `devices` rows for those IDs.
+- Direct `systemctl restart/start` required interactive authentication. Plain
+  process termination left the units inactive, so replacement collector and
+  dashboard processes were started manually from `/home/scotty/IoT` with the
+  same database, mapping, floorplan, firmware, and retired-device paths. MQTT
+  and dashboard read APIs are live, but `iot-home-collector.service` and
+  `iot-home-dashboard.service` remain systemd-inactive until an interactive
+  service start or reboot restores the managed units.
+- Live verification after retirement returned 21 latest rows, 0 offline, 0
+  stale, and no `GarageDriveway` or `UNMAPPED` rows in latest/history/location
+  API payloads.
+
+### SEC-015 Continued Rollout
+
+- Confirmed `0.1.11-sec015-json` build `2026081002` is the latest
+  bench-validated firmware artifact staged in this checkout. The local build
+  output and staged OTA binary still exact-matched SHA-256
+  `91440aa1077ea305d0b8c672b856e16119b14f6156cac1051cfea34a45da6c22`, size
+  977,040 bytes.
+- Published rollout `20260812-laundryroom-sec015-watch` to `Laundryroom`
+  (`esp32-240ac4fa383c`). Observed OTA `downloading` at
+  `2026-08-12T15:53:11Z`, `rebooting` at `2026-08-12T15:53:26Z`, and fresh
+  `0.1.11-sec015-json` `OK` telemetry at `2026-08-12T15:53:37Z` with `seq=2`.
+- Published rollout `20260812-frontbedroom-sec015-watch` to `FrontBedroom`
+  (`esp32-9c9c1fdd632c`). Observed OTA `downloading` at
+  `2026-08-12T15:54:18Z`, `rebooting` at `2026-08-12T15:54:41Z`, and fresh
+  `0.1.11-sec015-json` `OK` telemetry at `2026-08-12T15:54:54Z` with `seq=2`.
+- Stopped expansion after those two successful updates. Final live check at
+  `2026-08-12T15:55:12Z` showed 21 visible rows, 0 offline, 0 stale, and 9
+  visible active devices on SEC-015: Den, Entryway, FrontBedroom, Kitchen,
+  Laundryroom, MasterBedroom, Office, Sunroom Test, and WaterHeater.
+- After explicit approval, published rollout
+  `20260812-laundryroomac-sec015-watch` to `LaundryroomAC`
+  (`esp32-4022d8ee4904`). Observed OTA `downloading` at
+  `2026-08-12T19:20:29Z`, `rebooting` at `2026-08-12T19:20:42Z`, and fresh
+  `0.1.11-sec015-json` `OK` telemetry at `2026-08-12T19:20:54Z` with `seq=2`.
+  Final live check at `2026-08-12T19:21:20Z` showed 21 visible rows, 0
+  offline, 0 stale, and 10 visible active devices on SEC-015.
+- After explicit approval, updated `UnderAC`, `BunkHouse`, and `Studio`.
+  `UnderAC` rollout `20260812-underac-sec015-watch` reported `downloading` at
+  `2026-08-12T20:08:19Z`; `rebooting` was not captured, but the device returned
+  with fresh `0.1.11-sec015-json` `OK` telemetry at `2026-08-12T20:09:17Z`
+  with `seq=2`. `BunkHouse` rollout `20260812-bunkhouse-sec015-watch` reported
+  `downloading` at `2026-08-12T20:09:58Z`, `rebooting` at
+  `2026-08-12T20:10:13Z`, and fresh target telemetry at
+  `2026-08-12T20:10:23Z` with `seq=2`. `Studio` rollout
+  `20260812-studio-sec015-watch` reported `downloading` at
+  `2026-08-12T20:10:56Z`, `rebooting` at `2026-08-12T20:11:22Z`, and fresh
+  target telemetry at `2026-08-12T20:11:35Z` with `seq=2`.
+- Final live check at `2026-08-12T20:11:51Z` showed 21 visible rows, 0
+  offline, 0 stale, 13 visible active devices on SEC-015, and 8 still on
+  `0.1.8-arduinojson`.
+- After explicit approval, updated `AtticDoor`, `Porch`, `Lightpole`,
+  `Garage`, `SunroomDoor`, and `Sunroom` in that order. All six reported both
+  OTA `downloading` and `rebooting`, then returned with fresh
+  `0.1.11-sec015-json` `OK` telemetry.
+- Rollout timestamps: `AtticDoor` downloaded at `2026-08-12T22:28:48Z`,
+  rebooted at `2026-08-12T22:29:03Z`, and returned at
+  `2026-08-12T22:29:09Z`; `Porch` downloaded at `2026-08-12T22:29:16Z`,
+  rebooted at `2026-08-12T22:29:28Z`, and returned at
+  `2026-08-12T22:29:41Z`; `Lightpole` downloaded at
+  `2026-08-12T22:29:41Z`, rebooted at `2026-08-12T22:29:54Z`, and returned at
+  `2026-08-12T22:30:07Z`; `Garage` downloaded at `2026-08-12T22:30:07Z`,
+  rebooted at `2026-08-12T22:30:25Z`, and returned at
+  `2026-08-12T22:30:38Z`; `SunroomDoor` downloaded at
+  `2026-08-12T22:30:39Z`, rebooted at `2026-08-12T22:30:54Z`, and returned at
+  `2026-08-12T22:31:07Z`; `Sunroom` downloaded at `2026-08-12T22:31:06Z`,
+  rebooted at `2026-08-12T22:31:21Z`, and returned at
+  `2026-08-12T22:31:33Z`.
+- Final live check at `2026-08-12T22:31:56Z` showed 21 visible rows, 0
+  offline, 0 stale, 19 visible active devices on SEC-015, and only `Attic` and
+  `WallBehindWH` still on `0.1.8-arduinojson`.
+- After explicit approval to update the final two devices, published rollout
+  `20260812-attic-sec015-watch` to `Attic` (`esp32-240ac4ec25b4`). No OTA
+  lifecycle status was captured, and the device did not converge to SEC-015.
+  It remained online/non-stale on `0.1.8-arduinojson` while repeatedly
+  reporting `seq=1`; observed reset count rose through 730 by
+  `2026-08-13T01:04:05Z`. Stopped without retrying and did not attempt
+  `WallBehindWH` because the active target failed to converge.
+- Final live check at `2026-08-13T01:04:06Z` showed 21 visible rows, 0
+  offline, 0 stale, 19 visible active devices on SEC-015, and `Attic` plus
+  `WallBehindWH` still on `0.1.8-arduinojson`.
+
 ## 2026-08-11
 
 ### Dashboard Latest Readings

@@ -30,6 +30,7 @@ from iot_home.db import (
     record_telemetry,
 )
 from iot_home.locations import load_locations
+from iot_home.retired_devices import load_retired_devices
 
 
 def test_dashboard_page_keeps_attic_and_thermal_sorting_contract() -> None:
@@ -96,6 +97,16 @@ def test_location_payload_includes_mapped_only_devices() -> None:
     assert payload["locations"] == {"esp32-mapped": "Mapped Room"}
     assert payload["devices"][0]["status"] == "mapped only"
     assert payload["devices"][0]["online"] is False
+
+
+def test_load_retired_devices_accepts_array_and_object(tmp_path) -> None:
+    array_path = tmp_path / "retired-array.json"
+    array_path.write_text('[" esp32-one ", ""]', encoding="utf-8")
+    object_path = tmp_path / "retired-object.json"
+    object_path.write_text('{"devices": ["esp32-two"]}', encoding="utf-8")
+
+    assert load_retired_devices(array_path) == {"esp32-one"}
+    assert load_retired_devices(object_path) == {"esp32-two"}
 
 
 def test_firmware_route_requires_correct_capability_key(tmp_path) -> None:
@@ -207,6 +218,7 @@ def _configure_handler(tmp_path, *, with_metric=True, allow_read=True):
     db_path = tmp_path / "iot.db"
     locations_path = tmp_path / "locations.json"
     floorplan_path = tmp_path / "floorplan.json"
+    retired_devices_path = tmp_path / "retired_devices.json"
     asset_dir = tmp_path / "assets"
     firmware_dir = tmp_path / "firmware"
     asset_dir.mkdir()
@@ -262,6 +274,7 @@ def _configure_handler(tmp_path, *, with_metric=True, allow_read=True):
 
     Handler.db_path = db_path
     Handler.locations_path = locations_path
+    Handler.retired_devices_path = retired_devices_path
     Handler.floorplan_path = floorplan_path
     Handler.asset_dir = asset_dir
     Handler.firmware_dir = firmware_dir
@@ -271,6 +284,7 @@ def _configure_handler(tmp_path, *, with_metric=True, allow_read=True):
     Handler.firmware_download_key = "firmware-key"
     Handler.allow_unauthenticated_read = allow_read
     Handler.locations = load_locations(locations_path)
+    Handler.retired_devices = load_retired_devices(retired_devices_path)
     return db_path, locations_path, floorplan_path
 
 
@@ -331,6 +345,45 @@ def test_dashboard_read_routes_and_static_assets(tmp_path) -> None:
             with pytest.raises(HTTPError) as exc_info:
                 urlopen(f"{base}{path}")
             assert exc_info.value.code == 404
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+def test_dashboard_read_routes_hide_retired_devices(tmp_path) -> None:
+    db_path, _, _ = _configure_handler(tmp_path)
+    Handler.retired_devices_path.write_text(
+        '["esp32-test", "esp32-retired"]', encoding="utf-8"
+    )
+    with closing(connect(db_path)) as conn:
+        record_telemetry(
+            conn,
+            {
+                "deviceId": "esp32-retired",
+                "location": "UNMAPPED",
+                "firmwareVersion": "1.0.0",
+                "datetime": "2026-08-07T12:05:00Z",
+                "temperature": 80.0,
+                "humidity": 50.0,
+                "rssi": -60,
+                "seq": 1,
+            },
+        )
+    server, thread = _start_server()
+    base = f"http://127.0.0.1:{server.server_port}"
+
+    try:
+        latest = _read_json(f"{base}/api/latest")
+        history = _read_json(f"{base}/api/history")
+        locations = _read_json(f"{base}/api/locations")
+
+        assert latest == []
+        assert "esp32-test" not in {row["deviceId"] for row in history}
+        assert "esp32-retired" not in {row["deviceId"] for row in history}
+        assert "esp32-test" not in {row["deviceId"] for row in locations["devices"]}
+        assert "esp32-retired" not in {row["deviceId"] for row in locations["devices"]}
+        assert "esp32-test" not in locations["locations"]
     finally:
         server.shutdown()
         server.server_close()
@@ -481,6 +534,7 @@ def _dashboard_args(tmp_path, **overrides):
         "asset_dir": tmp_path / "assets",
         "floorplan": tmp_path / "floorplan.json",
         "locations": tmp_path / "locations.json",
+        "retired_devices": tmp_path / "retired_devices.json",
         "stale_seconds": 120,
         "firmware_download_key": "key",
         "username": "admin",

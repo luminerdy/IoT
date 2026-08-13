@@ -1,6 +1,6 @@
 # Current Status
 
-Last updated: 2026-08-11
+Last updated: 2026-08-12
 
 This is the first file to read after a reboot, context switch, or long pause.
 
@@ -12,7 +12,7 @@ The project is a local-first Raspberry Pi IoT system with MQTT, SQLite, a boot-e
 
 Phase 5: Fleet operations plus daily dashboard improvements
 
-Status: Phases 0 through 4 are complete for the current local-first system. Signed OTA hardening and signed build-number anti-rollback are live. USB-connected Sunroom Test, Den, Kitchen, Office, and MasterBedroom are on `0.1.11-sec015-json` build `2026081002`, which keeps the MQTT TLS hostname fix and completes SEC-015 device JSON parsing/construction. LaundryroomAC remains on `0.1.9-nvs-tls` while continuing to use the unchanged shared-credential `1883` fallback. The one-device-at-a-time SEC-015 rollout is paused after Kitchen reported `restartReason=Brownout`, `uptimeSeconds=7`, and `seq=1` during burn-in and then continued showing repeated normalized `seq=1` resets; after explicit acceptance to continue, MasterBedroom accepted the OTA but failed burn-in with `restartReason=InterruptWatchdog`, `uptimeSeconds=5`, and `seq=1` at `2026-08-10T23:59:22Z`. No further OTA should be sent until the reset behavior on Kitchen and MasterBedroom is understood or explicitly accepted. Office passed its separate one-hour burn-in. `AtticChimney` is temporarily retired pending safe physical replacement; its separate `UNMAPPED` record remains on `0.1.6-recovery`. Watchdog/post-reboot events are stored in `monitoring_events` and surfaced in the dashboard System Health panel. The dashboard Latest Readings/API now separates telemetry freshness from status freshness, shows sequence/reset stability, and returns explicit UTC `Z` timestamps to avoid browser `0s ago` rendering errors. The active work is Phase 5: fleet operations, dashboard maintenance workflows, backups, tests/CI, and staged security hardening.
+Status: Phases 0 through 4 are complete for the current local-first system. Signed OTA hardening and signed build-number anti-rollback are live. The latest bench-validated SEC-015 firmware is `0.1.11-sec015-json` build `2026081002`, which keeps the MQTT TLS hostname fix and completes SEC-015 device JSON parsing/construction. Nineteen visible active devices are on SEC-015; `Attic` and `WallBehindWH` remain on `0.1.8-arduinojson` after `Attic` failed to converge during a final rollout attempt. The instability evidence is now treated as a device/power/sensor issue to investigate rather than a SEC-015-specific blocker. `GarageDriveway` and the separate retired `UNMAPPED`/`AtticChimney` record are hidden from collection/dashboard current views through `config/retired_devices.json` while historical readings remain preserved. Watchdog/post-reboot events are stored in `monitoring_events` and surfaced in the dashboard System Health panel. The dashboard Latest Readings/API separates telemetry freshness from status freshness, shows sequence/reset stability, and returns explicit UTC `Z` timestamps to avoid browser `0s ago` rendering errors. The active work is Phase 5: fleet operations, hardware replacement, dashboard maintenance workflows, backups, tests/CI, and staged security hardening.
 
 ## Accomplished
 
@@ -237,15 +237,17 @@ cleared it to `none` on the next successful telemetry. The real 7–8 day
 constants and direct production MQTT port were then restored and the exact
 production build was reflashed and reverified on `Sunroom Test`.
 
-- Live fleet count: re-check `/api/latest` before acting; the latest documented
-  2026-08-10 SEC-015 bench check showed Sunroom Test online/non-stale on
-  `0.1.11-sec015-json` after clearing retained config back to defaults.
-- Recovery firmware count: 0 active devices; only the excluded retired
-  `UNMAPPED` record remains on `0.1.6-recovery` build `2026072401`.
-- Firmware count at the latest rollout pause: 16 active mapped devices on
-  `0.1.8-arduinojson` build `2026080703`; 1 active mapped device on
-  `0.1.9-nvs-tls` build `2026080707`; Sunroom Test, Den, Kitchen, Office, and
-  MasterBedroom on `0.1.11-sec015-json` build `2026081002`. Sunroom Test's NVS TLS profile is
+- Live fleet count: re-check `/api/latest` before acting. After the
+  2026-08-12 retirement of suspect `GarageDriveway` and the separate retired
+  `UNMAPPED` device, the live dashboard APIs hide both retired IDs and show 21
+  latest rows, 0 offline, and 0 stale.
+- Recovery firmware count: 0 active devices; the excluded retired `UNMAPPED`
+  record remains on `0.1.6-recovery` build `2026072401` in preserved history
+  but is hidden from current dashboard APIs.
+- Firmware count at the latest 2026-08-12 check: 2 active mapped devices on
+  `0.1.8-arduinojson` (`Attic` and `WallBehindWH`); all other 19 visible
+  active mapped devices are on `0.1.11-sec015-json` build `2026081002`.
+  Sunroom Test's NVS TLS profile is
   cleared; it uses compiled shared `1883` fallback after USB reflash, isolated
   TLS validation, and a production `8883` TLS validation.
 - Deployed signed-OTA release: build `2026080703` passed the committed-artifact
@@ -255,14 +257,19 @@ production build was reflashed and reverified on `Sunroom Test`.
 - Remaining old firmware count: 0 devices on `0.1.3-signed-ota`.
 - `Sunroom` / `esp32-device-id`: online again after wire replacement; current sequence is increasing normally.
 - Current suspect humidity flag: `Porch` at `99.9%`.
-- `UNMAPPED` count: 1 online/non-stale retired record at the latest check on
-  2026-08-08; it remains intentionally excluded from active fleet operations.
+- `UNMAPPED` count: 0 in current dashboard APIs after the 2026-08-12 retired
+  device filter. Historical `UNMAPPED` readings remain preserved.
 
 ## Active Blockers
 
 - MasterBedroom completed the `0.1.6-recovery` rollout in an isolated acknowledged attempt. Its power supply was replaced by the operator before the 2026-08-04 check; it is currently reporting normally, so the prior reconnect issue is no longer active unless it recurs.
 - `BunkHouse` also received replacement power before the 2026-08-04 check and is currently online and reporting normally; its prior long-offline issue is no longer active unless it recurs.
-- `AtticChimney` stopped reporting and was temporarily retired from the dashboard fleet on 2026-08-04 until it is safe to enter the attic and replace it. Historical readings were preserved.
+- `AtticChimney` stopped reporting and was temporarily retired from the
+  dashboard fleet on 2026-08-04 until it is safe to enter the attic and replace
+  it. Historical readings were preserved. Its returned `UNMAPPED` row is now
+  hidden through `config/retired_devices.json`.
+- `GarageDriveway` is retired from current collection/dashboard views pending
+  replacement this weekend; historical readings were preserved.
 - Kitchen installed `0.1.11-sec015-json` but failed the one-hour burn-in on
   brownout/reboot evidence and continued showing repeated normalized `seq=1`
   resets afterward. MasterBedroom also installed `0.1.11-sec015-json` after
@@ -271,6 +278,9 @@ production build was reflashed and reverified on `Sunroom Test`.
   Do not continue firmware rollout until Kitchen's and MasterBedroom's
   power/reset behavior is investigated or accepted as a known pre-existing
   hardware issue.
+- Final 2026-08-12 wrapup check found `Kitchen` currently offline, with last
+  telemetry at `2026-08-13T01:28:18Z` and offline status at
+  `2026-08-13T01:37:51Z`.
 - The actual house image has not been uploaded yet. The dashboard is ready for it through `data/dashboard-assets/` plus `config/floorplan.json`.
 - The four-view rotating dashboard is active on normal port `8000`, including the pause/resume control, floorplan-derived Temperature Graph groups, 1080p-fit Device List Grid and Latest Readings views, collector-receipt-time stale calculation, and `Manage Devices` panel.
 - Live operator credentials for `iot-admin` are stored locally in `/home/scotty/.config/iot-home/operator-credentials.env` with mode `0600`. Dashboard read access is intentionally open to clients on the home network; separate dashboard credentials in `/home/scotty/.config/iot-home/dashboard-credentials.env`, also mode `0600`, protect location-mapping writes.
@@ -322,11 +332,12 @@ checks for future firmware releases.
 
 ## Stop Point
 
-- Morning 2026-08-05: the Pi3 watchdog cooldown fix and complete relay recovery
-  path are validated. Production uses 10 consecutive one-minute failures, a
-  15-second power interruption, and a one-hour between-cycle cooldown. Core
-  PiServer services are active and enabled; the dashboard reports 22 active
-  mapped devices plus one online `UNMAPPED` device.
+- Afternoon 2026-08-12: `GarageDriveway` and the retired `UNMAPPED` device are
+  hidden from current collection/dashboard views through
+  `config/retired_devices.json`, with historical readings preserved. Mosquitto
+  is systemd-active, but collector/dashboard are running as manual replacement
+  processes because non-interactive `systemctl start` required authentication;
+  restore managed units with interactive systemd access or reboot.
 - Local branch: `agent/disable-iot-led`
 - Published implementation commits: `789c308` and concurrent-migration fix
   `cacfceb`; final documentation may be newer.

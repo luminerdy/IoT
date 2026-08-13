@@ -23,6 +23,7 @@ from iot_home.db import (
 )
 from iot_home.locations import DEFAULT_LOCATIONS_PATH, load_locations, mapped_location
 from iot_home.mqtt_schema import STATUS_SUBSCRIPTION, TELEMETRY_SUBSCRIPTION
+from iot_home.retired_devices import DEFAULT_RETIRED_DEVICES_PATH, load_retired_devices
 
 LOG = logging.getLogger("iot_home.collector")
 
@@ -42,6 +43,12 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=DEFAULT_LOCATIONS_PATH,
         help="JSON file mapping device IDs to display locations.",
+    )
+    parser.add_argument(
+        "--retired-devices",
+        type=Path,
+        default=DEFAULT_RETIRED_DEVICES_PATH,
+        help="JSON file listing device IDs excluded from collection.",
     )
     parser.add_argument(
         "--desired-firmware-version",
@@ -137,6 +144,9 @@ def main() -> None:
     locations = load_locations(args.locations)
     if locations:
         LOG.info("Loaded %d location mapping(s) from %s", len(locations), args.locations)
+    retired_devices = load_retired_devices(args.retired_devices)
+    if retired_devices:
+        LOG.info("Loaded %d retired device(s) from %s", len(retired_devices), args.retired_devices)
 
     def on_connect(client: mqtt.Client, userdata, flags, reason_code, properties=None) -> None:
         if reason_code != 0:
@@ -152,6 +162,10 @@ def main() -> None:
                 LOG.info("Ignoring empty MQTT message on %s", message.topic)
                 return
             payload = json.loads(message.payload.decode("utf-8"))
+            device_id = str(payload.get("deviceId", ""))
+            if device_id in retired_devices:
+                LOG.info("Ignoring retired device %s on %s", device_id, message.topic)
+                return
             if message.topic.endswith("/telemetry"):
                 validate_telemetry(payload)
                 payload["location"] = mapped_location(

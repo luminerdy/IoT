@@ -144,13 +144,21 @@ view, save, and clear these mappings without hand-editing the JSON file.
 
 **FR-030 — Latest view** `MUST`
 The dashboard shows, per device: location, temperature, humidity, RSSI, latest
-sequence number, firmware version, online/offline/stale state, stability, and
-last-seen age.
+sequence number, firmware version, online/offline/stale state, stability,
+sensor health, and last-seen age.
 Stability is derived from persisted telemetry signals and flags repeated
 `seq <= 1` observations within the last 24 hours. Devices are ordered by
 location in the device-card view. The Latest Readings table is ordered by
 temperature descending (hottest first), with location as the tie-breaker, so
 thermal hotspots are immediately visible.
+
+**FR-030a — Sensor health** `SHOULD`
+The collector persists firmware-reported DHT22 diagnostic counters
+`numReadErrors` and `numFilteredReadings`. The dashboard derives sensor health
+from the counter increase since the device's previous telemetry row. Offline
+and stale states take precedence. Missing counters are `Unknown`; zero new
+errors is `OK`; small increases are `Watch`; at least 10 new DHT read failures
+or 3 new filtered readings in the latest telemetry interval is `Fault`.
 
 **FR-031 — Stale detection** `MUST`
 A device marked online whose latest telemetry observation is older than a

@@ -260,6 +260,12 @@ individually provisioned and observed.
 
 Standing rule: no firmware build goes to fleet devices until the exact binary has passed validation on the USB-connected bench ESP32.
 
+Sunroom Test is the USB-connected bench/test device. Keep using it for firmware
+validation, serial recovery, MQTT/config/OTA assertions, and first-pass feature
+checks, but do not treat its sequence/reset stability as a production rollout
+gate while it is powered directly from PiServer USB. Its local USB power may be
+insufficient or otherwise unlike the deployed device power sources.
+
 The collector may record desired-version mismatches, but it never publishes
 OTA commands. Command publication is an explicit operator action using the
 admin credentials below. The per-device target ACL can be verified without

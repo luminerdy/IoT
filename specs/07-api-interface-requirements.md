@@ -141,7 +141,8 @@ Array of per-device objects: `deviceId, location, firmwareVersion,
 buildNumber, lastSeen, online, stale, ageSeconds, rssi, status, temperature,
 humidity, sensorType, seq, observedAt, telemetryObservedAt,
 telemetryAgeSeconds, deviceObservedAt, deviceAgeSeconds, stability,
-recentSeqResets`. When a telemetry row exists, `observedAt` and `ageSeconds`
+recentSeqResets, sensorHealth, numReadErrors, numFilteredReadings,
+readErrorDelta, filteredReadingDelta`. When a telemetry row exists, `observedAt` and `ageSeconds`
 refer to that telemetry row; `deviceObservedAt` and `deviceAgeSeconds` expose
 the latest status/device-row freshness separately. Staleness computed per
 FR-031. Timestamp fields MUST be explicit UTC ISO-8601 strings with a `Z`

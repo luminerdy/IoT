@@ -15,6 +15,8 @@ Table `readings`: append-only telemetry.
 | rssi | INTEGER | dBm |
 | status | TEXT | device-reported status |
 | seq | INTEGER | device publish sequence |
+| num_read_errors | INTEGER | cumulative firmware DHT22 read failures at publish time |
+| num_filtered_readings | INTEGER | cumulative firmware-filtered readings at publish time |
 | legacy_dedupe_exempt | INTEGER NOT NULL | `1` only for extra pre-index duplicate rows preserved by migration; new rows default to `0` |
 | created_at | TEXT NOT NULL | hub receive time, UTC |
 
@@ -34,8 +36,9 @@ arriving.
 Table `devices`: one row per device — location, firmware_version,
 build_number `[CHANGE]`, last_seen, online flag, last_rssi, last_status,
 last_seq, last_ip *(added 2026-07-05; diagnostic only, DATA-009
-sensitivity applies)*, updated_at. Upserted from telemetry and status
-(FR-023).
+sensitivity applies)*, latest DHT counter values
+(`last_num_read_errors`, `last_num_filtered_readings`), updated_at. Upserted
+from telemetry and status (FR-023).
 
 **DATA-003 — Operator config files** `MUST`
 - `locations.json` — `{device_id: display_location}`, strings only.

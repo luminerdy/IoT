@@ -49,6 +49,9 @@ def test_dashboard_page_keeps_attic_and_thermal_sorting_contract() -> None:
     assert 'id="post-reboot-status"' in html
     assert 'id="watchdog-status"' in html
     assert 'fetch("/api/system"' in html
+    assert '["Firmware", deviceFirmwareLabel(row.firmwareVersion, currentFirmware), ""]' in html
+    assert "function currentFirmwareVersion(rows)" in html
+    assert "metric firmware-metric" in html
 
 
 def test_firmware_capability_key_is_required() -> None:
@@ -97,6 +100,11 @@ def test_location_payload_includes_mapped_only_devices() -> None:
     assert payload["locations"] == {"esp32-mapped": "Mapped Room"}
     assert payload["devices"][0]["status"] == "mapped only"
     assert payload["devices"][0]["online"] is False
+    assert payload["devices"][0]["sensorHealth"] == {
+        "state": "offline",
+        "label": "Offline",
+        "detail": "Not reporting",
+    }
 
 
 def test_load_retired_devices_accepts_array_and_object(tmp_path) -> None:
@@ -250,6 +258,8 @@ def _configure_handler(tmp_path, *, with_metric=True, allow_read=True):
                 "humidity": 41.0,
                 "rssi": -50,
                 "seq": 4,
+                "numReadErrors": 0,
+                "numFilteredReadings": 0,
             },
         )
         if with_metric:
@@ -328,6 +338,15 @@ def test_dashboard_read_routes_and_static_assets(tmp_path) -> None:
             "detail": "No resets/24h",
         }
         assert latest[0]["recentSeqResets"] == 0
+        assert latest[0]["sensorHealth"] == {
+            "state": "ok",
+            "label": "OK",
+            "detail": "No new DHT errors",
+        }
+        assert latest[0]["numReadErrors"] == 0
+        assert latest[0]["numFilteredReadings"] == 0
+        assert latest[0]["readErrorDelta"] == 0
+        assert latest[0]["filteredReadingDelta"] == 0
         assert history[0]["deviceId"] == "esp32-test"
         assert floorplan["zones"][0]["location"] == "Test Room"
         assert system["temperatureF"] == 120.5
@@ -353,9 +372,7 @@ def test_dashboard_read_routes_and_static_assets(tmp_path) -> None:
 
 def test_dashboard_read_routes_hide_retired_devices(tmp_path) -> None:
     db_path, _, _ = _configure_handler(tmp_path)
-    Handler.retired_devices_path.write_text(
-        '["esp32-test", "esp32-retired"]', encoding="utf-8"
-    )
+    Handler.retired_devices_path.write_text('["esp32-test", "esp32-retired"]', encoding="utf-8")
     with closing(connect(db_path)) as conn:
         record_telemetry(
             conn,
@@ -436,6 +453,55 @@ def test_latest_staleness_uses_telemetry_age_not_status_age(tmp_path) -> None:
     assert payload["observedAt"].endswith("Z")
     assert payload["updatedAt"].endswith("Z")
     assert payload["deviceObservedAt"].endswith("Z")
+
+
+def test_sensor_health_classification_uses_counter_deltas(tmp_path) -> None:
+    db_path = tmp_path / "iot.db"
+    with closing(connect(db_path)) as conn:
+        init_db(conn)
+        for index, counters in enumerate(((0, 0), (3, 0)), start=1):
+            record_telemetry(
+                conn,
+                {
+                    "deviceId": "esp32-watch",
+                    "datetime": f"2026-08-12T12:00:0{index}Z",
+                    "temperature": 72.4,
+                    "humidity": 45.2,
+                    "seq": index,
+                    "numReadErrors": counters[0],
+                    "numFilteredReadings": counters[1],
+                },
+            )
+        for index, counters in enumerate(((0, 0), (11, 0)), start=1):
+            record_telemetry(
+                conn,
+                {
+                    "deviceId": "esp32-fault",
+                    "datetime": f"2026-08-12T12:01:0{index}Z",
+                    "temperature": 72.4,
+                    "humidity": 45.2,
+                    "seq": index,
+                    "numReadErrors": counters[0],
+                    "numFilteredReadings": counters[1],
+                },
+            )
+
+        rows = {row["device_id"]: row for row in latest_readings(conn)}
+        watch = dashboard.row_to_dict(rows["esp32-watch"], stale_seconds=1200, locations={})
+        fault = dashboard.row_to_dict(rows["esp32-fault"], stale_seconds=1200, locations={})
+
+    assert watch["sensorHealth"] == {
+        "state": "watch",
+        "label": "Watch",
+        "detail": "+3 read, +0 filtered",
+    }
+    assert fault["sensorHealth"] == {
+        "state": "fault",
+        "label": "Fault",
+        "detail": "+11 read, +0 filtered",
+    }
+    assert watch["readErrorDelta"] == 3
+    assert fault["readErrorDelta"] == 11
 
 
 def test_dashboard_read_auth_floorplan_error_and_empty_system(tmp_path) -> None:

@@ -46,9 +46,17 @@ def test_fresh_database_migrates_to_current_and_is_idempotent(tmp_path):
         second_schema = conn.execute(
             "SELECT type, name, sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY 1, 2"
         ).fetchall()
+        reading_columns = {
+            row["name"] for row in conn.execute("PRAGMA table_info(readings)").fetchall()
+        }
+        device_columns = {
+            row["name"] for row in conn.execute("PRAGMA table_info(devices)").fetchall()
+        }
 
-    assert first_version == CURRENT_SCHEMA_VERSION == 3
+    assert first_version == CURRENT_SCHEMA_VERSION == 4
     assert [tuple(row) for row in first_schema] == [tuple(row) for row in second_schema]
+    assert {"num_read_errors", "num_filtered_readings"} <= reading_columns
+    assert {"last_num_read_errors", "last_num_filtered_readings"} <= device_columns
 
 
 def test_concurrent_start_skips_migration_completed_while_waiting_for_lock(tmp_path):
@@ -137,7 +145,7 @@ def test_version_one_migration_preserves_legacy_duplicates_and_indexes_canonical
             "SELECT COUNT(*) FROM readings WHERE datetime = ?", (PRE_NTP_SENTINEL,)
         ).fetchone()[0]
 
-    assert migrated_version == CURRENT_SCHEMA_VERSION == 3
+    assert migrated_version == CURRENT_SCHEMA_VERSION == 4
     assert [tuple(row) for row in before] == [tuple(row) for row in after]
     assert [row[0] for row in exemptions] == [0, 1, 0, 0, 0]
     assert sentinel_count == 3

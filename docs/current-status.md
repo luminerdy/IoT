@@ -1,6 +1,6 @@
 # Current Status
 
-Last updated: 2026-08-12
+Last updated: 2026-08-13
 
 This is the first file to read after a reboot, context switch, or long pause.
 
@@ -12,7 +12,7 @@ The project is a local-first Raspberry Pi IoT system with MQTT, SQLite, a boot-e
 
 Phase 5: Fleet operations plus daily dashboard improvements
 
-Status: Phases 0 through 4 are complete for the current local-first system. Signed OTA hardening and signed build-number anti-rollback are live. The latest bench-validated SEC-015 firmware is `0.1.11-sec015-json` build `2026081002`, which keeps the MQTT TLS hostname fix and completes SEC-015 device JSON parsing/construction. Nineteen visible active devices are on SEC-015; `Attic` and `WallBehindWH` remain on `0.1.8-arduinojson` after `Attic` failed to converge during a final rollout attempt. The instability evidence is now treated as a device/power/sensor issue to investigate rather than a SEC-015-specific blocker. `GarageDriveway` and the separate retired `UNMAPPED`/`AtticChimney` record are hidden from collection/dashboard current views through `config/retired_devices.json` while historical readings remain preserved. Watchdog/post-reboot events are stored in `monitoring_events` and surfaced in the dashboard System Health panel. The dashboard Latest Readings/API separates telemetry freshness from status freshness, shows sequence/reset stability, and returns explicit UTC `Z` timestamps to avoid browser `0s ago` rendering errors. The active work is Phase 5: fleet operations, hardware replacement, dashboard maintenance workflows, backups, tests/CI, and staged security hardening.
+Status: Phases 0 through 4 are complete for the current local-first system. Signed OTA hardening and signed build-number anti-rollback are live. The latest bench-validated SEC-015 firmware is `0.1.11-sec015-json` build `2026081002`, which keeps the MQTT TLS hostname fix and completes SEC-015 device JSON parsing/construction. The replacement GarageDriveway board is `esp32-20500d1b72e8` on `0.1.11-sec015-json`; the replacement WallBehindWH board is `esp32-582abd70a404` on `0.1.11-sec015-json`. The old suspect GarageDriveway and WallBehindWH IDs remain retired while historical readings stay preserved. `Attic` remains on `0.1.8-arduinojson` after it failed to converge during a final rollout attempt. The instability evidence is now treated as a device/power/sensor issue to investigate rather than a SEC-015-specific blocker. The separate retired `UNMAPPED`/`AtticChimney` record is hidden from collection/dashboard current views through `config/retired_devices.json` while historical readings remain preserved. Watchdog/post-reboot events are stored in `monitoring_events` and surfaced in the dashboard System Health panel. The dashboard Latest Readings/API separates telemetry freshness from status freshness, shows sequence/reset stability and Sensor health, and returns explicit UTC `Z` timestamps to avoid browser `0s ago` rendering errors. The live database is schema version 4. The managed collector, dashboard, and Mosquitto services are active. The active work is Phase 5: fleet operations, hardware replacement, dashboard maintenance workflows, backups, tests/CI, and staged security hardening.
 
 ## Accomplished
 
@@ -262,34 +262,28 @@ production build was reflashed and reverified on `Sunroom Test`.
 
 ## Active Blockers
 
-- MasterBedroom completed the `0.1.6-recovery` rollout in an isolated acknowledged attempt. Its power supply was replaced by the operator before the 2026-08-04 check; it is currently reporting normally, so the prior reconnect issue is no longer active unless it recurs.
-- `BunkHouse` also received replacement power before the 2026-08-04 check and is currently online and reporting normally; its prior long-offline issue is no longer active unless it recurs.
 - `AtticChimney` stopped reporting and was temporarily retired from the
   dashboard fleet on 2026-08-04 until it is safe to enter the attic and replace
   it. Historical readings were preserved. Its returned `UNMAPPED` row is now
   hidden through `config/retired_devices.json`.
-- `GarageDriveway` is retired from current collection/dashboard views pending
-  replacement this weekend; historical readings were preserved.
-- Kitchen installed `0.1.11-sec015-json` but failed the one-hour burn-in on
-  brownout/reboot evidence and continued showing repeated normalized `seq=1`
-  resets afterward. MasterBedroom also installed `0.1.11-sec015-json` after
-  explicit acceptance to continue, but failed burn-in when raw telemetry
-  reported `restartReason=InterruptWatchdog`, `uptimeSeconds=5`, and `seq=1`.
-  Do not continue firmware rollout until Kitchen's and MasterBedroom's
-  power/reset behavior is investigated or accepted as a known pre-existing
-  hardware issue.
-- Final 2026-08-12 wrapup check found `Kitchen` currently offline, with last
-  telemetry at `2026-08-13T01:28:18Z` and offline status at
-  `2026-08-13T01:37:51Z`.
+- Replaced GarageDriveway and WallBehindWH boards are installed and reporting,
+  while their old suspect IDs remain retired with historical readings
+  preserved.
+- The SEC-015 firmware rollout is paused for device-stability observation, not
+  for a confirmed firmware-wide regression. Current watch items include
+  `Attic`, `GarageDriveway`, `MasterBedroom`, `WallBehindWH`, and especially
+  `WaterHeater`; `Sunroom Test` also shows resets but is ignored as a
+  production rollout stability gate because it is powered from PiServer USB.
 - The actual house image has not been uploaded yet. The dashboard is ready for it through `data/dashboard-assets/` plus `config/floorplan.json`.
 - The four-view rotating dashboard is active on normal port `8000`, including the pause/resume control, floorplan-derived Temperature Graph groups, 1080p-fit Device List Grid and Latest Readings views, collector-receipt-time stale calculation, and `Manage Devices` panel.
 - Live operator credentials for `iot-admin` are stored locally in `/home/scotty/.config/iot-home/operator-credentials.env` with mode `0600`. Dashboard read access is intentionally open to clients on the home network; separate dashboard credentials in `/home/scotty/.config/iot-home/dashboard-credentials.env`, also mode `0600`, protect location-mapping writes.
 
 ## Next Actions
 
-1. Investigate Kitchen's and MasterBedroom's reboot behavior before resuming the SEC-015
-   firmware rollout. Re-check raw telemetry for `restartReason`,
-   `uptimeSeconds`, and sequence behavior, and inspect power if needed.
+1. Continue observing device stability after the GarageDriveway and
+   WallBehindWH board replacements and WaterHeater cable replacement. Re-check
+   `/api/latest`, raw telemetry `restartReason`/`uptimeSeconds`, and sequence
+   behavior before resuming any firmware rollout.
 2. Plan a separately approved, incremental production MQTT TLS/per-device
    credential migration, starting from a fresh fleet gate and one accessible
    non-attic device at a time. Do not retire the shared fallback until every
@@ -300,11 +294,14 @@ production build was reflashed and reverified on `Sunroom Test`.
    one-minute failures; repeated recovery cycles should be recorded through
    `iot_home.post_reboot_check --import-watchdog` and investigated rather than
    treated as normal.
-5. Decide whether to remap or re-retire the online `UNMAPPED` device that
-   returned after the 2026-08-05 power-cycle test.
-6. Keep the USB bench device on `/dev/ttyUSB0` for firmware validation; replace
-    retired `AtticChimney` only when attic access is safe, continue attic heat
-    monitoring, upload the house image, and keep periodic backup restore checks.
+5. Keep `Sunroom Test` as the USB bench/test device on `/dev/ttyUSB0` for
+   firmware validation, serial recovery, and first-pass feature checks. Because
+   it is powered directly from PiServer USB and may not have production-quality
+   power, ignore its sequence/reset stability when deciding whether a firmware
+   rollout is safe to expand to deployed devices.
+6. Replace retired `AtticChimney` only when attic access is safe, continue
+   attic heat monitoring, upload the house image, and keep periodic backup
+   restore checks.
 
 The `0.1.8-arduinojson` release gate and fleet rollout are complete. Continue
 to use the same USB bench gate, acknowledged small batches, and stop-on-failure

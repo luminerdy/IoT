@@ -43,35 +43,58 @@ Last updated: 2026-08-10
 
 ## Current State
 
-The local-first IoT stack is running on PiServer, but the collector/dashboard
-process ownership needs attention. Mosquitto is active through systemd.
-`iot-home-collector.service` and `iot-home-dashboard.service` are currently
-systemd-inactive because a non-interactive restart/start required
-authentication after a clean process stop. Replacement collector and dashboard
-processes are running manually from `/home/scotty/IoT` with the same live
-database, mapping, floorplan, firmware, and retired-device paths. Restore the
-managed units with an interactive `systemctl start iot-home-collector.service
-iot-home-dashboard.service` or a reboot when convenient. A parallel production
-MQTT TLS listener is active on `8883` alongside the unchanged
-shared-credential listener on `1883`.
-The SEC-015 firmware rollout is paused after repeated reset evidence on
-Kitchen and MasterBedroom. All visible active mapped devices except `Attic`
-and `WallBehindWH` are now on `0.1.11-sec015-json` build `2026081002`; those
-two remaining devices are still on `0.1.8-arduinojson`. Sunroom
-Test's NVS MQTT profile is cleared after bench validation, so it is
-intentionally back on compiled shared `1883` fallback.
+The local-first IoT stack is running on PiServer with `mosquitto.service`,
+`iot-home-collector.service`, and `iot-home-dashboard.service` active under
+systemd. A parallel production MQTT TLS listener is active on `8883` alongside
+the unchanged shared-credential listener on `1883`.
+The live database is schema version 4 with integrity `ok`. A 2026-08-13
+end-of-day `/api/latest` check returned 22 mapped devices, 0 offline, 0 stale,
+and 0 `UNMAPPED`; DHT sensor health counters are being collected and shown.
+The SEC-015 firmware rollout is paused for device-stability observation rather
+than a known firmware regression. All active mapped devices except `Attic` are
+now on `0.1.11-sec015-json` build `2026081002`; `Attic` remains on
+`0.1.8-arduinojson` after a failed convergence attempt. Sunroom Test's NVS MQTT
+profile is cleared after bench validation, so it is intentionally back on
+compiled shared `1883` fallback.
 An explicit attempt to update `Attic` with rollout
 `20260812-attic-sec015-watch` did not converge: no OTA lifecycle status was
 captured, it remained on `0.1.8-arduinojson`, and it continued rapid `seq=1`
 resets. `WallBehindWH` was not attempted after that stop condition.
-Final wrapup check after the commit found `Kitchen` currently offline:
-last telemetry `2026-08-13T01:28:18Z`, offline status
-`2026-08-13T01:37:51Z`, still on `0.1.11-sec015-json` with prior repeated
-`seq=1` instability. Treat this as an active device-stability follow-up.
+Current stability watch items include `Attic`, `GarageDriveway`,
+`MasterBedroom`, `Sunroom Test`, `WallBehindWH`, and especially `WaterHeater`.
+`Sunroom Test` should be ignored as a production rollout stability signal while
+it is powered directly from PiServer USB.
 The separate retired `UNMAPPED` AtticChimney record and the suspect
 `GarageDriveway` board are listed in ignored local `config/retired_devices.json`.
 They are excluded from collector writes and hidden from latest/history/location
 dashboard APIs while historical readings remain preserved.
+
+GarageDriveway replacement: `/dev/ttyUSB0` is Sunroom Test
+(`esp32-9c9c1fda3670`), while `/dev/ttyUSB1` is the new GarageDriveway board
+(`esp32-20500d1b72e8`). The new board was USB-flashed with
+`0.1.11-sec015-json` build `2026081002`, mapped locally to `GarageDriveway`,
+added to the floorplan, given retained default runtime config, and verified
+online/non-stale with valid DHT22 telemetry. The old suspect GarageDriveway ID
+remains retired.
+
+WallBehindWH replacement: the old unstable WallBehindWH board
+`esp32-240ac4fa418c` was replaced by new board `esp32-582abd70a404` on
+`/dev/ttyUSB1`. It was USB-flashed with `0.1.11-sec015-json` build
+`2026081002`, mapped locally to `WallBehindWH`, given retained default runtime
+config, and verified online/non-stale with valid DHT22 telemetry and no DHT
+read/filter errors. Pre-replacement backup:
+`data/backups/iot-20260813T221108Z-pre-wallbehindwh-replace.sqlite.gz`. The
+old WallBehindWH ID is now in `config/retired_devices.json`, its current
+`devices` row was removed, and historical readings remain preserved.
+
+Sensor health dashboard/API status: schema version 4 adds DHT22 read/filter
+counters to `readings` and `devices`, the collector code persists firmware
+`numReadErrors`/`numFilteredReadings`, and `/api/latest` derives `sensorHealth`
+from counter deltas. The live database has been migrated to schema version 4
+after backup `data/backups/iot-20260813T120516Z-pre-sensor-health.sqlite.gz`;
+`PRAGMA integrity_check` returned `ok`. The managed collector and dashboard are
+now running the updated checkout, so DHT counter capture and Sensor health are
+live.
 
 Firmware downloads on live port `8000` now require a constant-time-checked
 capability key or dashboard Basic auth. Missing/wrong keys return 401; a keyed
@@ -248,14 +271,18 @@ Bench validation completed:
    investigated or explicitly accepted. Check raw telemetry for
    `restartReason`, `uptimeSeconds`, and sequence behavior; inspect device
    power if needed.
-3. Continue the incremental production MQTT TLS/per-device credential migration
+3. Keep `Sunroom Test` as the USB-connected bench/test device on `/dev/ttyUSB0`.
+   Use it for firmware validation, serial recovery, MQTT/config/OTA assertions,
+   and feature testing, but ignore its sequence/reset stability as a production
+   rollout gate while it is powered directly from PiServer USB.
+4. Continue the incremental production MQTT TLS/per-device credential migration
    one physical USB device at a time. Do not retire the shared `1883` listener
    or shared fleet credential until every active device has been individually
    provisioned and observed.
-4. Continue watchdog/fleet/attic monitoring. If another watchdog relay recovery
+5. Continue watchdog/fleet/attic monitoring. If another watchdog relay recovery
    occurs within 24 hours or repeated recoveries appear within a week,
    investigate PiServer power/network/system health before relying on the relay.
-5. Decide whether to remap or re-retire the returned `UNMAPPED` device.
+6. Decide whether to remap or re-retire the returned `UNMAPPED` device.
 
 ## Recent Physical Maintenance
 

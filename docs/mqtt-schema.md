@@ -58,6 +58,11 @@ Example:
 }
 ```
 
+`numReadErrors` and `numFilteredReadings` are cumulative since the ESP32 boot.
+The hub stores the published values and derives sensor health from the increase
+since that device's previous telemetry row; the raw counters reset after a
+device reboot.
+
 `restartReason` is the ESP32 hardware reset classification. `recoveryReason`
 is normally `none`; after a firmware-initiated recovery restart, the first
 successfully published telemetry reports `network_timeout` or

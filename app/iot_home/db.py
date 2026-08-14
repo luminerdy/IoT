@@ -139,6 +139,21 @@ def validate_schema(conn: sqlite3.Connection, version: int) -> None:
             raise RuntimeError(
                 f"database table monitoring_events is missing columns: {sorted(missing)}"
             )
+    if version >= 4:
+        table_columns = {
+            table: {
+                str(row["name"]) for row in conn.execute(f"PRAGMA table_info({table})").fetchall()
+            }
+            for table in ("readings", "devices")
+        }
+        expected = {
+            "readings": {"num_read_errors", "num_filtered_readings"},
+            "devices": {"last_num_read_errors", "last_num_filtered_readings"},
+        }
+        for table, required_columns in expected.items():
+            missing = required_columns - table_columns[table]
+            if missing:
+                raise RuntimeError(f"database table {table} is missing columns: {sorted(missing)}")
         for index_name in (
             "idx_monitoring_events_created",
             "idx_monitoring_events_type_created",
@@ -222,6 +237,8 @@ def record_telemetry(conn: sqlite3.Connection, payload: dict) -> None:
     rssi = payload.get("rssi")
     status = payload.get("status", "OK")
     seq = payload.get("seq")
+    num_read_errors = payload.get("numReadErrors")
+    num_filtered_readings = payload.get("numFilteredReadings")
     ip = observed_ip(payload)
 
     with conn:
@@ -229,9 +246,9 @@ def record_telemetry(conn: sqlite3.Connection, payload: dict) -> None:
             """
             INSERT INTO readings (
                 device_id, location, sensor_type, temperature, humidity,
-                datetime, rssi, status, seq
+                datetime, rssi, status, seq, num_read_errors, num_filtered_readings
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(device_id, seq, datetime)
             WHERE datetime <> '1970-01-01T00:00:00Z'
               AND legacy_dedupe_exempt = 0
@@ -247,15 +264,18 @@ def record_telemetry(conn: sqlite3.Connection, payload: dict) -> None:
                 rssi,
                 status,
                 seq,
+                num_read_errors,
+                num_filtered_readings,
             ),
         )
         conn.execute(
             """
             INSERT INTO devices (
                 device_id, location, firmware_version, last_seen, online,
-                last_rssi, last_status, last_seq, last_ip, updated_at
+                last_rssi, last_status, last_seq, last_ip, last_num_read_errors,
+                last_num_filtered_readings, updated_at
             )
-            VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
             ON CONFLICT(device_id) DO UPDATE SET
                 location = excluded.location,
                 firmware_version = excluded.firmware_version,
@@ -265,6 +285,8 @@ def record_telemetry(conn: sqlite3.Connection, payload: dict) -> None:
                 last_status = excluded.last_status,
                 last_seq = excluded.last_seq,
                 last_ip = COALESCE(excluded.last_ip, devices.last_ip),
+                last_num_read_errors = excluded.last_num_read_errors,
+                last_num_filtered_readings = excluded.last_num_filtered_readings,
                 updated_at = CURRENT_TIMESTAMP
             """,
             (
@@ -276,6 +298,8 @@ def record_telemetry(conn: sqlite3.Connection, payload: dict) -> None:
                 status,
                 seq,
                 ip,
+                num_read_errors,
+                num_filtered_readings,
             ),
         )
 
@@ -475,12 +499,30 @@ def latest_readings(conn: sqlite3.Connection) -> list[sqlite3.Row]:
             d.last_rssi,
             d.last_status,
             d.last_ip,
+            d.last_num_read_errors,
+            d.last_num_filtered_readings,
             d.updated_at,
             r.temperature,
             r.humidity,
             r.sensor_type,
             r.seq,
+            r.num_read_errors,
+            r.num_filtered_readings,
             r.created_at,
+            CASE
+                WHEN r.num_read_errors IS NULL THEN NULL
+                WHEN previous.num_read_errors IS NULL THEN r.num_read_errors
+                WHEN r.num_read_errors >= previous.num_read_errors
+                    THEN r.num_read_errors - previous.num_read_errors
+                ELSE r.num_read_errors
+            END AS read_error_delta,
+            CASE
+                WHEN r.num_filtered_readings IS NULL THEN NULL
+                WHEN previous.num_filtered_readings IS NULL THEN r.num_filtered_readings
+                WHEN r.num_filtered_readings >= previous.num_filtered_readings
+                    THEN r.num_filtered_readings - previous.num_filtered_readings
+                ELSE r.num_filtered_readings
+            END AS filtered_reading_delta,
             (
                 SELECT COUNT(*)
                 FROM readings recent
@@ -494,6 +536,15 @@ def latest_readings(conn: sqlite3.Connection) -> list[sqlite3.Row]:
             FROM readings
             WHERE device_id = d.device_id
             ORDER BY created_at DESC, id DESC
+            LIMIT 1
+        )
+        LEFT JOIN readings previous ON previous.id = (
+            SELECT id
+            FROM readings
+            WHERE device_id = d.device_id
+              AND id < r.id
+              AND (num_read_errors IS NOT NULL OR num_filtered_readings IS NOT NULL)
+            ORDER BY id DESC
             LIMIT 1
         )
         ORDER BY COALESCE(d.location, d.device_id)

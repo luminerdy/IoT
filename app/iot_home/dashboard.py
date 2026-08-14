@@ -141,6 +141,14 @@ def row_to_dict(row, stale_seconds: int, locations: dict[str, str]) -> dict:
         seq=row["seq"],
         recent_seq_resets=recent_seq_resets,
     )
+    sensor_health = sensor_health_status(
+        online=bool(row["online"]),
+        stale=is_stale,
+        read_errors=row["num_read_errors"],
+        filtered_readings=row["num_filtered_readings"],
+        read_error_delta=row["read_error_delta"],
+        filtered_reading_delta=row["filtered_reading_delta"],
+    )
 
     return {
         "deviceId": device_id,
@@ -158,6 +166,11 @@ def row_to_dict(row, stale_seconds: int, locations: dict[str, str]) -> dict:
         "seq": row["seq"],
         "stability": stability,
         "recentSeqResets": recent_seq_resets,
+        "sensorHealth": sensor_health,
+        "numReadErrors": row["num_read_errors"],
+        "numFilteredReadings": row["num_filtered_readings"],
+        "readErrorDelta": row["read_error_delta"],
+        "filteredReadingDelta": row["filtered_reading_delta"],
         "updatedAt": format_utc(updated_at),
         "observedAt": format_utc(observed_at),
         "telemetryObservedAt": format_utc(telemetry_observed_at),
@@ -187,6 +200,39 @@ def device_stability(
     if recent_seq_resets == 1:
         return {"state": "watch", "label": "Watch", "detail": "1 restart/24h"}
     return {"state": "stable", "label": "Stable", "detail": "No resets/24h"}
+
+
+def sensor_health_status(
+    *,
+    online: bool,
+    stale: bool,
+    read_errors: int | None,
+    filtered_readings: int | None,
+    read_error_delta: int | None,
+    filtered_reading_delta: int | None,
+) -> dict[str, str]:
+    if not online:
+        return {"state": "offline", "label": "Offline", "detail": "Not reporting"}
+    if stale:
+        return {"state": "stale", "label": "Stale", "detail": "Last reading is old"}
+    if read_errors is None and filtered_readings is None:
+        return {"state": "unknown", "label": "Unknown", "detail": "No DHT counters"}
+
+    new_read_errors = read_error_delta or 0
+    new_filtered = filtered_reading_delta or 0
+    if new_read_errors >= 10 or new_filtered >= 3:
+        return {
+            "state": "fault",
+            "label": "Fault",
+            "detail": f"+{new_read_errors} read, +{new_filtered} filtered",
+        }
+    if new_read_errors > 0 or new_filtered > 0:
+        return {
+            "state": "watch",
+            "label": "Watch",
+            "detail": f"+{new_read_errors} read, +{new_filtered} filtered",
+        }
+    return {"state": "ok", "label": "OK", "detail": "No new DHT errors"}
 
 
 def history_row_to_dict(row, locations: dict[str, str]) -> dict:
@@ -259,6 +305,18 @@ def location_payload(
                         online=False, stale=False, seq=None, recent_seq_resets=0
                     ),
                     "recentSeqResets": 0,
+                    "sensorHealth": sensor_health_status(
+                        online=False,
+                        stale=False,
+                        read_errors=None,
+                        filtered_readings=None,
+                        read_error_delta=None,
+                        filtered_reading_delta=None,
+                    ),
+                    "numReadErrors": None,
+                    "numFilteredReadings": None,
+                    "readErrorDelta": None,
+                    "filteredReadingDelta": None,
                     "updatedAt": None,
                     "observedAt": None,
                     "telemetryObservedAt": None,
@@ -492,7 +550,7 @@ def page() -> bytes:
     }
     .metrics {
       display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
+      grid-template-columns: repeat(4, minmax(0, 1fr));
       gap: 6px;
     }
     .metric {
@@ -507,6 +565,10 @@ def page() -> bytes:
       margin-top: 3px;
       font-size: 16px;
       line-height: 1.1;
+      overflow-wrap: anywhere;
+    }
+    .metric.firmware-metric strong {
+      font-size: 13px;
     }
     .metric-note {
       display: block;
@@ -864,8 +926,8 @@ def page() -> bytes:
       text-transform: uppercase;
       color: #4b5b6b;
     }
-    th:nth-child(10),
-    td:nth-child(10) {
+    th:nth-child(11),
+    td:nth-child(11) {
       display: none;
     }
     tr:last-child td {
@@ -887,13 +949,13 @@ def page() -> bytes:
     .online .dot { background: var(--green); }
     .offline .dot { background: var(--red); }
     .stale .dot { background: var(--amber); }
-    .stability {
+    .health-badge {
       display: inline-flex;
       flex-direction: column;
       gap: 2px;
       min-width: 82px;
     }
-    .stability-label {
+    .health-label {
       display: inline-flex;
       align-items: center;
       width: fit-content;
@@ -907,25 +969,27 @@ def page() -> bytes:
       font-weight: 780;
       line-height: 1;
     }
-    .stability-detail {
+    .health-detail {
       color: var(--ink-soft);
       font-size: 10px;
       line-height: 1;
     }
-    .stability.stable .stability-label {
+    .health-badge.stable .health-label,
+    .health-badge.ok .health-label {
       border-color: rgb(39 174 96 / 0.35);
       background: #ecfdf3;
       color: #1f7a45;
     }
-    .stability.watch .stability-label,
-    .stability.stale .stability-label,
-    .stability.unknown .stability-label {
+    .health-badge.watch .health-label,
+    .health-badge.stale .health-label,
+    .health-badge.unknown .health-label {
       border-color: rgb(183 121 31 / 0.38);
       background: #fff7ed;
       color: var(--amber);
     }
-    .stability.unstable .stability-label,
-    .stability.offline .stability-label {
+    .health-badge.unstable .health-label,
+    .health-badge.fault .health-label,
+    .health-badge.offline .health-label {
       border-color: rgb(192 57 43 / 0.32);
       background: #fef2f2;
       color: var(--red);
@@ -1218,13 +1282,14 @@ def page() -> bytes:
               <th>RSSI</th>
               <th>Seq</th>
               <th>Stability</th>
+              <th>Sensor</th>
               <th>Last Seen</th>
               <th>Firmware</th>
               <th>Device</th>
             </tr>
           </thead>
           <tbody id="readings">
-            <tr><td colspan="10" class="empty">No readings yet.</td></tr>
+            <tr><td colspan="11" class="empty">No readings yet.</td></tr>
           </tbody>
         </table>
       </div>
@@ -1433,6 +1498,28 @@ def page() -> bytes:
       return value.replace("-filtered-telemetry", " filtered").replace("-signed-ota", " signed");
     }
 
+    function currentFirmwareVersion(rows) {
+      const counts = new Map();
+      for (const row of rows) {
+        if (!row.firmwareVersion) continue;
+        counts.set(row.firmwareVersion, (counts.get(row.firmwareVersion) || 0) + 1);
+      }
+      let current = null;
+      let currentCount = 0;
+      for (const [version, count] of counts.entries()) {
+        if (count > currentCount || (count === currentCount && version > current)) {
+          current = version;
+          currentCount = count;
+        }
+      }
+      return current;
+    }
+
+    function deviceFirmwareLabel(value, current) {
+      if (!value) return "--";
+      return value === current ? "Latest" : firmwareLabel(value);
+    }
+
     function deviceState(row) {
       if (row.stale) return ["stale", "Stale"];
       if (row.online) return ["online", "Online"];
@@ -1506,6 +1593,7 @@ def page() -> bytes:
       const sortedRows = [...rows].sort((a, b) =>
         deviceLabel(a).localeCompare(deviceLabel(b), undefined, {sensitivity: "base"})
       );
+      const currentFirmware = currentFirmwareVersion(sortedRows);
       for (const row of sortedRows) {
         const card = document.createElement("article");
         card.className = "device";
@@ -1524,9 +1612,10 @@ def page() -> bytes:
           ["Temp", fmt(row.temperature, " F"), ""],
           ["Humid", humidityText(row), isHumiditySuspect(row) ? "suspect" : ""],
           ["Seen", relativeTime(row.observedAt || row.lastSeen), ""],
+          ["Firmware", deviceFirmwareLabel(row.firmwareVersion, currentFirmware), ""],
         ]) {
           const metric = document.createElement("div");
-          metric.className = "metric";
+          metric.className = label === "Firmware" ? "metric firmware-metric" : "metric";
           const metricLabel = document.createElement("div");
           metricLabel.className = "label";
           metricLabel.textContent = label;
@@ -1594,7 +1683,7 @@ def page() -> bytes:
     function render(rows) {
       const body = document.getElementById("readings");
       if (!rows.length) {
-        body.innerHTML = '<tr><td colspan="10" class="empty">No readings yet.</td></tr>';
+        body.innerHTML = '<tr><td colspan="11" class="empty">No readings yet.</td></tr>';
         return;
       }
       body.replaceChildren();
@@ -1614,6 +1703,7 @@ def page() -> bytes:
           fmt(row.rssi, " dBm"),
           row.seq ?? "-",
           row.stability || {state: "unknown", label: "Unknown", detail: "No sequence data"},
+          row.sensorHealth || {state: "unknown", label: "Unknown", detail: "No DHT counters"},
           relativeTime(row.observedAt || row.lastSeen),
           firmwareLabel(row.firmwareVersion),
           row.deviceId,
@@ -1636,14 +1726,14 @@ def page() -> bytes:
             flag.textContent = "suspect";
             wrap.appendChild(flag);
             td.appendChild(wrap);
-          } else if (index === 6) {
+          } else if (index === 6 || index === 7) {
             const stability = document.createElement("span");
-            stability.className = `stability ${value.state || "unknown"}`;
+            stability.className = `health-badge ${value.state || "unknown"}`;
             const label = document.createElement("span");
-            label.className = "stability-label";
+            label.className = "health-label";
             label.textContent = value.label || "Unknown";
             const detail = document.createElement("span");
-            detail.className = "stability-detail";
+            detail.className = "health-detail";
             detail.textContent = value.detail || "";
             stability.append(label, detail);
             td.appendChild(stability);
@@ -2114,7 +2204,9 @@ class Handler(BaseHTTPRequestHandler):
             with closing(connect(self.db_path)) as conn:
                 rows = [
                     history_row_to_dict(row, self.locations)
-                    for row in visible_rows(reading_history(conn, hours, limit), self.retired_devices)
+                    for row in visible_rows(
+                        reading_history(conn, hours, limit), self.retired_devices
+                    )
                 ]
             payload = json.dumps(rows).encode("utf-8")
             self.send_response(200)

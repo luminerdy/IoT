@@ -1,5 +1,108 @@
 # Progress Log
 
+## 2026-08-13
+
+### Sunroom Test Bench Policy
+
+- Recorded the Sunroom Test operating policy: it remains the USB-connected
+  bench/test ESP32 on `/dev/ttyUSB0` for firmware validation, serial recovery,
+  MQTT/config/OTA assertions, and first-pass feature checks. Because it is
+  powered directly from PiServer USB and may not represent production device
+  power stability, its sequence/reset stability should be ignored when deciding
+  whether a firmware rollout can expand to deployed devices.
+
+### GarageDriveway Replacement
+
+- Identified the two USB-connected ESP32s without relying on their generic
+  CP2102 serial labels. `/dev/ttyUSB0` is Sunroom Test
+  (`esp32-9c9c1fda3670`); `/dev/ttyUSB1` is the new GarageDriveway board
+  (`esp32-20500d1b72e8`).
+- Added local ignored mapping `esp32-20500d1b72e8 -> GarageDriveway` and added
+  a GarageDriveway outdoor zone back to the local floorplan. Kept the old
+  suspect GarageDriveway board ID in `config/retired_devices.json` so
+  historical readings remain preserved and the old board stays hidden.
+- USB-flashed only `/dev/ttyUSB1` with current bench-validated firmware
+  `0.1.11-sec015-json` build `2026081002`; upload wrote and verified the
+  977,040-byte firmware image.
+- Serial verification showed firmware `0.1.11-sec015-json`, stable device ID
+  `esp32-20500d1b72e8`, Wi-Fi IP `10.10.10.164`, MQTT connection, and valid
+  DHT22 telemetry (`88.2 F`, `41.7%`, `numReadErrors=0`,
+  `numFilteredReadings=0`) at `2026-08-13T20:06:14Z`.
+- Published retained default runtime config for `esp32-20500d1b72e8`
+  (`reportIntervalSeconds=600`, `changeThresholdF=1.0`) using operator
+  credentials.
+- Restarted the managed collector and dashboard through systemd recovery so
+  local mapping/floorplan changes loaded. Live verification returned 22 latest
+  rows, 0 offline, 0 stale, 0 `UNMAPPED`, and GarageDriveway online/non-stale
+  on `0.1.11-sec015-json` with fresh valid telemetry.
+
+### WallBehindWH Replacement
+
+- After the original WallBehindWH board continued reset behavior even when
+  moved close to PiServer, identified the USB devices before touching firmware:
+  `/dev/ttyUSB0` remained Sunroom Test (`esp32-9c9c1fda3670`), while
+  `/dev/ttyUSB1` was the new WallBehindWH replacement
+  (`esp32-582abd70a404`).
+- Added local ignored mapping `esp32-582abd70a404 -> WallBehindWH`, removed the
+  old `esp32-240ac4fa418c` WallBehindWH mapping, and added the old unstable ID
+  to `config/retired_devices.json` so current views hide it while historical
+  readings remain preserved.
+- Created and integrity-verified pre-replacement backup
+  `data/backups/iot-20260813T221108Z-pre-wallbehindwh-replace.sqlite.gz`, then
+  removed only the old current `devices` row for `esp32-240ac4fa418c`.
+- USB-flashed only `/dev/ttyUSB1` with current bench-validated firmware
+  `0.1.11-sec015-json` build `2026081002`; upload wrote and verified the
+  977,040-byte firmware image.
+- Serial verification showed firmware `0.1.11-sec015-json`, stable device ID
+  `esp32-582abd70a404`, Wi-Fi IP `10.10.10.165`, MQTT connection, and valid
+  DHT22 telemetry with `numReadErrors=0` and `numFilteredReadings=0`.
+- Published retained default runtime config for `esp32-582abd70a404`
+  (`reportIntervalSeconds=600`, `changeThresholdF=1.0`) using operator
+  credentials.
+- Restarted the managed collector/dashboard so the mapping loaded. Live
+  verification returned 22 latest rows, 0 offline, 0 stale, 0 `UNMAPPED`, and
+  WallBehindWH online/non-stale on `0.1.11-sec015-json` with fresh valid
+  telemetry. The old WallBehindWH ID is ignored as retired.
+
+### Sensor Health Status
+
+- Added database schema version 4 with DHT22 diagnostic counters on telemetry
+  rows (`num_read_errors`, `num_filtered_readings`) and latest device rows
+  (`last_num_read_errors`, `last_num_filtered_readings`).
+- The collector now persists firmware `numReadErrors` and
+  `numFilteredReadings`; `/api/latest` exposes the raw counters, per-device
+  deltas from the previous telemetry row, and a derived `sensorHealth` status.
+- Added a compact Sensor column to the dashboard Latest Readings table.
+  Classification is conservative: offline/stale take precedence, missing
+  counters are `Unknown`, zero new DHT errors is `OK`, small increases are
+  `Watch`, and at least 10 new read failures or 3 new filtered readings in the
+  latest interval is `Fault`.
+- Updated functional/API/data specs and MQTT schema notes. Validation passed:
+  focused DB/dashboard/migration tests (`46 passed`), full Python suite
+  (`138 passed`, 83.88% coverage), Ruff lint/format checks on touched Python
+  files, and `git diff --check`.
+- After authorization to restart the dashboard if needed, created and
+  integrity-verified pre-migration backup
+  `data/backups/iot-20260813T120516Z-pre-sensor-health.sqlite.gz`.
+- Migrated the live database to schema version 4 with
+  `PRAGMA integrity_check=ok`. After the user completed the managed service
+  restart, `iot-home-collector.service` and `iot-home-dashboard.service` were
+  active under systemd and `/api/latest` exposed live `sensorHealth`.
+
+### End-Of-Day Live Check
+
+- At the 2026-08-13 wrapup, `mosquitto.service`,
+  `iot-home-collector.service`, and `iot-home-dashboard.service` were active;
+  the live database reported schema version 4 and `PRAGMA integrity_check=ok`.
+- `/api/latest` returned 22 mapped devices, 0 offline, 0 stale, and 0
+  `UNMAPPED`. Current stability watch items included `Attic`,
+  `GarageDriveway`, `MasterBedroom`, `Sunroom Test`, `WallBehindWH`, and
+  especially `WaterHeater`; `Sunroom Test` is excluded from production rollout
+  stability decisions because it is the USB bench/test device.
+- DHT sensor health was live in the API. Most devices reported `OK`; current
+  `Watch` examples were `FrontBedroom` (`+2 read`) and `WaterHeater`
+  (`+1 read`).
+
 ## 2026-08-12
 
 ### SEC-015 Watch Rollout

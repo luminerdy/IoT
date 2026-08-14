@@ -80,6 +80,8 @@ def test_record_telemetry_updates_latest_device_state(tmp_path):
                 "rssi": -55,
                 "status": "OK",
                 "seq": 7,
+                "numReadErrors": 2,
+                "numFilteredReadings": 1,
             },
         )
 
@@ -92,6 +94,37 @@ def test_record_telemetry_updates_latest_device_state(tmp_path):
     assert rows[0]["temperature"] == 72.4
     assert rows[0]["humidity"] == 45.2
     assert rows[0]["recent_seq_resets"] == 0
+    assert rows[0]["num_read_errors"] == 2
+    assert rows[0]["num_filtered_readings"] == 1
+    assert rows[0]["read_error_delta"] == 2
+    assert rows[0]["filtered_reading_delta"] == 1
+
+
+def test_latest_readings_reports_sensor_counter_deltas(tmp_path):
+    db_path = tmp_path / "iot.db"
+    with closing(connect(db_path)) as conn:
+        init_db(conn)
+        for index, counters in enumerate(((2, 1), (5, 1), (1, 0)), start=1):
+            record_telemetry(
+                conn,
+                {
+                    "deviceId": "esp32-one",
+                    "location": "Kitchen",
+                    "datetime": f"2026-06-30T12:00:0{index}Z",
+                    "temperature": 72.4,
+                    "humidity": 45.2,
+                    "seq": index,
+                    "numReadErrors": counters[0],
+                    "numFilteredReadings": counters[1],
+                },
+            )
+
+        rows = latest_readings(conn)
+
+    assert rows[0]["num_read_errors"] == 1
+    assert rows[0]["num_filtered_readings"] == 0
+    assert rows[0]["read_error_delta"] == 1
+    assert rows[0]["filtered_reading_delta"] == 0
 
 
 def test_latest_readings_counts_recent_sequence_resets(tmp_path):

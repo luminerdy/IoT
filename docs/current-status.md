@@ -12,7 +12,7 @@ The project is a local-first Raspberry Pi IoT system with MQTT, SQLite, a boot-e
 
 Phase 5: Fleet operations plus daily dashboard improvements
 
-Status: Phases 0 through 4 are complete for the current local-first system. Signed OTA hardening and signed build-number anti-rollback are live. The latest bench-validated SEC-015 firmware is `0.1.11-sec015-json` build `2026081002`, which keeps the MQTT TLS hostname fix and completes SEC-015 device JSON parsing/construction. The replacement GarageDriveway board is `esp32-20500d1b72e8` on `0.1.11-sec015-json`; the replacement WallBehindWH board is `esp32-582abd70a404` on `0.1.11-sec015-json`. The old suspect GarageDriveway and WallBehindWH IDs remain retired while historical readings stay preserved. `Attic` remains on `0.1.8-arduinojson` after it failed to converge during a final rollout attempt. The instability evidence is now treated as a device/power/sensor issue to investigate rather than a SEC-015-specific blocker. The separate retired `UNMAPPED`/`AtticChimney` record is hidden from collection/dashboard current views through `config/retired_devices.json` while historical readings remain preserved. Watchdog/post-reboot events are stored in `monitoring_events` and surfaced in the dashboard System Health panel. The dashboard Latest Readings/API separates telemetry freshness from status freshness, shows sequence/reset stability and Sensor health, and returns explicit UTC `Z` timestamps to avoid browser `0s ago` rendering errors. The live database is schema version 4. The managed collector, dashboard, and Mosquitto services are active. The active work is Phase 5: fleet operations, hardware replacement, dashboard maintenance workflows, backups, tests/CI, and staged security hardening.
+Status: Phases 0 through 4 are complete for the current local-first system. Signed OTA hardening and signed build-number anti-rollback are live. The latest bench-validated SEC-015 firmware is `0.1.11-sec015-json` build `2026081002`, which keeps the MQTT TLS hostname fix and completes SEC-015 device JSON parsing/construction. The replacement GarageDriveway board is `esp32-20500d1b72e8` on `0.1.11-sec015-json`; the replacement WallBehindWH board is `esp32-582abd70a404` on `0.1.11-sec015-json`; the replacement WaterHeater board is `esp32-20500d1bbba8` on `0.1.11-sec015-json`. The old suspect GarageDriveway, WallBehindWH, and WaterHeater IDs remain retired while historical readings stay preserved. `Attic` remains on `0.1.8-arduinojson` after it failed to converge during a final rollout attempt. The instability evidence is now treated as a device/power/sensor issue to investigate rather than a SEC-015-specific blocker. The separate retired `UNMAPPED`/`AtticChimney` record is hidden from collection/dashboard current views through `config/retired_devices.json` while historical readings remain preserved. Watchdog/post-reboot events are stored in `monitoring_events` and surfaced in the dashboard System Health panel. The dashboard Latest Readings/API separates telemetry freshness from status freshness, shows sequence/reset stability and Sensor health, and returns explicit UTC `Z` timestamps to avoid browser `0s ago` rendering errors. The live database is schema version 4. The managed collector, dashboard, and Mosquitto services are active. The active work is Phase 5: fleet operations, hardware replacement, dashboard maintenance workflows, backups, tests/CI, and staged security hardening.
 
 ## Accomplished
 
@@ -266,13 +266,13 @@ production build was reflashed and reverified on `Sunroom Test`.
   dashboard fleet on 2026-08-04 until it is safe to enter the attic and replace
   it. Historical readings were preserved. Its returned `UNMAPPED` row is now
   hidden through `config/retired_devices.json`.
-- Replaced GarageDriveway and WallBehindWH boards are installed and reporting,
-  while their old suspect IDs remain retired with historical readings
-  preserved.
+- Replaced GarageDriveway, WallBehindWH, and WaterHeater boards are installed
+  and reporting, while their old suspect IDs remain retired with historical
+  readings preserved.
 - The SEC-015 firmware rollout is paused for device-stability observation, not
   for a confirmed firmware-wide regression. Current watch items include
-  `Attic`, `GarageDriveway`, `MasterBedroom`, `WallBehindWH`, and especially
-  `WaterHeater`; `Sunroom Test` also shows resets but is ignored as a
+  `Attic`, `GarageDriveway`, `MasterBedroom`, `WallBehindWH`, and the newly
+  replaced `WaterHeater`; `Sunroom Test` also shows resets but is ignored as a
   production rollout stability gate because it is powered from PiServer USB.
 - The actual house image has not been uploaded yet. The dashboard is ready for it through `data/dashboard-assets/` plus `config/floorplan.json`.
 - The four-view rotating dashboard is active on normal port `8000`, including the pause/resume control, floorplan-derived Temperature Graph groups, 1080p-fit Device List Grid and Latest Readings views, collector-receipt-time stale calculation, and `Manage Devices` panel.
@@ -280,8 +280,8 @@ production build was reflashed and reverified on `Sunroom Test`.
 
 ## Next Actions
 
-1. Continue observing device stability after the GarageDriveway and
-   WallBehindWH board replacements and WaterHeater cable replacement. Re-check
+1. Continue observing device stability after the GarageDriveway, WallBehindWH,
+   and WaterHeater board replacements. Re-check
    `/api/latest`, raw telemetry `restartReason`/`uptimeSeconds`, and sequence
    behavior before resuming any firmware rollout.
 2. Plan a separately approved, incremental production MQTT TLS/per-device

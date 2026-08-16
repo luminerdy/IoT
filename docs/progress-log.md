@@ -1,5 +1,33 @@
 # Progress Log
 
+## 2026-08-15
+
+### WaterHeater Replacement
+
+- Replaced the removed WaterHeater board `esp32-9c9c1fc5cf1c` with the new
+  USB-connected board on `/dev/ttyUSB1`, identified by MAC
+  `20:50:0d:1b:bb:a8` and stable ID `esp32-20500d1bbba8`. `/dev/ttyUSB0`
+  remained Sunroom Test (`esp32-9c9c1fda3670`) and was not flashed.
+- USB-flashed only `/dev/ttyUSB1` with current bench-validated firmware
+  `0.1.11-sec015-json` build `2026081002`; the local binary exact-matched
+  SHA-256 `91440aa1077ea305d0b8c672b856e16119b14f6156cac1051cfea34a45da6c22`
+  before upload, and esptool wrote and verified the 977,040-byte image.
+- Created pre-retirement backup
+  `data/backups/iot-20260815T114136Z.sqlite.gz`, mapped
+  `esp32-20500d1bbba8 -> WaterHeater`, added old ID
+  `esp32-9c9c1fc5cf1c` to `config/retired_devices.json`, removed only the old
+  current `devices` row, and preserved 15,954 historical readings for the old
+  ID.
+- Published retained default runtime config for `esp32-20500d1bbba8`
+  (`reportIntervalSeconds=600`, `changeThresholdF=1.0`) using operator
+  credentials.
+- Restarted the managed collector/dashboard through systemd recovery after
+  interactive `systemctl restart` was blocked. The collector loaded 22 mappings
+  and 4 retired IDs, explicitly ignored the old WaterHeater ID, and live
+  `/api/latest` returned 22 rows, 0 offline, 0 stale, 0 `UNMAPPED`, with
+  WaterHeater online/non-stale on `0.1.11-sec015-json`, valid DHT22 telemetry,
+  and Sensor health `OK`.
+
 ## 2026-08-13
 
 ### Sunroom Test Bench Policy

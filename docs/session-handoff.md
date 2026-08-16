@@ -47,9 +47,10 @@ The local-first IoT stack is running on PiServer with `mosquitto.service`,
 `iot-home-collector.service`, and `iot-home-dashboard.service` active under
 systemd. A parallel production MQTT TLS listener is active on `8883` alongside
 the unchanged shared-credential listener on `1883`.
-The live database is schema version 4 with integrity `ok`. A 2026-08-13
-end-of-day `/api/latest` check returned 22 mapped devices, 0 offline, 0 stale,
-and 0 `UNMAPPED`; DHT sensor health counters are being collected and shown.
+The live database is schema version 4 with integrity `ok`. A 2026-08-15
+post-WaterHeater-replacement `/api/latest` check returned 22 mapped devices, 0
+offline, 0 stale, and 0 `UNMAPPED`; DHT sensor health counters are being
+collected and shown.
 The SEC-015 firmware rollout is paused for device-stability observation rather
 than a known firmware regression. All active mapped devices except `Attic` are
 now on `0.1.11-sec015-json` build `2026081002`; `Attic` remains on
@@ -61,9 +62,9 @@ An explicit attempt to update `Attic` with rollout
 captured, it remained on `0.1.8-arduinojson`, and it continued rapid `seq=1`
 resets. `WallBehindWH` was not attempted after that stop condition.
 Current stability watch items include `Attic`, `GarageDriveway`,
-`MasterBedroom`, `Sunroom Test`, `WallBehindWH`, and especially `WaterHeater`.
-`Sunroom Test` should be ignored as a production rollout stability signal while
-it is powered directly from PiServer USB.
+`MasterBedroom`, `Sunroom Test`, `WallBehindWH`, and the newly replaced
+`WaterHeater`. `Sunroom Test` should be ignored as a production rollout
+stability signal while it is powered directly from PiServer USB.
 The separate retired `UNMAPPED` AtticChimney record and the suspect
 `GarageDriveway` board are listed in ignored local `config/retired_devices.json`.
 They are excluded from collector writes and hidden from latest/history/location
@@ -86,6 +87,18 @@ read/filter errors. Pre-replacement backup:
 `data/backups/iot-20260813T221108Z-pre-wallbehindwh-replace.sqlite.gz`. The
 old WallBehindWH ID is now in `config/retired_devices.json`, its current
 `devices` row was removed, and historical readings remain preserved.
+
+WaterHeater replacement: the old unstable WaterHeater board
+`esp32-9c9c1fc5cf1c` was removed and replaced by new board
+`esp32-20500d1bbba8` on `/dev/ttyUSB1`. It was USB-flashed with
+`0.1.11-sec015-json` build `2026081002`, mapped locally to `WaterHeater`, given
+retained default runtime config, and verified online/non-stale with valid DHT22
+telemetry and Sensor health `OK`. Pre-replacement backup:
+`data/backups/iot-20260815T114136Z.sqlite.gz`. The old WaterHeater ID is now in
+`config/retired_devices.json`, its current `devices` row was removed, and
+15,954 historical readings remain preserved. Interactive `systemctl restart`
+was blocked, so the user-owned collector/dashboard processes were killed and
+systemd restarted them; the collector loaded 22 mappings and 4 retired IDs.
 
 Sensor health dashboard/API status: schema version 4 adds DHT22 read/filter
 counters to `readings` and `devices`, the collector code persists firmware

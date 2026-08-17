@@ -1,6 +1,6 @@
 # Current Status
 
-Last updated: 2026-08-13
+Last updated: 2026-08-16
 
 This is the first file to read after a reboot, context switch, or long pause.
 
@@ -12,7 +12,7 @@ The project is a local-first Raspberry Pi IoT system with MQTT, SQLite, a boot-e
 
 Phase 5: Fleet operations plus daily dashboard improvements
 
-Status: Phases 0 through 4 are complete for the current local-first system. Signed OTA hardening and signed build-number anti-rollback are live. The latest bench-validated SEC-015 firmware is `0.1.11-sec015-json` build `2026081002`, which keeps the MQTT TLS hostname fix and completes SEC-015 device JSON parsing/construction. The replacement GarageDriveway board is `esp32-20500d1b72e8` on `0.1.11-sec015-json`; the replacement WallBehindWH board is `esp32-582abd70a404` on `0.1.11-sec015-json`; the replacement WaterHeater board is `esp32-20500d1bbba8` on `0.1.11-sec015-json`. The old suspect GarageDriveway, WallBehindWH, and WaterHeater IDs remain retired while historical readings stay preserved. `Attic` remains on `0.1.8-arduinojson` after it failed to converge during a final rollout attempt. The instability evidence is now treated as a device/power/sensor issue to investigate rather than a SEC-015-specific blocker. The separate retired `UNMAPPED`/`AtticChimney` record is hidden from collection/dashboard current views through `config/retired_devices.json` while historical readings remain preserved. Watchdog/post-reboot events are stored in `monitoring_events` and surfaced in the dashboard System Health panel. The dashboard Latest Readings/API separates telemetry freshness from status freshness, shows sequence/reset stability and Sensor health, and returns explicit UTC `Z` timestamps to avoid browser `0s ago` rendering errors. The live database is schema version 4. The managed collector, dashboard, and Mosquitto services are active. The active work is Phase 5: fleet operations, hardware replacement, dashboard maintenance workflows, backups, tests/CI, and staged security hardening.
+Status: Phases 0 through 4 are complete for the current local-first system. Signed OTA hardening and signed build-number anti-rollback are live. The latest bench-validated SEC-015 firmware is `0.1.11-sec015-json` build `2026081002`, which keeps the MQTT TLS hostname fix and completes SEC-015 device JSON parsing/construction. The replacement GarageDriveway board is `esp32-20500d1b72e8` on `0.1.11-sec015-json`; the replacement WallBehindWH board is `esp32-582abd70a404` on `0.1.11-sec015-json`; the replacement WaterHeater board is `esp32-20500d1bbba8` on `0.1.11-sec015-json`. The old suspect GarageDriveway, WallBehindWH, and WaterHeater IDs remain retired while historical readings stay preserved. `Attic` remains on `0.1.8-arduinojson` after it failed to converge during a final rollout attempt. The instability evidence is now treated as a device/power/sensor issue to investigate rather than a SEC-015-specific blocker. The separate retired `UNMAPPED`/`AtticChimney` record is hidden from collection/dashboard current views through `config/retired_devices.json` while historical readings remain preserved. Watchdog/post-reboot events are stored in `monitoring_events` and surfaced in the dashboard System Health panel. The dashboard Latest Readings/API separates telemetry freshness from status freshness, shows sequence/reset stability and Sensor health, and returns explicit UTC `Z` timestamps to avoid browser `0s ago` rendering errors. The live database is schema version 4. The managed collector, dashboard, and Mosquitto services are active. After the 2026-08-16 power outage/router DHCP conflict was resolved, PiServer `wlan0` is locally pinned to static/manual `10.10.10.123/24`; ESP32 MQTT connections and `/api/latest` freshness recovered, and the Pi3 watchdog is again watching `10.10.10.123` with relay control enabled. A router DHCP reservation or pool exclusion is still the remaining guard against some other device taking `.123` first during a future outage. The active work is Phase 5: fleet operations, hardware replacement, dashboard maintenance workflows, backups, tests/CI, and staged security hardening.
 
 ## Accomplished
 
@@ -293,7 +293,9 @@ production build was reflashed and reverified on `Sunroom Test`.
 4. Monitor the Pi3 watchdog with its production threshold of 10 consecutive
    one-minute failures; repeated recovery cycles should be recorded through
    `iot_home.post_reboot_check --import-watchdog` and investigated rather than
-   treated as normal.
+   treated as normal. Watch the next 24 hours after the 2026-08-16 outage
+   recovery for renewed fleet stale/offline behavior, IP conflict symptoms, or
+   watchdog relay events.
 5. Keep `Sunroom Test` as the USB bench/test device on `/dev/ttyUSB0` for
    firmware validation, serial recovery, and first-pass feature checks. Because
    it is powered directly from PiServer USB and may not have production-quality

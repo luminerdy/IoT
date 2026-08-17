@@ -1,6 +1,6 @@
 # Session Handoff
 
-Last updated: 2026-08-10
+Last updated: 2026-08-16
 
 ## Pi3 External Watchdog
 
@@ -8,8 +8,9 @@ Last updated: 2026-08-10
   SSH alias.
 - Connect from PiServer with SSH alias `pi-watchdog`; it uses the dedicated
   dedicated SSH identity.
-- Its `pi-watchdog.service` is enabled and active. It watches PiServer through
-  its private LAN address, and relay control is enabled on BCM GPIO17.
+- Its `pi-watchdog.service` is enabled and active. After the 2026-08-16 outage
+  and DHCP address conflict was resolved, it watches PiServer at
+  `10.10.10.123` with relay control enabled on BCM GPIO17.
 - The hardware is a Digital Loggers IoT Relay. Its isolated universal input is
   designed for a direct 3.3 V GPIO signal plus ground; no external resistor or
   transistor driver is required.
@@ -47,6 +48,15 @@ The local-first IoT stack is running on PiServer with `mosquitto.service`,
 `iot-home-collector.service`, and `iot-home-dashboard.service` active under
 systemd. A parallel production MQTT TLS listener is active on `8883` alongside
 the unchanged shared-credential listener on `1883`.
+PiServer `wlan0` is pinned locally through NetworkManager connection
+`netplan-wlan0-5-18attjsm` with `ipv4.method=manual`, static address
+`10.10.10.123/24`, gateway `10.10.10.254`, DNS `10.10.10.254` and
+`8.8.8.8`. Use
+`http://10.10.10.123:8000` for LAN dashboard access and numeric OTA base URLs
+unless a router DHCP reservation or hostname strategy is deliberately changed.
+The local static address should survive future PiServer/router power recovery,
+but a router DHCP reservation or DHCP-pool exclusion for `10.10.10.123` is
+still needed so another device cannot claim `.123` first.
 The live database is schema version 4 with integrity `ok`. A 2026-08-15
 post-WaterHeater-replacement `/api/latest` check returned 22 mapped devices, 0
 offline, 0 stale, and 0 `UNMAPPED`; DHT sensor health counters are being
@@ -292,8 +302,10 @@ Bench validation completed:
    one physical USB device at a time. Do not retire the shared `1883` listener
    or shared fleet credential until every active device has been individually
    provisioned and observed.
-5. Continue watchdog/fleet/attic monitoring. If another watchdog relay recovery
-   occurs within 24 hours or repeated recoveries appear within a week,
+5. Continue watchdog/fleet/attic monitoring. For the next 24 hours after the
+   2026-08-16 outage recovery, watch for renewed stale/offline readings, IP
+   conflict symptoms, or watchdog relay events. If another watchdog relay
+   recovery occurs within 24 hours or repeated recoveries appear within a week,
    investigate PiServer power/network/system health before relying on the relay.
 6. Decide whether to remap or re-retire the returned `UNMAPPED` device.
 

@@ -1,5 +1,50 @@
 # Progress Log
 
+## 2026-08-16
+
+### Power Outage IP Recovery
+
+- After a power outage and router DHCP change, verified PiServer was on
+  `10.10.10.130/24` via `wlan0`, with gateway `10.10.10.254`, while the Pi3
+  watchdog at `10.10.10.158` was still watching the old PiServer target
+  `10.10.10.123`.
+- Updated the Pi3 `/etc/iot-watchdog.env` target and dashboard URL to
+  `10.10.10.130`, restarted `pi-watchdog.service`, and confirmed it logged
+  `Watching 10.10.10.130`. Temporarily set `WATCHDOG_RELAY_ENABLED=false`
+  because `/api/latest` was reachable but all 22 readings were stale after the
+  outage; the watchdog now logs without cutting PiServer power.
+- Pinned PiServer locally through NetworkManager connection
+  `netplan-wlan0-5-18attjsm` to static `10.10.10.130/24`, gateway
+  `10.10.10.254`, and DNS `10.10.10.254 8.8.8.8`. Verification showed
+  `valid_lft forever`, a static default route, and Mosquitto, collector, and
+  dashboard all active/enabled.
+- Live dashboard API at `http://10.10.10.130:8000/api/latest` returned 22 rows,
+  0 offline, and 22 stale. Collector logs showed retained telemetry/status
+  replay after restart, but no fresh telemetry yet; keep relay disabled until
+  the fleet freshness gate is healthy.
+- After the device occupying `10.10.10.123` was turned off, duplicate-address
+  probing found no live holder for `.123`. Moved PiServer's static
+  NetworkManager address back to `10.10.10.123/24`, preserving gateway
+  `10.10.10.254` and DNS `10.10.10.254 8.8.8.8`.
+- ESP32 clients reconnected to PiServer on `10.10.10.123:1883`; `ss` showed 23
+  remote MQTT sockets plus the local collector connection. `/api/latest`
+  recovered to 22 rows, 0 offline, and 0 stale, and fresh telemetry resumed.
+- Restored the Pi3 watchdog target/dashboard URL to `10.10.10.123`, restarted
+  `pi-watchdog.service`, confirmed it logged `Watching 10.10.10.123`, and
+  re-enabled relay control after the watchdog reported healthy fleet freshness.
+- Final wrap-up checks at 22:10 CDT confirmed NetworkManager has
+  `netplan-wlan0-5-18attjsm` set to `ipv4.method=manual` with
+  `10.10.10.123/24`, gateway `10.10.10.254`, and DNS
+  `10.10.10.254,8.8.8.8`. The Pi3 watchdog service was active/enabled with
+  `WATCHDOG_TARGET_HOST=10.10.10.123`,
+  `WATCHDOG_FAILURES_BEFORE_RECOVERY=10`, `WATCHDOG_RELAY_ENABLED=true`, and
+  GPIO17 idle low. `/api/latest` showed 22 mapped devices, 0 offline, 0 stale,
+  0 `UNMAPPED`, and all device statuses `OK`.
+- Outage follow-up: watch the fleet/watchdog for 24 hours. PiServer should keep
+  `.123` across future outages because the Pi is locally static/manual, but a
+  router DHCP reservation or DHCP-pool exclusion for `10.10.10.123` is still
+  needed to prevent another device from taking the address first.
+
 ## 2026-08-15
 
 ### WaterHeater Replacement

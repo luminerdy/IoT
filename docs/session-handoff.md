@@ -1,6 +1,6 @@
 # Session Handoff
 
-Last updated: 2026-08-16
+Last updated: 2026-08-21
 
 ## Pi3 External Watchdog
 
@@ -10,7 +10,7 @@ Last updated: 2026-08-16
   dedicated SSH identity.
 - Its `pi-watchdog.service` is enabled and active. After the 2026-08-16 outage
   and DHCP address conflict was resolved, it watches PiServer at
-  `10.10.10.123` with relay control enabled on BCM GPIO17.
+  `<private-ip>` with relay control enabled on BCM GPIO17.
 - The hardware is a Digital Loggers IoT Relay. Its isolated universal input is
   designed for a direct 3.3 V GPIO signal plus ground; no external resistor or
   transistor driver is required.
@@ -50,17 +50,26 @@ systemd. A parallel production MQTT TLS listener is active on `8883` alongside
 the unchanged shared-credential listener on `1883`.
 PiServer `wlan0` is pinned locally through NetworkManager connection
 `netplan-wlan0-5-18attjsm` with `ipv4.method=manual`, static address
-`10.10.10.123/24`, gateway `10.10.10.254`, DNS `10.10.10.254` and
+`<private-ip>`, gateway `<private-ip>`, DNS `<private-ip>` and
 `8.8.8.8`. Use
-`http://10.10.10.123:8000` for LAN dashboard access and numeric OTA base URLs
+`http://<private-ip>:8000` for LAN dashboard access and numeric OTA base URLs
 unless a router DHCP reservation or hostname strategy is deliberately changed.
 The local static address should survive future PiServer/router power recovery,
-but a router DHCP reservation or DHCP-pool exclusion for `10.10.10.123` is
-still needed so another device cannot claim `.123` first.
-The live database is schema version 4 with integrity `ok`. A 2026-08-15
-post-WaterHeater-replacement `/api/latest` check returned 22 mapped devices, 0
+but a router DHCP reservation or DHCP-pool exclusion for `<private-ip>` is
+still needed so another device cannot claim <pi-static-host> first.
+Important follow-up: during the 2026-08-16 outage, the Pi3 watchdog could see
+`<private-ip>` as reachable even though it was the wrong device. Tomorrow,
+consider router-side reservation/exclusion first, then decide whether the
+watchdog should also validate target identity instead of relying only on IP
+reachability and dashboard/API freshness.
+The live database is schema version 4 with integrity `ok`. A 2026-08-20
+post-SunroomDoor-replacement `/api/latest` check returned 22 mapped devices, 0
 offline, 0 stale, and 0 `UNMAPPED`; DHT sensor health counters are being
-collected and shown.
+collected and shown. On 2026-08-21, internet local outside-temperature history
+was added through Open-Meteo for ZIP <weather-zip>: the collector stores
+`internet_outdoor_temperature_f` in `system_metrics` every 900 seconds, and
+the dashboard exposes `/api/weather` plus `/api/weather/history` and plots
+`Local Weather` as a selectable Outside temperature-graph line.
 The SEC-015 firmware rollout is paused for device-stability observation rather
 than a known firmware regression. All active mapped devices except `Attic` are
 now on `0.1.11-sec015-json` build `2026081002`; `Attic` remains on
@@ -81,15 +90,15 @@ They are excluded from collector writes and hidden from latest/history/location
 dashboard APIs while historical readings remain preserved.
 
 GarageDriveway replacement: `/dev/ttyUSB0` is Sunroom Test
-(`esp32-9c9c1fda3670`), while `/dev/ttyUSB1` is the new GarageDriveway board
-(`esp32-20500d1b72e8`). The new board was USB-flashed with
+(`esp32-device-id`), while `/dev/ttyUSB1` is the new GarageDriveway board
+(`esp32-device-id`). The new board was USB-flashed with
 `0.1.11-sec015-json` build `2026081002`, mapped locally to `GarageDriveway`,
 added to the floorplan, given retained default runtime config, and verified
 online/non-stale with valid DHT22 telemetry. The old suspect GarageDriveway ID
 remains retired.
 
 WallBehindWH replacement: the old unstable WallBehindWH board
-`esp32-240ac4fa418c` was replaced by new board `esp32-582abd70a404` on
+`esp32-device-id` was replaced by new board `esp32-device-id` on
 `/dev/ttyUSB1`. It was USB-flashed with `0.1.11-sec015-json` build
 `2026081002`, mapped locally to `WallBehindWH`, given retained default runtime
 config, and verified online/non-stale with valid DHT22 telemetry and no DHT
@@ -99,8 +108,8 @@ old WallBehindWH ID is now in `config/retired_devices.json`, its current
 `devices` row was removed, and historical readings remain preserved.
 
 WaterHeater replacement: the old unstable WaterHeater board
-`esp32-9c9c1fc5cf1c` was removed and replaced by new board
-`esp32-20500d1bbba8` on `/dev/ttyUSB1`. It was USB-flashed with
+`esp32-device-id` was removed and replaced by new board
+`esp32-device-id` on `/dev/ttyUSB1`. It was USB-flashed with
 `0.1.11-sec015-json` build `2026081002`, mapped locally to `WaterHeater`, given
 retained default runtime config, and verified online/non-stale with valid DHT22
 telemetry and Sensor health `OK`. Pre-replacement backup:
@@ -109,6 +118,18 @@ telemetry and Sensor health `OK`. Pre-replacement backup:
 15,954 historical readings remain preserved. Interactive `systemctl restart`
 was blocked, so the user-owned collector/dashboard processes were killed and
 systemd restarted them; the collector loaded 22 mappings and 4 retired IDs.
+
+SunroomDoor replacement: the old stale SunroomDoor board
+`esp32-device-id` was replaced by new board `esp32-device-id` on
+`/dev/ttyUSB1`. It was USB-flashed with `0.1.11-sec015-json` build
+`2026081002`, mapped locally to `SunroomDoor`, given retained default runtime
+config, and verified online/non-stale with valid DHT22 telemetry and Sensor
+health `OK`. Initial DHT22 read failures cleared after wiring correction.
+Pre-replacement backup: `data/backups/iot-20260820T200310Z.sqlite.gz`. The
+old SunroomDoor ID is now in `config/retired_devices.json`, its current
+`devices` row was removed, and 20,352 historical readings remain preserved.
+Managed collector/dashboard services were later restarted successfully and are
+active.
 
 Sensor health dashboard/API status: schema version 4 adds DHT22 read/filter
 counters to `readings` and `devices`, the collector code persists firmware
@@ -307,7 +328,10 @@ Bench validation completed:
    conflict symptoms, or watchdog relay events. If another watchdog relay
    recovery occurs within 24 hours or repeated recoveries appear within a week,
    investigate PiServer power/network/system health before relying on the relay.
-6. Decide whether to remap or re-retire the returned `UNMAPPED` device.
+6. Review the outage watchdog blind spot: <pi-static-host> was reachable when owned by
+   the wrong device, so reachability alone was not enough. Prefer a router DHCP
+   reservation or pool exclusion for `<private-ip>`; consider adding watchdog
+   target-identity validation as a secondary guard.
 
 ## Recent Physical Maintenance
 

@@ -24,6 +24,7 @@ from iot_home.db import (
     latest_readings,
     latest_system_metric,
     reading_history,
+    system_metric_history,
 )
 from iot_home.floorplan import DEFAULT_FLOORPLAN_PATH, load_floorplan
 from iot_home.locations import (
@@ -33,6 +34,7 @@ from iot_home.locations import (
     save_locations,
 )
 from iot_home.retired_devices import DEFAULT_RETIRED_DEVICES_PATH, load_retired_devices
+from iot_home.weather import WEATHER_METRIC, format_utc, parse_utc
 
 
 def parse_args() -> argparse.Namespace:
@@ -99,24 +101,39 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def parse_utc(value: str | None) -> datetime | None:
-    if not value:
-        return None
-    if value.endswith("Z"):
-        value = value[:-1] + "+00:00"
-    try:
-        parsed = datetime.fromisoformat(value)
-    except ValueError:
-        return None
-    if parsed.tzinfo is None:
-        return parsed.replace(tzinfo=UTC)
-    return parsed.astimezone(UTC)
+def weather_unavailable(reason: str) -> dict:
+    return {
+        "temperatureF": None,
+        "sampledAt": None,
+        "ageSeconds": None,
+        "location": None,
+        "source": "Open-Meteo",
+        "status": "unavailable",
+        "detail": reason,
+    }
 
 
-def format_utc(value: datetime | None) -> str | None:
-    if value is None:
-        return None
-    return value.astimezone(UTC).isoformat().replace("+00:00", "Z")
+def weather_row_to_dict(row) -> dict:
+    sampled_at = parse_utc(row["created_at"])
+    age_seconds = int((datetime.now(UTC) - sampled_at).total_seconds()) if sampled_at else None
+    return {
+        "temperatureF": row["value"],
+        "sampledAt": format_utc(sampled_at),
+        "ageSeconds": age_seconds,
+        "location": "Local Weather",
+        "source": "Open-Meteo",
+        "status": "ok",
+        "detail": "Weather data by Open-Meteo.com",
+    }
+
+
+def weather_history_row_to_dict(row) -> dict:
+    sampled_at = parse_utc(row["created_at"])
+    return {
+        "temperatureF": row["value"],
+        "sampledAt": format_utc(sampled_at),
+        "source": "Open-Meteo",
+    }
 
 
 def row_to_dict(row, stale_seconds: int, locations: dict[str, str]) -> dict:
@@ -246,7 +263,7 @@ def history_row_to_dict(row, locations: dict[str, str]) -> dict:
         "status": row["status"],
         "seq": row["seq"],
         "datetime": row["datetime"],
-        "createdAt": row["created_at"],
+        "createdAt": format_utc(parse_utc(row["created_at"])),
     }
 
 
@@ -885,6 +902,9 @@ def page() -> bytes:
       stroke-linecap: round;
       stroke-linejoin: round;
     }
+    .weather-line {
+      stroke-dasharray: 8 5;
+    }
     .legend {
       display: flex;
       align-items: center;
@@ -1339,6 +1359,8 @@ def page() -> bytes:
       adminOpen: false,
       mappings: [],
       system: null,
+      weather: null,
+      weatherHistory: [],
     };
     const dashboardViews = [
       {key: "house", label: "House Diagram"},
@@ -1354,26 +1376,27 @@ def page() -> bytes:
     const separateGraphLocations = new Set(["UtilityA", "UtilityB", "UtilityC", "UtilityD", "UtilityE"]);
     const insideGraphLocations = new Set(["Laundryroom"]);
     const outdoorHumidityLocations = new Set(["OutdoorA", "OutdoorB", "OutdoorC"]);
+    const weatherTemperatureDeviceId = "__internet_local_weather_temperature";
     const graphGroups = [
       {
         key: "inside",
         label: "Inside",
-        match: (location) => !isOutsideGraphLocation(location) && !isAtticGraphLocation(location) && !isSeparateGraphLocation(location),
+        match: (device) => device.deviceId !== weatherTemperatureDeviceId && !isOutsideGraphLocation(device.location) && !isAtticGraphLocation(device.location) && !isSeparateGraphLocation(device.location),
       },
       {
         key: "outside",
         label: "Outside",
-        match: isOutsideGraphLocation,
+        match: (device) => device.deviceId === weatherTemperatureDeviceId || isOutsideGraphLocation(device.location),
       },
       {
         key: "attic",
         label: "Attic",
-        match: isAtticGraphLocation,
+        match: (device) => isAtticGraphLocation(device.location),
       },
       {
         key: "separate",
         label: "Separate",
-        match: isSeparateGraphLocation,
+        match: (device) => isSeparateGraphLocation(device.location),
       },
     ];
     const defaultFloorplanZones = [
@@ -1548,6 +1571,32 @@ def page() -> bytes:
       element.textContent = `Pi ${metric.temperatureF.toFixed(1)} F`;
       element.title = `CPU temperature sampled ${metric.ageSeconds ?? "?"} seconds ago`;
       renderSystemHealth(metric);
+    }
+
+    function weatherTemperatureRow(weather) {
+      if (!weather || typeof weather.temperatureF !== "number" || !weather.sampledAt) return null;
+      return {
+        deviceId: weatherTemperatureDeviceId,
+        location: "Local Weather",
+        temperature: weather.temperatureF,
+        humidity: null,
+        rssi: null,
+        status: "weather",
+        seq: null,
+        datetime: weather.sampledAt,
+        createdAt: weather.sampledAt,
+      };
+    }
+
+    function trendRows(rows) {
+      const weatherRows = Array.isArray(state.weatherHistory)
+        ? state.weatherHistory.map(weatherTemperatureRow).filter(Boolean)
+        : [];
+      if (!weatherRows.length && state.weather?.status === "ok") {
+        const currentWeather = weatherTemperatureRow(state.weather);
+        if (currentWeather) weatherRows.push(currentWeather);
+      }
+      return [...rows, ...weatherRows];
     }
 
     function eventStateClass(event) {
@@ -1922,7 +1971,7 @@ def page() -> bytes:
       toggles.replaceChildren();
       const devices = sortedDeviceInfo(rows);
       for (const group of graphGroups) {
-        const groupDevices = devices.filter((device) => group.match(device.location));
+        const groupDevices = devices.filter((device) => group.match(device));
         const section = document.createElement("section");
         section.className = "device-group";
 
@@ -2007,18 +2056,19 @@ def page() -> bytes:
     function renderTrend(rows) {
       const svg = document.getElementById("trend");
       svg.replaceChildren();
-      syncSelectedDevices([...state.latest, ...rows]);
-      renderDeviceToggles([...state.latest, ...rows]);
-      const selectedRows = rows.filter((row) => state.selectedDevices.has(row.deviceId));
-      if (selectedRows.length < 2) {
+      const graphRows = trendRows(rows);
+      syncSelectedDevices([...state.latest, ...graphRows]);
+      renderDeviceToggles([...state.latest, ...graphRows]);
+      const selectedRows = graphRows.filter((row) => state.selectedDevices.has(row.deviceId));
+      if (!selectedRows.length) {
         const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
         text.setAttribute("x", "450");
         text.setAttribute("y", "108");
         text.setAttribute("text-anchor", "middle");
         text.setAttribute("fill", "#53616f");
-        text.textContent = rows.length ? "Select a device with more readings" : "Graph appears after readings arrive";
+        text.textContent = graphRows.length ? "Select at least one device" : "Graph appears after readings arrive";
         svg.appendChild(text);
-        setText("history-count", `${rows.length} reading${rows.length === 1 ? "" : "s"} in ${durationLabel()}`);
+        setText("history-count", `${graphRows.length} reading${graphRows.length === 1 ? "" : "s"} in ${durationLabel()}`);
         return;
       }
       const temps = selectedRows.map((row) => row.temperature).filter((value) => typeof value === "number");
@@ -2048,12 +2098,34 @@ def page() -> bytes:
       }
       for (const [deviceId] of sortedDevices(selectedRows)) {
         const deviceRows = selectedRows.filter((row) => row.deviceId === deviceId);
-        if (deviceRows.length < 2) continue;
-        const line = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
-        line.setAttribute("class", "temp-line");
-        line.setAttribute("stroke", colorForDevice(deviceId));
-        line.setAttribute("points", points(deviceRows, min, max, start, end));
-        svg.appendChild(line);
+        const color = colorForDevice(deviceId);
+        if (deviceId === weatherTemperatureDeviceId) {
+          if (deviceRows.length >= 2) {
+            const line = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
+            line.setAttribute("class", "temp-line weather-line");
+            line.setAttribute("stroke", color);
+            line.setAttribute("points", points(deviceRows, min, max, start, end));
+            svg.appendChild(line);
+          } else {
+            const weatherRow = deviceRows.find((row) => typeof row.temperature === "number");
+            if (!weatherRow) continue;
+            const y = 176 - ((weatherRow.temperature - min) / (max - min)) * 140;
+            const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+            line.setAttribute("class", "temp-line weather-line");
+            line.setAttribute("stroke", color);
+            line.setAttribute("x1", "36");
+            line.setAttribute("x2", "864");
+            line.setAttribute("y1", `${y}`);
+            line.setAttribute("y2", `${y}`);
+            svg.appendChild(line);
+          }
+        } else if (deviceRows.length >= 2) {
+          const line = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
+          line.setAttribute("class", "temp-line");
+          line.setAttribute("stroke", color);
+          line.setAttribute("points", points(deviceRows, min, max, start, end));
+          svg.appendChild(line);
+        }
       }
       setText("history-count", `${selectedRows.length} selected readings in ${durationLabel()}`);
     }
@@ -2074,19 +2146,37 @@ def page() -> bytes:
 
     async function refresh() {
       try {
-        const [latestResponse, historyResponse, floorplanResponse, systemResponse] = await Promise.all([
+        const [
+          latestResponse,
+          historyResponse,
+          floorplanResponse,
+          systemResponse,
+          weatherResponse,
+          weatherHistoryResponse,
+        ] = await Promise.all([
           fetch("/api/latest", {cache: "no-store"}),
           fetch(`/api/history?hours=${state.hours}&limit=50000`, {cache: "no-store"}),
           fetch("/api/floorplan", {cache: "no-store"}),
           fetch("/api/system", {cache: "no-store"}),
+          fetch("/api/weather", {cache: "no-store"}),
+          fetch(`/api/weather/history?hours=${state.hours}&limit=50000`, {cache: "no-store"}),
         ]);
-        if (!latestResponse.ok || !historyResponse.ok || !floorplanResponse.ok || !systemResponse.ok) {
+        if (
+          !latestResponse.ok
+          || !historyResponse.ok
+          || !floorplanResponse.ok
+          || !systemResponse.ok
+          || !weatherResponse.ok
+          || !weatherHistoryResponse.ok
+        ) {
           throw new Error("Dashboard API request failed");
         }
         state.latest = await latestResponse.json();
         state.history = await historyResponse.json();
         const floorplan = await floorplanResponse.json();
         state.system = await systemResponse.json();
+        state.weather = await weatherResponse.json();
+        state.weatherHistory = await weatherHistoryResponse.json();
         state.floorplanBackgroundImage = floorplan.backgroundImage || null;
         state.floorplanZones = Array.isArray(floorplan.zones) ? floorplan.zones : [];
         renderSummary(state.latest);
@@ -2257,7 +2347,7 @@ class Handler(BaseHTTPRequestHandler):
                 )
                 result = {
                     "temperatureF": row["value"],
-                    "sampledAt": row["created_at"],
+                    "sampledAt": format_utc(sampled_at),
                     "ageSeconds": age_seconds,
                 }
             result["monitoring"] = {
@@ -2265,6 +2355,37 @@ class Handler(BaseHTTPRequestHandler):
                 "latestPostReboot": post_reboot_events[0] if post_reboot_events else None,
                 "latestWatchdogRelay": watchdog_events[0] if watchdog_events else None,
             }
+            payload = json.dumps(result).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+            return
+
+        if parsed_path == "/api/weather/history":
+            query = parse_qs(parsed.query)
+            hours = query_int(query, "hours", 24)
+            limit = query_int(query, "limit", 500)
+            with closing(connect(self.db_path)) as conn:
+                rows = [
+                    weather_history_row_to_dict(row)
+                    for row in system_metric_history(conn, WEATHER_METRIC, hours, limit)
+                ]
+            payload = json.dumps(rows).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+            return
+
+        if parsed_path == "/api/weather":
+            with closing(connect(self.db_path)) as conn:
+                row = latest_system_metric(conn, WEATHER_METRIC)
+            result = weather_unavailable("No stored weather sample available")
+            if row is not None:
+                result = weather_row_to_dict(row)
             payload = json.dumps(result).encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "application/json")

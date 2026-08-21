@@ -31,6 +31,7 @@ from iot_home.db import (
 )
 from iot_home.locations import load_locations
 from iot_home.retired_devices import load_retired_devices
+from iot_home.weather import WEATHER_METRIC
 
 
 def test_dashboard_page_keeps_attic_and_thermal_sorting_contract() -> None:
@@ -38,7 +39,11 @@ def test_dashboard_page_keeps_attic_and_thermal_sorting_contract() -> None:
 
     assert 'key: "attic"' in html
     assert 'label: "Attic"' in html
-    assert "!isAtticGraphLocation(location)" in html
+    assert "weatherTemperatureDeviceId" in html
+    assert "weatherTemperatureRow(state.weather)" in html
+    assert 'location: "Local Weather"' in html
+    assert 'class", "temp-line weather-line"' in html
+    assert "!isAtticGraphLocation(device.location)" in html
     assert 'zone?.type === "attic"' in html
     assert "deviceLabel(a).localeCompare(deviceLabel(b)" in html
     assert "return bTemp - aTemp || deviceLabel(a).localeCompare(deviceLabel(b));" in html
@@ -49,6 +54,8 @@ def test_dashboard_page_keeps_attic_and_thermal_sorting_contract() -> None:
     assert 'id="post-reboot-status"' in html
     assert 'id="watchdog-status"' in html
     assert 'fetch("/api/system"' in html
+    assert 'fetch("/api/weather"' in html
+    assert "fetch(`/api/weather/history?hours=${state.hours}&limit=50000`" in html
     assert '["Firmware", deviceFirmwareLabel(row.firmwareVersion, currentFirmware), ""]' in html
     assert "function currentFirmwareVersion(rows)" in html
     assert "metric firmware-metric" in html
@@ -329,6 +336,7 @@ def test_dashboard_read_routes_and_static_assets(tmp_path) -> None:
         history = _read_json(f"{base}/api/history?hours=bad&limit=1")
         floorplan = _read_json(f"{base}/api/floorplan")
         system = _read_json(f"{base}/api/system")
+        weather = _read_json(f"{base}/api/weather")
         locations = _read_json(f"{base}/api/locations")
 
         assert latest[0]["location"] == "Test Room"
@@ -348,8 +356,12 @@ def test_dashboard_read_routes_and_static_assets(tmp_path) -> None:
         assert latest[0]["readErrorDelta"] == 0
         assert latest[0]["filteredReadingDelta"] == 0
         assert history[0]["deviceId"] == "esp32-test"
+        assert history[0]["createdAt"].endswith("Z")
         assert floorplan["zones"][0]["location"] == "Test Room"
         assert system["temperatureF"] == 120.5
+        assert system["sampledAt"].endswith("Z")
+        assert weather["temperatureF"] is None
+        assert weather["status"] == "unavailable"
         assert system["monitoring"]["latestPostReboot"]["status"] == "ok"
         assert system["monitoring"]["latestWatchdogRelay"]["message"] == (
             "Target power restored after 15s"
@@ -364,6 +376,31 @@ def test_dashboard_read_routes_and_static_assets(tmp_path) -> None:
             with pytest.raises(HTTPError) as exc_info:
                 urlopen(f"{base}{path}")
             assert exc_info.value.code == 404
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+def test_weather_routes_use_stored_metric_history(tmp_path) -> None:
+    db_path, _, _ = _configure_handler(tmp_path)
+    with closing(connect(db_path)) as conn:
+        record_system_metric(conn, WEATHER_METRIC, 91.4)
+        record_system_metric(conn, WEATHER_METRIC, 92.2)
+    server, thread = _start_server()
+    base = f"http://127.0.0.1:{server.server_port}"
+
+    try:
+        latest = _read_json(f"{base}/api/weather")
+        history = _read_json(f"{base}/api/weather/history")
+
+        assert latest["status"] == "ok"
+        assert latest["temperatureF"] == 92.2
+        assert latest["location"] == "Local Weather"
+        assert latest["source"] == "Open-Meteo"
+        assert latest["sampledAt"].endswith("Z")
+        assert [row["temperatureF"] for row in history[:2]] == [92.2, 91.4]
+        assert all(row["sampledAt"].endswith("Z") for row in history)
     finally:
         server.shutdown()
         server.server_close()

@@ -422,6 +422,24 @@ def latest_system_metric(conn: sqlite3.Connection, metric: str) -> sqlite3.Row |
     ).fetchone()
 
 
+def system_metric_history(
+    conn: sqlite3.Connection, metric: str, hours: int = 24, limit: int = 500
+) -> list[sqlite3.Row]:
+    safe_hours = max(1, min(int(hours), 168))
+    safe_limit = max(1, min(int(limit), 50000))
+    return conn.execute(
+        """
+        SELECT metric, value, created_at
+        FROM system_metrics
+        WHERE metric = ?
+          AND created_at >= datetime('now', ?)
+        ORDER BY created_at DESC, id DESC
+        LIMIT ?
+        """,
+        (metric, f"-{safe_hours} hours", safe_limit),
+    ).fetchall()
+
+
 def record_monitoring_event(
     conn: sqlite3.Connection,
     *,

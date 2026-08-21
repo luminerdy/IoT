@@ -121,6 +121,15 @@ Given the collector is running on the Pi, then it records CPU temperature at
 600-second intervals and `/api/system` exposes the latest value and sample age;
 the dashboard displays that value in its header.
 
+**AC-019A** (FR-032, API-024B) *(added 2026-08-21)*
+Given an internet weather location is configured, when the collector runs, then
+it stores local outside temperature in `system_metrics` every 900 seconds.
+When the dashboard refreshes, then `/api/weather` returns the latest stored
+sample, `/api/weather/history` returns the selected-window samples, and the
+temperature graph displays them as a selectable line in the Outside group.
+Given no weather samples exist, then the dashboard remains usable and omits
+the weather line.
+
 ## Configuration (R3)
 
 **AC-020** (FR-009, API-012)

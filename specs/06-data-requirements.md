@@ -114,4 +114,7 @@ and system metrics.
 **DATA-011 — Hub system metrics** `SHOULD` *(added 2026-08-04)*
 Table `system_metrics` stores append-only hub measurements with `metric`,
 numeric `value`, and authoritative UTC `created_at`. The initial metric is
-`pi_cpu_temperature_f`, sampled every 600 seconds by the collector.
+`pi_cpu_temperature_f`, sampled every 600 seconds by the collector. When
+internet weather is configured, the collector also samples
+`internet_outdoor_temperature_f` every 900 seconds for dashboard comparison
+against outdoor sensors.

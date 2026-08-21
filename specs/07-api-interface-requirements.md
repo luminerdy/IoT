@@ -179,6 +179,17 @@ events include `source, eventType, severity, status, message, details,
 createdAt`. Secrets and raw OTA URLs MUST NOT be included in monitoring event
 messages or details.
 
+**API-024B — `GET /api/weather` and `GET /api/weather/history?hours=&limit=`** `MAY` (R5)
+`GET /api/weather` returns the latest stored internet local outside
+temperature sample for the dashboard:
+`temperatureF, sampledAt, ageSeconds, location, source, status, detail`. When
+no weather sample has been recorded, the response remains HTTP 200 with
+`temperatureF: null` and `status: unavailable` so core local dashboard reads
+continue to work. `GET /api/weather/history` returns newest-first stored
+weather samples with `temperatureF, sampledAt, source`, with `hours` and
+`limit` bounded like `GET /api/history`. Weather coordinates or ZIP
+configuration are local deployment settings and MUST NOT include credentials.
+
 **API-025 — `GET /firmware/<version>/firmware.bin?key=…`** `SHOULD` (R4)
 Serves staged firmware with correct `Content-Length`. Requires the SEC-016
 capability key (`?key=` query parameter) or operator Basic auth; anything

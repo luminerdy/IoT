@@ -13,6 +13,7 @@ from iot_home.db import (
     record_status,
     record_system_metric,
     record_telemetry,
+    system_metric_history,
 )
 
 
@@ -26,6 +27,19 @@ def test_record_and_read_latest_system_metric(tmp_path):
 
     assert row is not None
     assert row["value"] == 123.1
+
+
+def test_system_metric_history_bounds_limit_and_hours(tmp_path):
+    db_path = tmp_path / "iot.db"
+    with closing(connect(db_path)) as conn:
+        init_db(conn)
+        record_system_metric(conn, "internet_outdoor_temperature_f", 91.4)
+        record_system_metric(conn, "internet_outdoor_temperature_f", 92.2)
+
+        rows = system_metric_history(conn, "internet_outdoor_temperature_f", hours=9999, limit=1)
+
+    assert len(rows) == 1
+    assert rows[0]["value"] == 92.2
 
 
 def test_record_and_read_latest_monitoring_events(tmp_path):

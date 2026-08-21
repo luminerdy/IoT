@@ -172,7 +172,9 @@ The dashboard charts temperature history for a selectable window (1–168 h,
 default 24 h), grouped by location groups, with per-group show/hide toggles.
 The standard groups are Inside, Outside, Attic, and Separate. A floorplan
 zone with type `attic`, or a location whose name begins with `Attic`, belongs
-to Attic and MUST NOT also appear in Inside or Separate.
+to Attic and MUST NOT also appear in Inside or Separate. The chart MAY also
+show configured internet local outside temperature history as a line in the
+Outside group when stored weather samples are available.
 
 **FR-033 — Summary stats** `SHOULD`
 Aggregate tiles: devices online/total, stale count, min/max temperature.

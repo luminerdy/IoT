@@ -1,69 +1,122 @@
 # Progress Log
 
+## 2026-08-21
+
+### Internet Outside Temperature History
+
+- Added Open-Meteo internet local outside-temperature sampling for ZIP <weather-zip>.
+  The collector records `internet_outdoor_temperature_f` in `system_metrics`
+  immediately on startup and every 900 seconds afterward.
+- Added dashboard `/api/weather` and `/api/weather/history` endpoints backed
+  by stored SQLite metrics, and changed the Temperature Graph to show
+  `Local Weather` as a selectable line in the Outside group.
+- Preserved the Pi CPU temperature as a header/system metric only.
+- Restarted `iot-home-collector.service` and `iot-home-dashboard.service`.
+  Both were active afterward. The collector logged an internet outside
+  temperature sample of `102.7 F`, and `/api/weather/history` returned the
+  stored sample.
+
+## 2026-08-20
+
+### SunroomDoor ESP32 Replacement
+
+- Identified the newly connected USB board on `/dev/ttyUSB1` by MAC
+  `<device-mac>`, stable ID `esp32-device-id`. `/dev/ttyUSB0`
+  remained Sunroom Test (`esp32-device-id`) and was not flashed.
+- USB-flashed only `/dev/ttyUSB1` with the current bench-validated
+  `0.1.11-sec015-json` build `2026081002`; the local binary exact-matched
+  SHA-256 `91440aa1077ea305d0b8c672b856e16119b14f6156cac1051cfea34a45da6c22`
+  before upload, and esptool wrote and verified the 977,040-byte image.
+- Initial serial validation showed Wi-Fi and MQTT working but repeated DHT22
+  read failures. After the DHT22 wiring was corrected, the board published
+  valid DHT22 telemetry as `esp32-device-id`.
+- Created pre-retirement backup
+  `data/backups/iot-20260820T200310Z.sqlite.gz`, mapped
+  `esp32-device-id -> SunroomDoor`, added old ID
+  `esp32-device-id` to `config/retired_devices.json`, removed only the old
+  current `devices` row, and preserved 20,352 historical readings for the old
+  ID.
+- Published retained default runtime config for `esp32-device-id`
+  (`reportIntervalSeconds=600`, `changeThresholdF=1.0`) using operator
+  credentials.
+- Noninteractive `sudo systemctl restart/start` was blocked. The managed
+  `iot-home-collector.service` and `iot-home-dashboard.service` units are
+  systemd-inactive until an interactive start, but temporary user-owned
+  collector/dashboard processes were started so live collection and dashboard
+  reads continue. The temporary dashboard process uses a placeholder firmware
+  download key, so do not use it for OTA artifact serving.
+- Final live `/api/latest` verification returned 22 rows, 0 offline, 0 stale,
+  0 `UNMAPPED`; `SunroomDoor` is `esp32-device-id`, online/non-stale on
+  `0.1.11-sec015-json`, with Sensor health `OK`.
+
 ## 2026-08-16
 
 ### Power Outage IP Recovery
 
 - After a power outage and router DHCP change, verified PiServer was on
-  `10.10.10.130/24` via `wlan0`, with gateway `10.10.10.254`, while the Pi3
-  watchdog at `10.10.10.158` was still watching the old PiServer target
-  `10.10.10.123`.
+  `<private-ip>` via `wlan0`, with gateway `<private-ip>`, while the Pi3
+  watchdog at `<private-ip>` was still watching the old PiServer target
+  `<private-ip>`.
 - Updated the Pi3 `/etc/iot-watchdog.env` target and dashboard URL to
-  `10.10.10.130`, restarted `pi-watchdog.service`, and confirmed it logged
-  `Watching 10.10.10.130`. Temporarily set `WATCHDOG_RELAY_ENABLED=false`
+  `<private-ip>`, restarted `pi-watchdog.service`, and confirmed it logged
+  `Watching <private-ip>`. Temporarily set `WATCHDOG_RELAY_ENABLED=false`
   because `/api/latest` was reachable but all 22 readings were stale after the
   outage; the watchdog now logs without cutting PiServer power.
 - Pinned PiServer locally through NetworkManager connection
-  `netplan-wlan0-5-18attjsm` to static `10.10.10.130/24`, gateway
-  `10.10.10.254`, and DNS `10.10.10.254 8.8.8.8`. Verification showed
+  `netplan-wlan0-5-18attjsm` to static `<private-ip>`, gateway
+  `<private-ip>`, and DNS `<private-ip> 8.8.8.8`. Verification showed
   `valid_lft forever`, a static default route, and Mosquitto, collector, and
   dashboard all active/enabled.
-- Live dashboard API at `http://10.10.10.130:8000/api/latest` returned 22 rows,
+- Live dashboard API at `http://<private-ip>:8000/api/latest` returned 22 rows,
   0 offline, and 22 stale. Collector logs showed retained telemetry/status
   replay after restart, but no fresh telemetry yet; keep relay disabled until
   the fleet freshness gate is healthy.
-- After the device occupying `10.10.10.123` was turned off, duplicate-address
-  probing found no live holder for `.123`. Moved PiServer's static
-  NetworkManager address back to `10.10.10.123/24`, preserving gateway
-  `10.10.10.254` and DNS `10.10.10.254 8.8.8.8`.
-- ESP32 clients reconnected to PiServer on `10.10.10.123:1883`; `ss` showed 23
+- After the device occupying `<private-ip>` was turned off, duplicate-address
+  probing found no live holder for <pi-static-host>. Moved PiServer's static
+  NetworkManager address back to `<private-ip>`, preserving gateway
+  `<private-ip>` and DNS `<private-ip> 8.8.8.8`.
+- ESP32 clients reconnected to PiServer on `<private-ip>:1883`; `ss` showed 23
   remote MQTT sockets plus the local collector connection. `/api/latest`
   recovered to 22 rows, 0 offline, and 0 stale, and fresh telemetry resumed.
-- Restored the Pi3 watchdog target/dashboard URL to `10.10.10.123`, restarted
-  `pi-watchdog.service`, confirmed it logged `Watching 10.10.10.123`, and
+- Restored the Pi3 watchdog target/dashboard URL to `<private-ip>`, restarted
+  `pi-watchdog.service`, confirmed it logged `Watching <private-ip>`, and
   re-enabled relay control after the watchdog reported healthy fleet freshness.
 - Final wrap-up checks at 22:10 CDT confirmed NetworkManager has
   `netplan-wlan0-5-18attjsm` set to `ipv4.method=manual` with
-  `10.10.10.123/24`, gateway `10.10.10.254`, and DNS
-  `10.10.10.254,8.8.8.8`. The Pi3 watchdog service was active/enabled with
-  `WATCHDOG_TARGET_HOST=10.10.10.123`,
+  `<private-ip>`, gateway `<private-ip>`, and DNS
+  `<private-ip>,8.8.8.8`. The Pi3 watchdog service was active/enabled with
+  `WATCHDOG_TARGET_HOST=<private-ip>`,
   `WATCHDOG_FAILURES_BEFORE_RECOVERY=10`, `WATCHDOG_RELAY_ENABLED=true`, and
   GPIO17 idle low. `/api/latest` showed 22 mapped devices, 0 offline, 0 stale,
   0 `UNMAPPED`, and all device statuses `OK`.
 - Outage follow-up: watch the fleet/watchdog for 24 hours. PiServer should keep
-  `.123` across future outages because the Pi is locally static/manual, but a
-  router DHCP reservation or DHCP-pool exclusion for `10.10.10.123` is still
+  <pi-static-host> across future outages because the Pi is locally static/manual, but a
+  router DHCP reservation or DHCP-pool exclusion for `<private-ip>` is still
   needed to prevent another device from taking the address first.
+- Note for tomorrow: the Pi3 watchdog saw `<private-ip>` as reachable while the
+  wrong device owned that address, so IP reachability was not sufficient proof
+  that PiServer was back. Review router reservation/exclusion for <pi-static-host> and
+  consider whether the watchdog should validate target identity as well.
 
 ## 2026-08-15
 
 ### WaterHeater Replacement
 
-- Replaced the removed WaterHeater board `esp32-9c9c1fc5cf1c` with the new
+- Replaced the removed WaterHeater board `esp32-device-id` with the new
   USB-connected board on `/dev/ttyUSB1`, identified by MAC
-  `20:50:0d:1b:bb:a8` and stable ID `esp32-20500d1bbba8`. `/dev/ttyUSB0`
-  remained Sunroom Test (`esp32-9c9c1fda3670`) and was not flashed.
+  `<device-mac>` and stable ID `esp32-device-id`. `/dev/ttyUSB0`
+  remained Sunroom Test (`esp32-device-id`) and was not flashed.
 - USB-flashed only `/dev/ttyUSB1` with current bench-validated firmware
   `0.1.11-sec015-json` build `2026081002`; the local binary exact-matched
   SHA-256 `91440aa1077ea305d0b8c672b856e16119b14f6156cac1051cfea34a45da6c22`
   before upload, and esptool wrote and verified the 977,040-byte image.
 - Created pre-retirement backup
   `data/backups/iot-20260815T114136Z.sqlite.gz`, mapped
-  `esp32-20500d1bbba8 -> WaterHeater`, added old ID
-  `esp32-9c9c1fc5cf1c` to `config/retired_devices.json`, removed only the old
+  `esp32-device-id -> WaterHeater`, added old ID
+  `esp32-device-id` to `config/retired_devices.json`, removed only the old
   current `devices` row, and preserved 15,954 historical readings for the old
   ID.
-- Published retained default runtime config for `esp32-20500d1bbba8`
+- Published retained default runtime config for `esp32-device-id`
   (`reportIntervalSeconds=600`, `changeThresholdF=1.0`) using operator
   credentials.
 - Restarted the managed collector/dashboard through systemd recovery after
@@ -88,9 +141,9 @@
 
 - Identified the two USB-connected ESP32s without relying on their generic
   CP2102 serial labels. `/dev/ttyUSB0` is Sunroom Test
-  (`esp32-9c9c1fda3670`); `/dev/ttyUSB1` is the new GarageDriveway board
-  (`esp32-20500d1b72e8`).
-- Added local ignored mapping `esp32-20500d1b72e8 -> GarageDriveway` and added
+  (`esp32-device-id`); `/dev/ttyUSB1` is the new GarageDriveway board
+  (`esp32-device-id`).
+- Added local ignored mapping `esp32-device-id -> GarageDriveway` and added
   a GarageDriveway outdoor zone back to the local floorplan. Kept the old
   suspect GarageDriveway board ID in `config/retired_devices.json` so
   historical readings remain preserved and the old board stays hidden.
@@ -98,10 +151,10 @@
   `0.1.11-sec015-json` build `2026081002`; upload wrote and verified the
   977,040-byte firmware image.
 - Serial verification showed firmware `0.1.11-sec015-json`, stable device ID
-  `esp32-20500d1b72e8`, Wi-Fi IP `10.10.10.164`, MQTT connection, and valid
+  `esp32-device-id`, Wi-Fi IP `<private-ip>`, MQTT connection, and valid
   DHT22 telemetry (`88.2 F`, `41.7%`, `numReadErrors=0`,
   `numFilteredReadings=0`) at `2026-08-13T20:06:14Z`.
-- Published retained default runtime config for `esp32-20500d1b72e8`
+- Published retained default runtime config for `esp32-device-id`
   (`reportIntervalSeconds=600`, `changeThresholdF=1.0`) using operator
   credentials.
 - Restarted the managed collector and dashboard through systemd recovery so
@@ -113,23 +166,23 @@
 
 - After the original WallBehindWH board continued reset behavior even when
   moved close to PiServer, identified the USB devices before touching firmware:
-  `/dev/ttyUSB0` remained Sunroom Test (`esp32-9c9c1fda3670`), while
+  `/dev/ttyUSB0` remained Sunroom Test (`esp32-device-id`), while
   `/dev/ttyUSB1` was the new WallBehindWH replacement
-  (`esp32-582abd70a404`).
-- Added local ignored mapping `esp32-582abd70a404 -> WallBehindWH`, removed the
-  old `esp32-240ac4fa418c` WallBehindWH mapping, and added the old unstable ID
+  (`esp32-device-id`).
+- Added local ignored mapping `esp32-device-id -> WallBehindWH`, removed the
+  old `esp32-device-id` WallBehindWH mapping, and added the old unstable ID
   to `config/retired_devices.json` so current views hide it while historical
   readings remain preserved.
 - Created and integrity-verified pre-replacement backup
   `data/backups/iot-20260813T221108Z-pre-wallbehindwh-replace.sqlite.gz`, then
-  removed only the old current `devices` row for `esp32-240ac4fa418c`.
+  removed only the old current `devices` row for `esp32-device-id`.
 - USB-flashed only `/dev/ttyUSB1` with current bench-validated firmware
   `0.1.11-sec015-json` build `2026081002`; upload wrote and verified the
   977,040-byte firmware image.
 - Serial verification showed firmware `0.1.11-sec015-json`, stable device ID
-  `esp32-582abd70a404`, Wi-Fi IP `10.10.10.165`, MQTT connection, and valid
+  `esp32-device-id`, Wi-Fi IP `<private-ip>`, MQTT connection, and valid
   DHT22 telemetry with `numReadErrors=0` and `numFilteredReadings=0`.
-- Published retained default runtime config for `esp32-582abd70a404`
+- Published retained default runtime config for `esp32-device-id`
   (`reportIntervalSeconds=600`, `changeThresholdF=1.0`) using operator
   credentials.
 - Restarted the managed collector/dashboard so the mapping loaded. Live
@@ -189,11 +242,11 @@
   `GarageDriveway` stale on suspect hardware. Reset-heavy non-SEC-015 devices
   included `Attic`, `WaterHeater`, `Laundryroom`, and `WallBehindWH`.
 - Published rollout `20260812-waterheater-sec015-watch` to `WaterHeater`
-  (`esp32-9c9c1fc5cf1c`). Observed OTA `downloading` at
+  (`esp32-device-id`). Observed OTA `downloading` at
   `2026-08-12T11:32:18Z`, `rebooting` at `2026-08-12T11:32:28Z`, and fresh
   `0.1.11-sec015-json` `OK` telemetry at `2026-08-12T11:32:50Z` with `seq=2`.
 - Published rollout `20260812-wallbehindwh-sec015-watch` to `WallBehindWH`
-  (`esp32-240ac4fa418c`), but no OTA status was observed and the device
+  (`esp32-device-id`), but no OTA status was observed and the device
   remained online/non-stale on `0.1.8-arduinojson`. The rollout was stopped
   without retrying or expanding further.
 
@@ -203,8 +256,8 @@
   the collector and dashboard to load it. Retired devices are ignored before
   collector database writes and hidden from `/api/latest`, `/api/history`, and
   `/api/locations`.
-- Retired `GarageDriveway` (`esp32-0cb815c288f4`) pending replacement this
-  weekend and the separate retired `UNMAPPED` device (`esp32-240ac4f9019c`).
+- Retired `GarageDriveway` (`esp32-device-id`) pending replacement this
+  weekend and the separate retired `UNMAPPED` device (`esp32-device-id`).
   Removed the `GarageDriveway` active location mapping and floorplan zone.
 - Created fresh pre-change backup `data/backups/iot-20260812T153514Z.sqlite.gz`.
   Removed only the current `devices` rows for the two retired IDs. Historical
@@ -229,11 +282,11 @@
   `91440aa1077ea305d0b8c672b856e16119b14f6156cac1051cfea34a45da6c22`, size
   977,040 bytes.
 - Published rollout `20260812-laundryroom-sec015-watch` to `Laundryroom`
-  (`esp32-240ac4fa383c`). Observed OTA `downloading` at
+  (`esp32-device-id`). Observed OTA `downloading` at
   `2026-08-12T15:53:11Z`, `rebooting` at `2026-08-12T15:53:26Z`, and fresh
   `0.1.11-sec015-json` `OK` telemetry at `2026-08-12T15:53:37Z` with `seq=2`.
 - Published rollout `20260812-frontbedroom-sec015-watch` to `FrontBedroom`
-  (`esp32-9c9c1fdd632c`). Observed OTA `downloading` at
+  (`esp32-device-id`). Observed OTA `downloading` at
   `2026-08-12T15:54:18Z`, `rebooting` at `2026-08-12T15:54:41Z`, and fresh
   `0.1.11-sec015-json` `OK` telemetry at `2026-08-12T15:54:54Z` with `seq=2`.
 - Stopped expansion after those two successful updates. Final live check at
@@ -242,7 +295,7 @@
   Laundryroom, MasterBedroom, Office, Sunroom Test, and WaterHeater.
 - After explicit approval, published rollout
   `20260812-laundryroomac-sec015-watch` to `LaundryroomAC`
-  (`esp32-4022d8ee4904`). Observed OTA `downloading` at
+  (`esp32-device-id`). Observed OTA `downloading` at
   `2026-08-12T19:20:29Z`, `rebooting` at `2026-08-12T19:20:42Z`, and fresh
   `0.1.11-sec015-json` `OK` telemetry at `2026-08-12T19:20:54Z` with `seq=2`.
   Final live check at `2026-08-12T19:21:20Z` showed 21 visible rows, 0
@@ -282,7 +335,7 @@
   offline, 0 stale, 19 visible active devices on SEC-015, and only `Attic` and
   `WallBehindWH` still on `0.1.8-arduinojson`.
 - After explicit approval to update the final two devices, published rollout
-  `20260812-attic-sec015-watch` to `Attic` (`esp32-240ac4ec25b4`). No OTA
+  `20260812-attic-sec015-watch` to `Attic` (`esp32-device-id`). No OTA
   lifecycle status was captured, and the device did not converge to SEC-015.
   It remained online/non-stale on `0.1.8-arduinojson` while repeatedly
   reporting `seq=1`; observed reset count rose through 730 by
@@ -816,7 +869,7 @@ Use this file for dated accomplishments and important observations. Keep future 
 - Bumped firmware to `0.1.4-antirollback` with build number `2026070401`.
 - Verified `.venv/bin/python -m pytest` with 30 tests, `.venv/bin/platformio run -d firmware`, and `.venv/bin/platformio check -d firmware`.
 - Staged signed artifact `data/firmware/0.1.4-antirollback/firmware.bin`; HTTP checks on loopback and LAN returned `200` and matched SHA-256 `f90de1498aab21b65ace4af7700494b68b88f1f3c58d92a6ed99c1e853c130d3`.
-- OTA-updated the USB bench device `Sunroom Test` / `esp32-9c9c1fda3670`; it reported `downloading`, then `rebooting`, then returned online on `0.1.4-antirollback` with build number `2026070401`.
+- OTA-updated the USB bench device `Sunroom Test` / `esp32-device-id`; it reported `downloading`, then `rebooting`, then returned online on `0.1.4-antirollback` with build number `2026070401`.
 - Published a bench-only lower-build rollback test with signed build number `2026070400`; the device rejected it as `firmware rollback rejected` and stayed on `0.1.4-antirollback`.
 - Rolled `0.1.4-antirollback` to the remaining mapped fleet in small batches. Each batch reported `downloading` then `rebooting`, and final live checks showed 21 devices online, 0 stale, 0 unmapped, and all 21 on `0.1.4-antirollback`.
 - Retained MQTT status for all 21 devices reports `buildNumber` `2026070401`.
@@ -1556,7 +1609,7 @@ Use this file for dated accomplishments and important observations. Keep future 
 # LED-Off Firmware Rollout
 
 - Built and signed firmware `0.1.5-led-off` with anti-rollback build number `2026071201`; the staged and dashboard-served binaries matched SHA-256 `6f8caa48dc9f948c7d4e714a0645eeea66c731d53d62a4631f99076e347febf8`.
-- USB-flashed the exact build to `Sunroom Test` / `esp32-9c9c1fda3670` and verified it remained online and non-stale through a full ten-minute telemetry interval.
+- USB-flashed the exact build to `Sunroom Test` / `esp32-device-id` and verified it remained online and non-stale through a full ten-minute telemetry interval.
 - Rolled out successfully to `Den`, `Kitchen`, `Office`, `FrontBedroom`, `Entryway`, and `Laundryroom`; each returned online and non-stale on `0.1.5-led-off`.
 - Initial canary commands using `iot-pi.local` were acknowledged but could not reach the firmware endpoint. Retrying with the numeric Pi LAN address completed successfully.
 - Paused the rollout at `MasterBedroom`: it remains online and non-stale on `0.1.4-antirollback`, but repeated commands were missed during MQTT reconnects or stopped after `downloading`. Do not retry broadly until its connectivity/download path is checked. `Studio` and the rest of the fleet were intentionally left untouched after the batch pause.

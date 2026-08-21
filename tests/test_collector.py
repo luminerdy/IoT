@@ -24,6 +24,10 @@ def _collector_args(tmp_path):
         desired_firmware_version=None,
         ota_cooldown_seconds=3600,
         pi_temperature_interval_seconds=1,
+        weather_interval_seconds=900,
+        weather_zip=None,
+        weather_latitude=None,
+        weather_longitude=None,
     )
 
 
@@ -253,3 +257,36 @@ def test_main_ignores_retired_devices(monkeypatch, tmp_path):
     with closing(connect(args.db)) as conn:
         assert conn.execute("SELECT COUNT(*) FROM readings").fetchone()[0] == 0
         assert conn.execute("SELECT COUNT(*) FROM devices").fetchone()[0] == 0
+
+
+def test_main_samples_weather_when_configured(monkeypatch, tmp_path):
+    args = _collector_args(tmp_path)
+    args.weather_zip = "76132"
+    client = _ServiceClient()
+
+    monkeypatch.setattr(collector, "parse_args", lambda: args)
+    monkeypatch.setattr(collector.mqtt, "Client", lambda *args, **kwargs: client)
+    monkeypatch.setattr(collector.time, "sleep", lambda seconds: None)
+    monkeypatch.setattr(collector.time, "monotonic", iter([0.0, 11.0]).__next__)
+    monkeypatch.setattr(collector, "read_pi_temperature_f", lambda: 111.2)
+    monkeypatch.setattr(
+        collector,
+        "resolve_weather_location",
+        lambda weather_zip, latitude, longitude: (32.7, -97.3, "Fort Worth, Texas, US"),
+    )
+    monkeypatch.setattr(
+        collector,
+        "fetch_weather_temperature_f",
+        lambda latitude, longitude: (102.6, None),
+    )
+
+    collector.main()
+
+    with closing(connect(args.db)) as conn:
+        metrics = conn.execute("SELECT metric, value FROM system_metrics ORDER BY id").fetchall()
+
+    assert [tuple(row) for row in metrics] == [
+        ("pi_cpu_temperature_f", 111.2),
+        ("internet_outdoor_temperature_f", 102.6),
+        ("pi_cpu_temperature_f", 111.2),
+    ]

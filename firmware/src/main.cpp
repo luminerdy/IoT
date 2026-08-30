@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include <ArduinoJson.h>
 #include <DHT.h>
 #include <HTTPClient.h>
 #include <Preferences.h>
@@ -64,6 +65,49 @@ DHT dht(DHT_PIN, DHT_TYPE);
 
 WiFiClient plainWifiClient;
 WiFiClientSecure secureWifiClient;
+class TlsNamedHostClient : public Client {
+ public:
+  explicit TlsNamedHostClient(WiFiClientSecure &client) : client_(client) {}
+
+  void configure(const char *tls_hostname, const char *ca_cert)
+  {
+    tls_hostname_ = tls_hostname;
+    ca_cert_ = ca_cert;
+    client_.setCACert(ca_cert_);
+  }
+
+  int connect(IPAddress ip, uint16_t port) override
+  {
+    return client_.connect(ip, port, tls_hostname_, ca_cert_, nullptr, nullptr);
+  }
+
+  int connect(const char *host, uint16_t port) override
+  {
+    IPAddress address;
+    if (!address.fromString(host) && !WiFi.hostByName(host, address)) {
+      return 0;
+    }
+    return client_.connect(address, port, tls_hostname_, ca_cert_, nullptr, nullptr);
+  }
+
+  size_t write(uint8_t value) override { return client_.write(value); }
+  size_t write(const uint8_t *buffer, size_t size) override { return client_.write(buffer, size); }
+  int available() override { return client_.available(); }
+  int read() override { return client_.read(); }
+  int read(uint8_t *buffer, size_t size) override { return client_.read(buffer, size); }
+  int peek() override { return client_.peek(); }
+  void flush() override { client_.flush(); }
+  void stop() override { client_.stop(); }
+  uint8_t connected() override { return client_.connected(); }
+  operator bool() override { return client_; }
+
+ private:
+  WiFiClientSecure &client_;
+  const char *tls_hostname_ = "";
+  const char *ca_cert_ = "";
+};
+
+TlsNamedHostClient tlsNamedHostClient(secureWifiClient);
 PubSubClient mqtt;
 mqtt_provisioning::Settings mqttSettings{};
 mqtt_provisioning::Settings mqttProvisioningCandidate{};
@@ -283,7 +327,8 @@ void buildDeviceIdentity()
 
 void loadCompiledMqttSettings()
 {
-  snprintf(mqttSettings.host, sizeof(mqttSettings.host), "%s", MQTT_HOST);
+  snprintf(mqttSettings.connect_host, sizeof(mqttSettings.connect_host), "%s", MQTT_HOST);
+  snprintf(mqttSettings.tls_hostname, sizeof(mqttSettings.tls_hostname), "%s", MQTT_HOST);
   mqttSettings.port = MQTT_PORT;
   snprintf(mqttSettings.username, sizeof(mqttSettings.username), "%s", MQTT_USER);
   snprintf(mqttSettings.password, sizeof(mqttSettings.password), "%s", MQTT_PASSWORD);
@@ -338,12 +383,12 @@ void loadMqttSettings()
 void configureMqttTransport()
 {
   if (mqttSettings.use_tls) {
-    secureWifiClient.setCACert(mqttSettings.ca_cert);
-    mqtt.setClient(secureWifiClient);
+    tlsNamedHostClient.configure(mqttSettings.tls_hostname, mqttSettings.ca_cert);
+    mqtt.setClient(tlsNamedHostClient);
   } else {
     mqtt.setClient(plainWifiClient);
   }
-  mqtt.setServer(mqttSettings.host, mqttSettings.port);
+  mqtt.setServer(mqttSettings.connect_host, mqttSettings.port);
 }
 
 bool storeMqttProfile(const String &profile)
@@ -521,17 +566,18 @@ void publishStatus(const char *status, bool retained)
 {
   char payload[PAYLOAD_LEN];
   String now = isoTimestamp();
-  snprintf(
-    payload,
-    sizeof(payload),
-    "{\"deviceId\":\"%s\",\"status\":\"%s\",\"firmwareVersion\":\"%s\",\"buildNumber\":%lu,\"datetime\":\"%s\",\"localIp\":\"%s\"}",
-    deviceId,
-    status,
-    FIRMWARE_VERSION,
-    static_cast<unsigned long>(OTA_BUILD_NUMBER),
-    now.c_str(),
-    WiFi.localIP().toString().c_str()
-  );
+  JsonDocument document;
+  document["deviceId"] = deviceId;
+  document["status"] = status;
+  document["firmwareVersion"] = FIRMWARE_VERSION;
+  document["buildNumber"] = static_cast<unsigned long>(OTA_BUILD_NUMBER);
+  document["datetime"] = now.c_str();
+  document["localIp"] = WiFi.localIP().toString();
+  if (measureJson(document) >= sizeof(payload)) {
+    Serial.println("Status payload too large");
+    return;
+  }
+  serializeJson(document, payload, sizeof(payload));
   mqtt.publish(statusTopic, payload, retained);
   Serial.printf("Published status: %s\n", payload);
 }
@@ -568,54 +614,26 @@ bool filteredSensorReading(float *temperatureF, float *humidity)
   return sensorFilter.filtered_reading(temperatureF, humidity);
 }
 
-bool extractNumber(const char *payload, const char *key, float *value)
-{
-  char quotedKey[48];
-  snprintf(quotedKey, sizeof(quotedKey), "\"%s\"", key);
-
-  const char *keyPos = strstr(payload, quotedKey);
-  if (keyPos == nullptr) {
-    return false;
-  }
-
-  const char *colon = strchr(keyPos, ':');
-  if (colon == nullptr) {
-    return false;
-  }
-
-  char *end = nullptr;
-  float parsed = strtof(colon + 1, &end);
-  if (end == colon + 1) {
-    return false;
-  }
-  if (isnan(parsed) || isinf(parsed)) {
-    return false;
-  }
-
-  *value = parsed;
-  return true;
-}
-
 void publishConfigResponse(const char *status, const char *message)
 {
   char payload[PAYLOAD_LEN];
+  char thresholdText[16];
   String now = isoTimestamp();
-  snprintf(
-    payload,
-    sizeof(payload),
-    "{\"deviceId\":\"%s\","
-    "\"type\":\"config\","
-    "\"status\":\"%s\","
-    "\"message\":\"%s\","
-    "\"datetime\":\"%s\","
-    "\"activeConfig\":{\"reportIntervalSeconds\":%lu,\"changeThresholdF\":%.1f}}",
-    deviceId,
-    status,
-    message,
-    now.c_str(),
-    static_cast<unsigned long>(reportIntervalMs / 1000),
-    changeThresholdF
-  );
+  snprintf(thresholdText, sizeof(thresholdText), "%.1f", changeThresholdF);
+  JsonDocument document;
+  document["deviceId"] = deviceId;
+  document["type"] = "config";
+  document["status"] = status;
+  document["message"] = message;
+  document["datetime"] = now.c_str();
+  JsonObject activeConfig = document["activeConfig"].to<JsonObject>();
+  activeConfig["reportIntervalSeconds"] = static_cast<unsigned long>(reportIntervalMs / 1000);
+  activeConfig["changeThresholdF"] = serialized(thresholdText);
+  if (measureJson(document) >= sizeof(payload)) {
+    Serial.println("Config response payload too large");
+    return;
+  }
+  serializeJson(document, payload, sizeof(payload));
   mqtt.publish(responseTopic, payload, false);
   Serial.printf("Published config response: %s\n", payload);
 }
@@ -631,10 +649,17 @@ void applyConfigPayload(const char *payload)
     return;
   }
 
-  float intervalSeconds = 0.0f;
-  float thresholdF = 0.0f;
-  bool hasInterval = extractNumber(payload, "reportIntervalSeconds", &intervalSeconds);
-  bool hasThreshold = extractNumber(payload, "changeThresholdF", &thresholdF);
+  JsonDocument document;
+  DeserializationError error = deserializeJson(document, payload);
+  if (error || !document.is<JsonObject>()) {
+    publishConfigResponse("rejected", "invalid config json");
+    return;
+  }
+
+  JsonVariant intervalValue = document["reportIntervalSeconds"];
+  JsonVariant thresholdValue = document["changeThresholdF"];
+  bool hasInterval = !intervalValue.isNull();
+  bool hasThreshold = !thresholdValue.isNull();
 
   if (!hasInterval && !hasThreshold) {
     publishConfigResponse("rejected", "no supported config fields");
@@ -645,6 +670,15 @@ void applyConfigPayload(const char *payload)
   float newChangeThresholdF = changeThresholdF;
 
   if (hasInterval) {
+    if (!intervalValue.is<float>()) {
+      publishConfigResponse("rejected", "reportIntervalSeconds invalid");
+      return;
+    }
+    float intervalSeconds = intervalValue.as<float>();
+    if (isnan(intervalSeconds) || isinf(intervalSeconds)) {
+      publishConfigResponse("rejected", "reportIntervalSeconds invalid");
+      return;
+    }
     unsigned long parsedMs = static_cast<unsigned long>(intervalSeconds * 1000.0f);
     if (parsedMs < MIN_REPORT_INTERVAL_MS || parsedMs > MAX_REPORT_INTERVAL_MS) {
       publishConfigResponse("rejected", "reportIntervalSeconds out of range");
@@ -654,6 +688,15 @@ void applyConfigPayload(const char *payload)
   }
 
   if (hasThreshold) {
+    if (!thresholdValue.is<float>()) {
+      publishConfigResponse("rejected", "changeThresholdF invalid");
+      return;
+    }
+    float thresholdF = thresholdValue.as<float>();
+    if (isnan(thresholdF) || isinf(thresholdF)) {
+      publishConfigResponse("rejected", "changeThresholdF invalid");
+      return;
+    }
     if (thresholdF < MIN_CHANGE_THRESHOLD_F || thresholdF > MAX_CHANGE_THRESHOLD_F) {
       publishConfigResponse("rejected", "changeThresholdF out of range");
       return;
@@ -672,25 +715,20 @@ void publishOtaStatus(const char *status, const char *message, const char *versi
 {
   char payload[PAYLOAD_LEN];
   String now = isoTimestamp();
-  snprintf(
-    payload,
-    sizeof(payload),
-    "{\"deviceId\":\"%s\","
-    "\"type\":\"ota\","
-    "\"status\":\"%s\","
-    "\"message\":\"%s\","
-    "\"version\":\"%s\","
-    "\"rolloutId\":\"%s\","
-    "\"firmwareVersion\":\"%s\","
-    "\"datetime\":\"%s\"}",
-    deviceId,
-    status,
-    message,
-    version,
-    rolloutId,
-    FIRMWARE_VERSION,
-    now.c_str()
-  );
+  JsonDocument document;
+  document["deviceId"] = deviceId;
+  document["type"] = "ota";
+  document["status"] = status;
+  document["message"] = message;
+  document["version"] = version;
+  document["rolloutId"] = rolloutId;
+  document["firmwareVersion"] = FIRMWARE_VERSION;
+  document["datetime"] = now.c_str();
+  if (measureJson(document) >= sizeof(payload)) {
+    Serial.println("OTA status payload too large");
+    return;
+  }
+  serializeJson(document, payload, sizeof(payload));
   mqtt.publish(otaStatusTopic, payload, false);
   Serial.printf("Published OTA status: %s\n", payload);
 }
@@ -974,19 +1012,23 @@ bool connectMqtt()
   lastMqttAttemptMs = nowMs;
 
   char willPayload[160];
-  snprintf(
-    willPayload,
-    sizeof(willPayload),
-    "{\"deviceId\":\"%s\",\"status\":\"offline\",\"reason\":\"mqtt_lwt\"}",
-    deviceId
-  );
+  JsonDocument willDocument;
+  willDocument["deviceId"] = deviceId;
+  willDocument["status"] = "offline";
+  willDocument["reason"] = "mqtt_lwt";
+  if (measureJson(willDocument) >= sizeof(willPayload)) {
+    Serial.println("MQTT LWT payload too large");
+    return false;
+  }
+  serializeJson(willDocument, willPayload, sizeof(willPayload));
 
   Serial.printf(
-    "Connecting to MQTT %s:%u as %s tls=%d\n",
-    mqttSettings.host,
+    "Connecting to MQTT %s:%u as %s tls=%d tlsHost=%s\n",
+    mqttSettings.connect_host,
     static_cast<unsigned int>(mqttSettings.port),
     deviceId,
-    mqttSettings.use_tls ? 1 : 0
+    mqttSettings.use_tls ? 1 : 0,
+    mqttSettings.tls_hostname
   );
   bool connected = mqtt.connect(
     deviceId,
@@ -1024,49 +1066,44 @@ bool shouldPublish(float temperatureF)
 void publishTelemetry(float temperatureF, float humidity)
 {
   char payload[PAYLOAD_LEN];
+  char temperatureText[16];
+  char humidityText[16];
+  char thresholdText[16];
   String now = isoTimestamp();
   seq++;
+  snprintf(temperatureText, sizeof(temperatureText), "%.1f", temperatureF);
+  snprintf(humidityText, sizeof(humidityText), "%.1f", humidity);
+  snprintf(thresholdText, sizeof(thresholdText), "%.1f", changeThresholdF);
 
-  snprintf(
-    payload,
-    sizeof(payload),
-    "{\"schemaVersion\":\"2.0-local\","
-    "\"seq\":%lu,"
-    "\"deviceId\":\"%s\","
-    "\"location\":\"UNMAPPED\","
-    "\"firmwareVersion\":\"%s\","
-    "\"buildNumber\":%lu,"
-    "\"sensorType\":\"DHT22\","
-    "\"datetime\":\"%s\","
-    "\"temperature\":%.1f,"
-    "\"humidity\":%.1f,"
-    "\"units\":{\"temperature\":\"F\"},"
-    "\"rssi\":%d,"
-    "\"localIp\":\"%s\","
-    "\"uptimeSeconds\":%lu,"
-    "\"numReadErrors\":%lu,"
-    "\"numFilteredReadings\":%lu,"
-    "\"restartReason\":\"%s\","
-    "\"recoveryReason\":\"%s\","
-    "\"activeConfig\":{\"reportIntervalSeconds\":%lu,\"changeThresholdF\":%.1f},"
-    "\"status\":\"OK\"}",
-    static_cast<unsigned long>(seq),
-    deviceId,
-    FIRMWARE_VERSION,
-    static_cast<unsigned long>(OTA_BUILD_NUMBER),
-    now.c_str(),
-    temperatureF,
-    humidity,
-    WiFi.RSSI(),
-    WiFi.localIP().toString().c_str(),
-    static_cast<unsigned long>(millis() / 1000),
-    static_cast<unsigned long>(readErrors),
-    static_cast<unsigned long>(filteredReadings),
-    resetReason(),
-    bootRecoveryReason,
-    static_cast<unsigned long>(reportIntervalMs / 1000),
-    changeThresholdF
-  );
+  JsonDocument document;
+  document["schemaVersion"] = "2.0-local";
+  document["seq"] = static_cast<unsigned long>(seq);
+  document["deviceId"] = deviceId;
+  document["location"] = "UNMAPPED";
+  document["firmwareVersion"] = FIRMWARE_VERSION;
+  document["buildNumber"] = static_cast<unsigned long>(OTA_BUILD_NUMBER);
+  document["sensorType"] = "DHT22";
+  document["datetime"] = now.c_str();
+  document["temperature"] = serialized(temperatureText);
+  document["humidity"] = serialized(humidityText);
+  JsonObject units = document["units"].to<JsonObject>();
+  units["temperature"] = "F";
+  document["rssi"] = WiFi.RSSI();
+  document["localIp"] = WiFi.localIP().toString();
+  document["uptimeSeconds"] = static_cast<unsigned long>(millis() / 1000);
+  document["numReadErrors"] = static_cast<unsigned long>(readErrors);
+  document["numFilteredReadings"] = static_cast<unsigned long>(filteredReadings);
+  document["restartReason"] = resetReason();
+  document["recoveryReason"] = bootRecoveryReason;
+  JsonObject activeConfig = document["activeConfig"].to<JsonObject>();
+  activeConfig["reportIntervalSeconds"] = static_cast<unsigned long>(reportIntervalMs / 1000);
+  activeConfig["changeThresholdF"] = serialized(thresholdText);
+  document["status"] = "OK";
+  if (measureJson(document) >= sizeof(payload)) {
+    Serial.println("Telemetry payload too large");
+    return;
+  }
+  serializeJson(document, payload, sizeof(payload));
 
   bool ok = mqtt.publish(telemetryTopic, payload, false);
   Serial.printf("Published telemetry ok=%d: %s\n", ok, payload);

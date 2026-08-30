@@ -16,6 +16,9 @@ mqtt_password="${MQTT_PASSWORD:-}"
 firmware_download_key="${FIRMWARE_DOWNLOAD_KEY:-}"
 dashboard_username="${DASHBOARD_USERNAME:-}"
 dashboard_password="${DASHBOARD_PASSWORD:-}"
+weather_zip="${WEATHER_ZIP:-}"
+weather_latitude="${WEATHER_LATITUDE:-}"
+weather_longitude="${WEATHER_LONGITUDE:-}"
 
 if [[ -z "${firmware_download_key}" && -f "${env_file}" ]]; then
   firmware_download_key="$(sudo sed -n 's/^FIRMWARE_DOWNLOAD_KEY=//p' "${env_file}" | head -n 1)"
@@ -27,6 +30,15 @@ if [[ -f "${env_file}" ]]; then
   fi
   if [[ -z "${dashboard_password}" ]]; then
     dashboard_password="$(sudo sed -n 's/^DASHBOARD_PASSWORD=//p' "${env_file}" | head -n 1)"
+  fi
+  if [[ -z "${weather_zip}" ]]; then
+    weather_zip="$(sudo sed -n 's/^WEATHER_ZIP=//p' "${env_file}" | head -n 1)"
+  fi
+  if [[ -z "${weather_latitude}" ]]; then
+    weather_latitude="$(sudo sed -n 's/^WEATHER_LATITUDE=//p' "${env_file}" | head -n 1)"
+  fi
+  if [[ -z "${weather_longitude}" ]]; then
+    weather_longitude="$(sudo sed -n 's/^WEATHER_LONGITUDE=//p' "${env_file}" | head -n 1)"
   fi
 fi
 
@@ -61,6 +73,15 @@ tmp_env="$(mktemp)"
   printf 'FIRMWARE_DOWNLOAD_KEY=%q\n' "${firmware_download_key}"
   printf 'DASHBOARD_USERNAME=%q\n' "${dashboard_username}"
   printf 'DASHBOARD_PASSWORD=%q\n' "${dashboard_password}"
+  if [[ -n "${weather_zip}" ]]; then
+    printf 'WEATHER_ZIP=%q\n' "${weather_zip}"
+  fi
+  if [[ -n "${weather_latitude}" ]]; then
+    printf 'WEATHER_LATITUDE=%q\n' "${weather_latitude}"
+  fi
+  if [[ -n "${weather_longitude}" ]]; then
+    printf 'WEATHER_LONGITUDE=%q\n' "${weather_longitude}"
+  fi
 } > "${tmp_env}"
 sudo install -o root -g root -m 0600 "${tmp_env}" "${env_file}"
 

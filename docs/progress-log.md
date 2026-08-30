@@ -1,5 +1,582 @@
 # Progress Log
 
+## 2026-08-21
+
+### Internet Outside Temperature History
+
+- Added Open-Meteo internet local outside-temperature sampling for ZIP <weather-zip>.
+  The collector records `internet_outdoor_temperature_f` in `system_metrics`
+  immediately on startup and every 900 seconds afterward.
+- Added dashboard `/api/weather` and `/api/weather/history` endpoints backed
+  by stored SQLite metrics, and changed the Temperature Graph to show
+  `Local Weather` as a selectable line in the Outside group.
+- Preserved the Pi CPU temperature as a header/system metric only.
+- Restarted `iot-home-collector.service` and `iot-home-dashboard.service`.
+  Both were active afterward. The collector logged an internet outside
+  temperature sample of `102.7 F`, and `/api/weather/history` returned the
+  stored sample.
+
+## 2026-08-20
+
+### SunroomDoor ESP32 Replacement
+
+- Identified the newly connected USB board on `/dev/ttyUSB1` by MAC
+  `<device-mac>`, stable ID `esp32-device-id`. `/dev/ttyUSB0`
+  remained Sunroom Test (`esp32-device-id`) and was not flashed.
+- USB-flashed only `/dev/ttyUSB1` with the current bench-validated
+  `0.1.11-sec015-json` build `2026081002`; the local binary exact-matched
+  SHA-256 `91440aa1077ea305d0b8c672b856e16119b14f6156cac1051cfea34a45da6c22`
+  before upload, and esptool wrote and verified the 977,040-byte image.
+- Initial serial validation showed Wi-Fi and MQTT working but repeated DHT22
+  read failures. After the DHT22 wiring was corrected, the board published
+  valid DHT22 telemetry as `esp32-device-id`.
+- Created pre-retirement backup
+  `data/backups/iot-20260820T200310Z.sqlite.gz`, mapped
+  `esp32-device-id -> SunroomDoor`, added old ID
+  `esp32-device-id` to `config/retired_devices.json`, removed only the old
+  current `devices` row, and preserved 20,352 historical readings for the old
+  ID.
+- Published retained default runtime config for `esp32-device-id`
+  (`reportIntervalSeconds=600`, `changeThresholdF=1.0`) using operator
+  credentials.
+- Noninteractive `sudo systemctl restart/start` was blocked. The managed
+  `iot-home-collector.service` and `iot-home-dashboard.service` units are
+  systemd-inactive until an interactive start, but temporary user-owned
+  collector/dashboard processes were started so live collection and dashboard
+  reads continue. The temporary dashboard process uses a placeholder firmware
+  download key, so do not use it for OTA artifact serving.
+- Final live `/api/latest` verification returned 22 rows, 0 offline, 0 stale,
+  0 `UNMAPPED`; `SunroomDoor` is `esp32-device-id`, online/non-stale on
+  `0.1.11-sec015-json`, with Sensor health `OK`.
+
+## 2026-08-16
+
+### Power Outage IP Recovery
+
+- After a power outage and router DHCP change, verified PiServer was on
+  `<private-ip>` via `wlan0`, with gateway `<private-ip>`, while the Pi3
+  watchdog at `<private-ip>` was still watching the old PiServer target
+  `<private-ip>`.
+- Updated the Pi3 `/etc/iot-watchdog.env` target and dashboard URL to
+  `<private-ip>`, restarted `pi-watchdog.service`, and confirmed it logged
+  `Watching <private-ip>`. Temporarily set `WATCHDOG_RELAY_ENABLED=false`
+  because `/api/latest` was reachable but all 22 readings were stale after the
+  outage; the watchdog now logs without cutting PiServer power.
+- Pinned PiServer locally through NetworkManager connection
+  `netplan-wlan0-5-18attjsm` to static `<private-ip>`, gateway
+  `<private-ip>`, and DNS `<private-ip> 8.8.8.8`. Verification showed
+  `valid_lft forever`, a static default route, and Mosquitto, collector, and
+  dashboard all active/enabled.
+- Live dashboard API at `http://<private-ip>:8000/api/latest` returned 22 rows,
+  0 offline, and 22 stale. Collector logs showed retained telemetry/status
+  replay after restart, but no fresh telemetry yet; keep relay disabled until
+  the fleet freshness gate is healthy.
+- After the device occupying `<private-ip>` was turned off, duplicate-address
+  probing found no live holder for <pi-static-host>. Moved PiServer's static
+  NetworkManager address back to `<private-ip>`, preserving gateway
+  `<private-ip>` and DNS `<private-ip> 8.8.8.8`.
+- ESP32 clients reconnected to PiServer on `<private-ip>:1883`; `ss` showed 23
+  remote MQTT sockets plus the local collector connection. `/api/latest`
+  recovered to 22 rows, 0 offline, and 0 stale, and fresh telemetry resumed.
+- Restored the Pi3 watchdog target/dashboard URL to `<private-ip>`, restarted
+  `pi-watchdog.service`, confirmed it logged `Watching <private-ip>`, and
+  re-enabled relay control after the watchdog reported healthy fleet freshness.
+- Final wrap-up checks at 22:10 CDT confirmed NetworkManager has
+  `netplan-wlan0-5-18attjsm` set to `ipv4.method=manual` with
+  `<private-ip>`, gateway `<private-ip>`, and DNS
+  `<private-ip>,8.8.8.8`. The Pi3 watchdog service was active/enabled with
+  `WATCHDOG_TARGET_HOST=<private-ip>`,
+  `WATCHDOG_FAILURES_BEFORE_RECOVERY=10`, `WATCHDOG_RELAY_ENABLED=true`, and
+  GPIO17 idle low. `/api/latest` showed 22 mapped devices, 0 offline, 0 stale,
+  0 `UNMAPPED`, and all device statuses `OK`.
+- Outage follow-up: watch the fleet/watchdog for 24 hours. PiServer should keep
+  <pi-static-host> across future outages because the Pi is locally static/manual, but a
+  router DHCP reservation or DHCP-pool exclusion for `<private-ip>` is still
+  needed to prevent another device from taking the address first.
+- Note for tomorrow: the Pi3 watchdog saw `<private-ip>` as reachable while the
+  wrong device owned that address, so IP reachability was not sufficient proof
+  that PiServer was back. Review router reservation/exclusion for <pi-static-host> and
+  consider whether the watchdog should validate target identity as well.
+
+## 2026-08-15
+
+### WaterHeater Replacement
+
+- Replaced the removed WaterHeater board `esp32-device-id` with the new
+  USB-connected board on `/dev/ttyUSB1`, identified by MAC
+  `<device-mac>` and stable ID `esp32-device-id`. `/dev/ttyUSB0`
+  remained Sunroom Test (`esp32-device-id`) and was not flashed.
+- USB-flashed only `/dev/ttyUSB1` with current bench-validated firmware
+  `0.1.11-sec015-json` build `2026081002`; the local binary exact-matched
+  SHA-256 `91440aa1077ea305d0b8c672b856e16119b14f6156cac1051cfea34a45da6c22`
+  before upload, and esptool wrote and verified the 977,040-byte image.
+- Created pre-retirement backup
+  `data/backups/iot-20260815T114136Z.sqlite.gz`, mapped
+  `esp32-device-id -> WaterHeater`, added old ID
+  `esp32-device-id` to `config/retired_devices.json`, removed only the old
+  current `devices` row, and preserved 15,954 historical readings for the old
+  ID.
+- Published retained default runtime config for `esp32-device-id`
+  (`reportIntervalSeconds=600`, `changeThresholdF=1.0`) using operator
+  credentials.
+- Restarted the managed collector/dashboard through systemd recovery after
+  interactive `systemctl restart` was blocked. The collector loaded 22 mappings
+  and 4 retired IDs, explicitly ignored the old WaterHeater ID, and live
+  `/api/latest` returned 22 rows, 0 offline, 0 stale, 0 `UNMAPPED`, with
+  WaterHeater online/non-stale on `0.1.11-sec015-json`, valid DHT22 telemetry,
+  and Sensor health `OK`.
+
+## 2026-08-13
+
+### Sunroom Test Bench Policy
+
+- Recorded the Sunroom Test operating policy: it remains the USB-connected
+  bench/test ESP32 on `/dev/ttyUSB0` for firmware validation, serial recovery,
+  MQTT/config/OTA assertions, and first-pass feature checks. Because it is
+  powered directly from PiServer USB and may not represent production device
+  power stability, its sequence/reset stability should be ignored when deciding
+  whether a firmware rollout can expand to deployed devices.
+
+### GarageDriveway Replacement
+
+- Identified the two USB-connected ESP32s without relying on their generic
+  CP2102 serial labels. `/dev/ttyUSB0` is Sunroom Test
+  (`esp32-device-id`); `/dev/ttyUSB1` is the new GarageDriveway board
+  (`esp32-device-id`).
+- Added local ignored mapping `esp32-device-id -> GarageDriveway` and added
+  a GarageDriveway outdoor zone back to the local floorplan. Kept the old
+  suspect GarageDriveway board ID in `config/retired_devices.json` so
+  historical readings remain preserved and the old board stays hidden.
+- USB-flashed only `/dev/ttyUSB1` with current bench-validated firmware
+  `0.1.11-sec015-json` build `2026081002`; upload wrote and verified the
+  977,040-byte firmware image.
+- Serial verification showed firmware `0.1.11-sec015-json`, stable device ID
+  `esp32-device-id`, Wi-Fi IP `<private-ip>`, MQTT connection, and valid
+  DHT22 telemetry (`88.2 F`, `41.7%`, `numReadErrors=0`,
+  `numFilteredReadings=0`) at `2026-08-13T20:06:14Z`.
+- Published retained default runtime config for `esp32-device-id`
+  (`reportIntervalSeconds=600`, `changeThresholdF=1.0`) using operator
+  credentials.
+- Restarted the managed collector and dashboard through systemd recovery so
+  local mapping/floorplan changes loaded. Live verification returned 22 latest
+  rows, 0 offline, 0 stale, 0 `UNMAPPED`, and GarageDriveway online/non-stale
+  on `0.1.11-sec015-json` with fresh valid telemetry.
+
+### WallBehindWH Replacement
+
+- After the original WallBehindWH board continued reset behavior even when
+  moved close to PiServer, identified the USB devices before touching firmware:
+  `/dev/ttyUSB0` remained Sunroom Test (`esp32-device-id`), while
+  `/dev/ttyUSB1` was the new WallBehindWH replacement
+  (`esp32-device-id`).
+- Added local ignored mapping `esp32-device-id -> WallBehindWH`, removed the
+  old `esp32-device-id` WallBehindWH mapping, and added the old unstable ID
+  to `config/retired_devices.json` so current views hide it while historical
+  readings remain preserved.
+- Created and integrity-verified pre-replacement backup
+  `data/backups/iot-20260813T221108Z-pre-wallbehindwh-replace.sqlite.gz`, then
+  removed only the old current `devices` row for `esp32-device-id`.
+- USB-flashed only `/dev/ttyUSB1` with current bench-validated firmware
+  `0.1.11-sec015-json` build `2026081002`; upload wrote and verified the
+  977,040-byte firmware image.
+- Serial verification showed firmware `0.1.11-sec015-json`, stable device ID
+  `esp32-device-id`, Wi-Fi IP `<private-ip>`, MQTT connection, and valid
+  DHT22 telemetry with `numReadErrors=0` and `numFilteredReadings=0`.
+- Published retained default runtime config for `esp32-device-id`
+  (`reportIntervalSeconds=600`, `changeThresholdF=1.0`) using operator
+  credentials.
+- Restarted the managed collector/dashboard so the mapping loaded. Live
+  verification returned 22 latest rows, 0 offline, 0 stale, 0 `UNMAPPED`, and
+  WallBehindWH online/non-stale on `0.1.11-sec015-json` with fresh valid
+  telemetry. The old WallBehindWH ID is ignored as retired.
+
+### Sensor Health Status
+
+- Added database schema version 4 with DHT22 diagnostic counters on telemetry
+  rows (`num_read_errors`, `num_filtered_readings`) and latest device rows
+  (`last_num_read_errors`, `last_num_filtered_readings`).
+- The collector now persists firmware `numReadErrors` and
+  `numFilteredReadings`; `/api/latest` exposes the raw counters, per-device
+  deltas from the previous telemetry row, and a derived `sensorHealth` status.
+- Added a compact Sensor column to the dashboard Latest Readings table.
+  Classification is conservative: offline/stale take precedence, missing
+  counters are `Unknown`, zero new DHT errors is `OK`, small increases are
+  `Watch`, and at least 10 new read failures or 3 new filtered readings in the
+  latest interval is `Fault`.
+- Updated functional/API/data specs and MQTT schema notes. Validation passed:
+  focused DB/dashboard/migration tests (`46 passed`), full Python suite
+  (`138 passed`, 83.88% coverage), Ruff lint/format checks on touched Python
+  files, and `git diff --check`.
+- After authorization to restart the dashboard if needed, created and
+  integrity-verified pre-migration backup
+  `data/backups/iot-20260813T120516Z-pre-sensor-health.sqlite.gz`.
+- Migrated the live database to schema version 4 with
+  `PRAGMA integrity_check=ok`. After the user completed the managed service
+  restart, `iot-home-collector.service` and `iot-home-dashboard.service` were
+  active under systemd and `/api/latest` exposed live `sensorHealth`.
+
+### End-Of-Day Live Check
+
+- At the 2026-08-13 wrapup, `mosquitto.service`,
+  `iot-home-collector.service`, and `iot-home-dashboard.service` were active;
+  the live database reported schema version 4 and `PRAGMA integrity_check=ok`.
+- `/api/latest` returned 22 mapped devices, 0 offline, 0 stale, and 0
+  `UNMAPPED`. Current stability watch items included `Attic`,
+  `GarageDriveway`, `MasterBedroom`, `Sunroom Test`, `WallBehindWH`, and
+  especially `WaterHeater`; `Sunroom Test` is excluded from production rollout
+  stability decisions because it is the USB bench/test device.
+- DHT sensor health was live in the API. Most devices reported `OK`; current
+  `Watch` examples were `FrontBedroom` (`+2 read`) and `WaterHeater`
+  (`+1 read`).
+
+## 2026-08-12
+
+### SEC-015 Watch Rollout
+
+- After explicit approval to continue the SEC-015 rollout while watching reset
+  behavior, verified the staged and local build artifacts exact-matched the
+  bench-tested `0.1.11-sec015-json` build `2026081002` binary:
+  SHA-256 `91440aa1077ea305d0b8c672b856e16119b14f6156cac1051cfea34a45da6c22`,
+  977,040 bytes.
+- Live pre-check showed 22 active mapped devices, 0 offline, and
+  `GarageDriveway` stale on suspect hardware. Reset-heavy non-SEC-015 devices
+  included `Attic`, `WaterHeater`, `Laundryroom`, and `WallBehindWH`.
+- Published rollout `20260812-waterheater-sec015-watch` to `WaterHeater`
+  (`esp32-device-id`). Observed OTA `downloading` at
+  `2026-08-12T11:32:18Z`, `rebooting` at `2026-08-12T11:32:28Z`, and fresh
+  `0.1.11-sec015-json` `OK` telemetry at `2026-08-12T11:32:50Z` with `seq=2`.
+- Published rollout `20260812-wallbehindwh-sec015-watch` to `WallBehindWH`
+  (`esp32-device-id`), but no OTA status was observed and the device
+  remained online/non-stale on `0.1.8-arduinojson`. The rollout was stopped
+  without retrying or expanding further.
+
+### GarageDriveway And UNMAPPED Retirement
+
+- Added a local ignored `config/retired_devices.json` retirement list and wired
+  the collector and dashboard to load it. Retired devices are ignored before
+  collector database writes and hidden from `/api/latest`, `/api/history`, and
+  `/api/locations`.
+- Retired `GarageDriveway` (`esp32-device-id`) pending replacement this
+  weekend and the separate retired `UNMAPPED` device (`esp32-device-id`).
+  Removed the `GarageDriveway` active location mapping and floorplan zone.
+- Created fresh pre-change backup `data/backups/iot-20260812T153514Z.sqlite.gz`.
+  Removed only the current `devices` rows for the two retired IDs. Historical
+  readings were preserved; verification found 9,464 readings retained and 0
+  current `devices` rows for those IDs.
+- Direct `systemctl restart/start` required interactive authentication. Plain
+  process termination left the units inactive, so replacement collector and
+  dashboard processes were started manually from `/home/scotty/IoT` with the
+  same database, mapping, floorplan, firmware, and retired-device paths. MQTT
+  and dashboard read APIs are live, but `iot-home-collector.service` and
+  `iot-home-dashboard.service` remain systemd-inactive until an interactive
+  service start or reboot restores the managed units.
+- Live verification after retirement returned 21 latest rows, 0 offline, 0
+  stale, and no `GarageDriveway` or `UNMAPPED` rows in latest/history/location
+  API payloads.
+
+### SEC-015 Continued Rollout
+
+- Confirmed `0.1.11-sec015-json` build `2026081002` is the latest
+  bench-validated firmware artifact staged in this checkout. The local build
+  output and staged OTA binary still exact-matched SHA-256
+  `91440aa1077ea305d0b8c672b856e16119b14f6156cac1051cfea34a45da6c22`, size
+  977,040 bytes.
+- Published rollout `20260812-laundryroom-sec015-watch` to `Laundryroom`
+  (`esp32-device-id`). Observed OTA `downloading` at
+  `2026-08-12T15:53:11Z`, `rebooting` at `2026-08-12T15:53:26Z`, and fresh
+  `0.1.11-sec015-json` `OK` telemetry at `2026-08-12T15:53:37Z` with `seq=2`.
+- Published rollout `20260812-frontbedroom-sec015-watch` to `FrontBedroom`
+  (`esp32-device-id`). Observed OTA `downloading` at
+  `2026-08-12T15:54:18Z`, `rebooting` at `2026-08-12T15:54:41Z`, and fresh
+  `0.1.11-sec015-json` `OK` telemetry at `2026-08-12T15:54:54Z` with `seq=2`.
+- Stopped expansion after those two successful updates. Final live check at
+  `2026-08-12T15:55:12Z` showed 21 visible rows, 0 offline, 0 stale, and 9
+  visible active devices on SEC-015: Den, Entryway, FrontBedroom, Kitchen,
+  Laundryroom, MasterBedroom, Office, Sunroom Test, and WaterHeater.
+- After explicit approval, published rollout
+  `20260812-laundryroomac-sec015-watch` to `LaundryroomAC`
+  (`esp32-device-id`). Observed OTA `downloading` at
+  `2026-08-12T19:20:29Z`, `rebooting` at `2026-08-12T19:20:42Z`, and fresh
+  `0.1.11-sec015-json` `OK` telemetry at `2026-08-12T19:20:54Z` with `seq=2`.
+  Final live check at `2026-08-12T19:21:20Z` showed 21 visible rows, 0
+  offline, 0 stale, and 10 visible active devices on SEC-015.
+- After explicit approval, updated `UnderAC`, `BunkHouse`, and `Studio`.
+  `UnderAC` rollout `20260812-underac-sec015-watch` reported `downloading` at
+  `2026-08-12T20:08:19Z`; `rebooting` was not captured, but the device returned
+  with fresh `0.1.11-sec015-json` `OK` telemetry at `2026-08-12T20:09:17Z`
+  with `seq=2`. `BunkHouse` rollout `20260812-bunkhouse-sec015-watch` reported
+  `downloading` at `2026-08-12T20:09:58Z`, `rebooting` at
+  `2026-08-12T20:10:13Z`, and fresh target telemetry at
+  `2026-08-12T20:10:23Z` with `seq=2`. `Studio` rollout
+  `20260812-studio-sec015-watch` reported `downloading` at
+  `2026-08-12T20:10:56Z`, `rebooting` at `2026-08-12T20:11:22Z`, and fresh
+  target telemetry at `2026-08-12T20:11:35Z` with `seq=2`.
+- Final live check at `2026-08-12T20:11:51Z` showed 21 visible rows, 0
+  offline, 0 stale, 13 visible active devices on SEC-015, and 8 still on
+  `0.1.8-arduinojson`.
+- After explicit approval, updated `AtticDoor`, `Porch`, `Lightpole`,
+  `Garage`, `SunroomDoor`, and `Sunroom` in that order. All six reported both
+  OTA `downloading` and `rebooting`, then returned with fresh
+  `0.1.11-sec015-json` `OK` telemetry.
+- Rollout timestamps: `AtticDoor` downloaded at `2026-08-12T22:28:48Z`,
+  rebooted at `2026-08-12T22:29:03Z`, and returned at
+  `2026-08-12T22:29:09Z`; `Porch` downloaded at `2026-08-12T22:29:16Z`,
+  rebooted at `2026-08-12T22:29:28Z`, and returned at
+  `2026-08-12T22:29:41Z`; `Lightpole` downloaded at
+  `2026-08-12T22:29:41Z`, rebooted at `2026-08-12T22:29:54Z`, and returned at
+  `2026-08-12T22:30:07Z`; `Garage` downloaded at `2026-08-12T22:30:07Z`,
+  rebooted at `2026-08-12T22:30:25Z`, and returned at
+  `2026-08-12T22:30:38Z`; `SunroomDoor` downloaded at
+  `2026-08-12T22:30:39Z`, rebooted at `2026-08-12T22:30:54Z`, and returned at
+  `2026-08-12T22:31:07Z`; `Sunroom` downloaded at `2026-08-12T22:31:06Z`,
+  rebooted at `2026-08-12T22:31:21Z`, and returned at
+  `2026-08-12T22:31:33Z`.
+- Final live check at `2026-08-12T22:31:56Z` showed 21 visible rows, 0
+  offline, 0 stale, 19 visible active devices on SEC-015, and only `Attic` and
+  `WallBehindWH` still on `0.1.8-arduinojson`.
+- After explicit approval to update the final two devices, published rollout
+  `20260812-attic-sec015-watch` to `Attic` (`esp32-device-id`). No OTA
+  lifecycle status was captured, and the device did not converge to SEC-015.
+  It remained online/non-stale on `0.1.8-arduinojson` while repeatedly
+  reporting `seq=1`; observed reset count rose through 730 by
+  `2026-08-13T01:04:05Z`. Stopped without retrying and did not attempt
+  `WallBehindWH` because the active target failed to converge.
+- Final live check at `2026-08-13T01:04:06Z` showed 21 visible rows, 0
+  offline, 0 stale, 19 visible active devices on SEC-015, and `Attic` plus
+  `WallBehindWH` still on `0.1.8-arduinojson`.
+
+## 2026-08-11
+
+### Dashboard Latest Readings
+
+- Added dashboard/API support for persisted reset visibility: `/api/latest`
+  now exposes `recentSeqResets` and a derived `stability` object, and the
+  Latest Readings table shows `seq` plus stability so repeated low-sequence
+  resets are visible without raw MQTT capture.
+- Fixed stale/latest-age semantics so `observedAt` and `ageSeconds` follow the
+  latest telemetry row when one exists, while `deviceObservedAt` and
+  `deviceAgeSeconds` separately expose status/device-row freshness. A fresh
+  retained or live status update no longer makes old temperature/humidity data
+  appear fresh.
+- Fixed the dashboard `0s ago` display by serializing latest-reading timestamp
+  fields as explicit UTC ISO-8601 `Z` strings. The old API response used
+  SQLite `YYYY-MM-DD HH:MM:SS` UTC strings, which browser JavaScript parsed as
+  local time and then clamped as a future timestamp.
+- Restarted only `iot-home-dashboard.service` at 21:23 CDT so the timestamp
+  fix was live. A read-only `/api/latest` verification returned 23 rows, all
+  latest timestamp fields with `Z` suffixes, 21 online/non-stale rows, 2 stale
+  rows (`GarageDriveway` and `UNMAPPED`), and 0 offline rows.
+
+### Device Power Maintenance
+
+- User replaced power for `GarageDriveway` and `Laundryroom`.
+- Read-only `/api/latest` check at 19:43 CDT showed both devices online and
+  non-stale after the power replacement. `GarageDriveway` reported
+  `0.1.8-arduinojson`, `status=online`, `seq=164`, `ageSeconds=701`, and
+  `rssi=-68`. `Laundryroom` reported `0.1.8-arduinojson`, `status=OK`,
+  `seq=3`, `ageSeconds=213`, and `rssi=-53`.
+- Treat `Laundryroom`'s low sequence number as consistent with the recent power
+  replacement; keep watching for repeated low-sequence resets before attributing
+  it to firmware.
+- User reported the `GarageDriveway` ESP32 itself is not in good shape and has
+  ordered a replacement. A follow-up read-only `/api/latest` check at 19:45 CDT
+  still showed `GarageDriveway` online/non-stale on `0.1.8-arduinojson`, with
+  `status=online`, `seq=164`, `ageSeconds=821`, and `rssi=-68`. Treat the
+  current hardware as suspect pending replacement; avoid drawing firmware
+  conclusions from intermittent behavior on this board without corroboration.
+
+## 2026-08-10
+
+### SEC-015 One-at-a-Time OTA Rollout
+
+- Staged exact firmware `0.1.11-sec015-json` build `2026081002` for signed OTA
+  from the bench-tested binary. Served artifact verification matched SHA-256
+  `91440aa1077ea305d0b8c672b856e16119b14f6156cac1051cfea34a45da6c22` and size
+  977,040 bytes.
+- Started an explicitly approved one-device-at-a-time rollout with a one-hour
+  burn-in before any next device. A fresh fleet gate showed 22 active mapped
+  devices, 0 offline, and 0 stale; the retired `UNMAPPED` record remained
+  excluded.
+- Den accepted the signed OTA: observed `downloading`, `rebooting`, and fresh
+  `0.1.11-sec015-json` telemetry. Its one-hour burn-in passed with active fleet
+  health clean throughout; Den stayed online, non-stale, and `OK`, with sequence
+  observations from 2 through 9.
+- Kitchen accepted the signed OTA: observed `downloading`, `rebooting`, and
+  fresh `0.1.11-sec015-json` `OK` telemetry. During burn-in, raw non-retained
+  telemetry at `2026-08-10T15:36:33Z` reported `restartReason=Brownout`,
+  `uptimeSeconds=7`, and `seq=1`. The rollout was stopped immediately after
+  that burn-in failure.
+- After explicit acceptance to continue one device at a time, Office accepted
+  the signed OTA: observed `downloading`, `rebooting`, and fresh
+  `0.1.11-sec015-json` `OK` telemetry. Its one-hour burn-in passed from
+  `2026-08-10T17:02:07Z` through `2026-08-10T18:02:07Z`; Office stayed online,
+  non-stale, and `OK`, with sequence observations from 2 through 12 and active
+  fleet offline/stale gates clear throughout.
+- The rollout is paused again before another device because Kitchen continued
+  showing repeated normalized `seq=1` resets after the earlier brownout, with
+  samples at `2026-08-10T16:43:40Z`, `16:50:32Z`, `16:59:43Z`, `17:02:58Z`,
+  `17:06:13Z`, `17:10:45Z`, `17:16:02Z`, `17:19:24Z`, `17:21:42Z`,
+  `17:47:01Z`, `17:57:13Z`, `17:59:41Z`, and `18:00:52Z`.
+- After explicit acceptance to continue despite Kitchen, MasterBedroom accepted
+  the signed OTA: observed `downloading`, `rebooting`, and fresh
+  `0.1.11-sec015-json` telemetry at `2026-08-10T23:30:59Z`. It initially
+  advanced to `seq=2` with `uptimeSeconds=605` at `2026-08-10T23:51:10Z`, but
+  then failed burn-in when raw non-retained telemetry at
+  `2026-08-10T23:59:22Z` reported `seq=1`, `uptimeSeconds=5`, and
+  `restartReason=InterruptWatchdog`. The active mapped fleet gate remained
+  clear. Stop the rollout again; do not send another OTA until the repeated
+  reset pattern on Kitchen and MasterBedroom is understood or explicitly
+  accepted.
+- Current rollout state after the stop: Den, Kitchen, Office, MasterBedroom,
+  and Sunroom Test are on `0.1.11-sec015-json`; LaundryroomAC remains on
+  `0.1.9-nvs-tls`; the remaining active mapped fleet remains on
+  `0.1.8-arduinojson`.
+
+### SEC-015 Device JSON Refactor
+
+- Ran a fresh read-only fleet gate before continuing work. The 22 active mapped
+  devices were online and non-stale; the only stale row was the excluded retired
+  `UNMAPPED` record.
+- Completed the remaining SEC-015 source refactor. Retained config parsing now
+  uses ArduinoJson typed field handling instead of manual substring/number
+  extraction.
+- Device-side status, LWT, config response, OTA status, and telemetry payloads
+  now use ArduinoJson bounded serialization rather than hand-built JSON strings.
+- Bumped the bench candidate identity to `0.1.11-sec015-json` build
+  `2026081002`, then built and USB-flashed it to Sunroom Test on `/dev/ttyUSB0`.
+  Binary SHA-256:
+  `91440aa1077ea305d0b8c672b856e16119b14f6156cac1051cfea34a45da6c22`; size:
+  977,040 bytes.
+- Bench config validation passed: valid retained config applied
+  (`reportIntervalSeconds=60`, `changeThresholdF=1.5`), malformed JSON was
+  rejected without changing active config, wrong-type `reportIntervalSeconds`
+  was rejected without changing active config, and an empty retained payload
+  cleared the device back to defaults (`600`, `1.0`).
+- Safe OTA rejection probes passed without download: malformed command rejected
+  as `invalid json`, unsupported command rejected as `unsupported command`, and
+  string-typed OTA `size` rejected as `invalid ota size`.
+- The default-cadence soak passed: after retained config was cleared, Sunroom
+  Test published the next normal telemetry exactly ten minutes later at
+  `2026-08-10 13:21:39`, advanced `seq` from 4 to 5, and remained online,
+  non-stale, and `OK` on `0.1.11-sec015-json`.
+- Verification passed: ESP32 firmware build, all 24 PlatformIO native firmware
+  cases, the full Python suite with enforced coverage, firmware static analysis,
+  and `git diff --check`. A focused Python subset also passed functionally but
+  tripped the global coverage gate because it intentionally ran only part of the
+  suite.
+
+### ESP32 TLS Hostname/Profile Bench Fix
+
+- Implemented schema version 2 for USB MQTT TLS provisioning profiles with
+  separate `mqttConnectHost` and `mqttTlsHostname` fields. The ESP32 now
+  connects to the TCP endpoint while passing the TLS hostname into
+  `WiFiClientSecure` for SNI and certificate verification.
+- Kept legacy schema version 1 readable, where `mqttHost` is used for both
+  roles. The host provisioning CLI now emits schema v2 and keeps the old
+  `--host` argument as a compatibility alias.
+- Built and USB-flashed exact bench firmware `0.1.10-tls-host` build
+  `2026081001` to Sunroom Test. Binary SHA-256:
+  `afae56195002d97e2b397b51519f1a06df505d08c5ec180b32bbd25a79650ea8`.
+- Because sudo was unavailable for production cert/password files, ran an
+  isolated user-owned Mosquitto TLS listener on port `8884` with a temporary CA
+  and a server certificate for `<hub-tls-hostname>`. Provisioned Sunroom Test with
+  `mqttConnectHost=<hub-ip>` and `mqttTlsHostname=<hub-tls-hostname>`.
+- Bench evidence: broker logs showed Sunroom Test connecting from
+  `<device-ip>` as `<device-user>`, subscribing to its own
+  command/config topics, and publishing retained status plus non-retained
+  telemetry over TLS. The NVS MQTT profile was then cleared, the temporary
+  broker stopped, and fresh production fallback telemetry through shared
+  `1883` was verified.
+- Production `8883` check: after committing the fix, reset only the Sunroom
+  Test broker user to a generated temporary password, reloaded Mosquitto, and
+  verified local TLS auth against `<hub-tls-hostname>:8883`. Provisioned Sunroom
+  Test with `mqttConnectHost=<hub-ip>` and
+  `mqttTlsHostname=<hub-tls-hostname>`; `ss` showed an established
+  `<device-ip>` to `<hub-ip>:8883` Mosquitto socket, retained status
+  showed `0.1.10-tls-host`, and the dashboard API showed fresh `OK` telemetry.
+  Cleared the NVS profile afterward, verified fresh fallback telemetry through
+  shared `1883`, rotated the broker user again to an unstored random password,
+  and deleted temporary credential/CA files.
+- Verification passed: full Python suite, all PlatformIO native tests, ESP32
+  firmware build, and firmware static analysis.
+
+## 2026-08-09
+
+### Sunroom Test USB Recovery
+
+- Investigated `Sunroom Test` / `<device-user>` after it appeared
+  offline while physically connected on `/dev/ttyUSB0`. USB enumeration was
+  present and readable/writable by the `dialout` user.
+- Captured direct serial logs. Firmware `0.1.9-nvs-tls` build `2026080707`
+  booted, connected to Wi-Fi at `<device-ip>`, and synchronized time. Its NVS
+  TLS profile attempted `<hub-tls-hostname>:8883` but failed ESP32 DNS resolution.
+- Cleared only the NVS MQTT profile over USB. The device rebooted into the
+  compiled fallback profile and attempted `<hub-ip>:1883`, but initially
+  still reported `MQTT connect failed, state=-2`.
+- Reflashed the exact staged `0.1.9-nvs-tls` build over USB. The flashed app
+  binary exact-matched staged SHA-256
+  `3420e492e3d450886326885c65d1b3b6706f97ccab21724f5b58f75f1c61d501`; the
+  upload succeeded and verified all written segments.
+- The collector then recorded fresh `Sunroom Test` telemetry at
+  `2026-08-09 17:38:02`, confirming the device recovered on the compiled
+  fallback MQTT path. Do not re-provision TLS on this device until the ESP32
+  hostname-resolution issue is understood or a stable broker hostname strategy
+  is chosen.
+
+### Watchdog and Post-Reboot Monitoring
+
+- Added persistent `monitoring_events` storage for local health events. The
+  dashboard `/api/system` response now includes recent monitoring events, the
+  latest post-reboot check, and the latest Pi3 watchdog relay event.
+- Added a System Health dashboard panel showing post-reboot and watchdog status
+  separately from fleet stale/offline device state.
+- Added `python -m iot_home.post_reboot_check` to record core service,
+  dashboard API, SQLite integrity/schema, latest backup, and database
+  maintenance status. With `--import-watchdog`, it imports recent Pi3
+  `pi-watchdog.service` relay entries over SSH into SQLite.
+- Added `deploy/iot-home-post-reboot-check.service` plus
+  `scripts/install_post_reboot_monitoring.sh` so the post-reboot recorder can
+  run automatically after boot.
+- Ran the recorder once against the live database and imported the 2026-08-08
+  Pi3 relay activation/restoration entries. Live SQLite is now schema version
+  3 with integrity `ok`.
+- Installed and enabled `iot-home-post-reboot-check.service`; it ran once and
+  recorded a fresh successful post-reboot check. Restarted
+  `iot-home-dashboard.service` so `/api/system` exposes the monitoring payload.
+
+## 2026-08-08
+
+### Incremental Production MQTT TLS Migration
+
+- Activated a parallel production Mosquitto TLS listener on `8883` with
+  per-listener settings and the tracked per-device ACL, leaving the existing
+  shared-credential `1883` listener active for the fleet.
+- Fixed the TLS installer for this Pi's Mosquitto package by skipping the
+  unsupported `mosquitto -t` check, using `sudo find` for protected certificate
+  ownership updates, adding hub hostname SANs, and
+  regenerating the server certificate whenever it does not verify against the
+  active local CA.
+- Created and loaded a unique broker password for only the USB-connected
+  Sunroom Test device, then provisioned its NVS MQTT TLS profile over
+  `/dev/ttyUSB0`.
+- The first live profile used a local mDNS name; USB serial showed ESP32 DNS
+  failures for that host. Reprovisioning with `<hub-tls-hostname>` succeeded.
+- Verified the TLS chain with `openssl`, verified local per-device TLS
+  authentication, observed Mosquitto accept Sunroom Test on port `8883` as
+  its per-device user, and confirmed the dashboard API returned 22 active
+  mapped devices online, 0 offline, 0 stale, with Sunroom Test fresh, `OK`, and
+  still on `0.1.9-nvs-tls`.
+- Started the approved one-device-per-hour non-attic OTA rollout of
+  `0.1.9-nvs-tls` build `2026080707` using the signed, bench-matched
+  970,976-byte artifact with SHA-256
+  `3420e492e3d450886326885c65d1b3b6706f97ccab21724f5b58f75f1c61d501`.
+  Den, Kitchen, Office, and MasterBedroom each returned online/non-stale with
+  `OK` telemetry on `0.1.9-nvs-tls`.
+- The hourly controller stopped before sending LaundryroomAC because
+  SunroomDoor, still on `0.1.8-arduinojson` and not part of the completed
+  updates, reported `offline` through the pre-flight and follow-up watch. No
+  further OTA command was sent.
+
 ## 2026-08-07
 
 - Added USB-provisioned, hardware-bound MQTT profiles in a dedicated NVS
@@ -292,7 +869,7 @@ Use this file for dated accomplishments and important observations. Keep future 
 - Bumped firmware to `0.1.4-antirollback` with build number `2026070401`.
 - Verified `.venv/bin/python -m pytest` with 30 tests, `.venv/bin/platformio run -d firmware`, and `.venv/bin/platformio check -d firmware`.
 - Staged signed artifact `data/firmware/0.1.4-antirollback/firmware.bin`; HTTP checks on loopback and LAN returned `200` and matched SHA-256 `f90de1498aab21b65ace4af7700494b68b88f1f3c58d92a6ed99c1e853c130d3`.
-- OTA-updated the USB bench device `Sunroom Test` / `esp32-9c9c1fda3670`; it reported `downloading`, then `rebooting`, then returned online on `0.1.4-antirollback` with build number `2026070401`.
+- OTA-updated the USB bench device `Sunroom Test` / `esp32-device-id`; it reported `downloading`, then `rebooting`, then returned online on `0.1.4-antirollback` with build number `2026070401`.
 - Published a bench-only lower-build rollback test with signed build number `2026070400`; the device rejected it as `firmware rollback rejected` and stayed on `0.1.4-antirollback`.
 - Rolled `0.1.4-antirollback` to the remaining mapped fleet in small batches. Each batch reported `downloading` then `rebooting`, and final live checks showed 21 devices online, 0 stale, 0 unmapped, and all 21 on `0.1.4-antirollback`.
 - Retained MQTT status for all 21 devices reports `buildNumber` `2026070401`.
@@ -1032,7 +1609,7 @@ Use this file for dated accomplishments and important observations. Keep future 
 # LED-Off Firmware Rollout
 
 - Built and signed firmware `0.1.5-led-off` with anti-rollback build number `2026071201`; the staged and dashboard-served binaries matched SHA-256 `6f8caa48dc9f948c7d4e714a0645eeea66c731d53d62a4631f99076e347febf8`.
-- USB-flashed the exact build to `Sunroom Test` / `esp32-9c9c1fda3670` and verified it remained online and non-stale through a full ten-minute telemetry interval.
+- USB-flashed the exact build to `Sunroom Test` / `esp32-device-id` and verified it remained online and non-stale through a full ten-minute telemetry interval.
 - Rolled out successfully to `Den`, `Kitchen`, `Office`, `FrontBedroom`, `Entryway`, and `Laundryroom`; each returned online and non-stale on `0.1.5-led-off`.
 - Initial canary commands using `iot-pi.local` were acknowledged but could not reach the firmware endpoint. Retrying with the numeric Pi LAN address completed successfully.
 - Paused the rollout at `MasterBedroom`: it remains online and non-stale on `0.1.4-antirollback`, but repeated commands were missed during MQTT reconnects or stopped after `downloading`. Do not retry broadly until its connectivity/download path is checked. `Studio` and the rest of the fleet were intentionally left untouched after the batch pause.

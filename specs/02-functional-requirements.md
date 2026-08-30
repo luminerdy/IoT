@@ -143,22 +143,38 @@ view, save, and clear these mappings without hand-editing the JSON file.
 ## 4.3 Hub — Dashboard
 
 **FR-030 — Latest view** `MUST`
-The dashboard shows, per device: location, temperature, humidity, RSSI,
-firmware version, online/offline/stale state, and last-seen age. Devices are
-ordered by location in the device-card view. The Latest Readings table is
-ordered by temperature descending (hottest first), with location as the
-tie-breaker, so thermal hotspots are immediately visible.
+The dashboard shows, per device: location, temperature, humidity, RSSI, latest
+sequence number, firmware version, online/offline/stale state, stability,
+sensor health, and last-seen age.
+Stability is derived from persisted telemetry signals and flags repeated
+`seq <= 1` observations within the last 24 hours. Devices are ordered by
+location in the device-card view. The Latest Readings table is ordered by
+temperature descending (hottest first), with location as the tie-breaker, so
+thermal hotspots are immediately visible.
+
+**FR-030a — Sensor health** `SHOULD`
+The collector persists firmware-reported DHT22 diagnostic counters
+`numReadErrors` and `numFilteredReadings`. The dashboard derives sensor health
+from the counter increase since the device's previous telemetry row. Offline
+and stale states take precedence. Missing counters are `Unknown`; zero new
+errors is `OK`; small increases are `Watch`; at least 10 new DHT read failures
+or 3 new filtered readings in the latest telemetry interval is `Fault`.
 
 **FR-031 — Stale detection** `MUST`
-A device marked online whose last observation is older than a configurable
-threshold (default 1200 s) is displayed as **stale**, distinct from offline.
+A device marked online whose latest telemetry observation is older than a
+configurable threshold (default 1200 s) is displayed as **stale**, distinct
+from offline. If a device has no telemetry row yet, staleness falls back to the
+latest status/device observation. A fresh retained or live status update MUST
+NOT make an old temperature, humidity, or sequence reading appear fresh.
 
 **FR-032 — History view** `MUST`
 The dashboard charts temperature history for a selectable window (1–168 h,
 default 24 h), grouped by location groups, with per-group show/hide toggles.
 The standard groups are Inside, Outside, Attic, and Separate. A floorplan
 zone with type `attic`, or a location whose name begins with `Attic`, belongs
-to Attic and MUST NOT also appear in Inside or Separate.
+to Attic and MUST NOT also appear in Inside or Separate. The chart MAY also
+show configured internet local outside temperature history as a line in the
+Outside group when stored weather samples are available.
 
 **FR-033 — Summary stats** `SHOULD`
 Aggregate tiles: devices online/total, stale count, min/max temperature.
@@ -223,8 +239,11 @@ the off-site snapshot.
 **FR-045 — Device retirement** `SHOULD` *(gap found in implementation review)*
 A documented, scripted flow retires a device: delete its broker credential
 (the revocation path for a lost or stolen unit), remove or archive its
-`devices` row, and remove its location mapping. Until the script exists,
-the manual procedure lives in the operations doc.
+`devices` row, remove its location/floorplan mapping, and add its stable
+device ID to the ignored retired-device list so future retained or live
+telemetry/status does not recreate current dashboard state. Historical
+`readings` remain preserved unless a separate lossless archival is explicitly
+approved per DATA-005.
 
 **FR-046 — Fleet version reconciliation** `MAY` *(added 2026-07-05,
 implemented upstream)*

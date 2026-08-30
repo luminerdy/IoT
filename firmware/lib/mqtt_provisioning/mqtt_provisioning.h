@@ -14,7 +14,8 @@ constexpr size_t MAX_CA_CERT_LENGTH = 3072;
 constexpr size_t MAX_PROFILE_JSON_LENGTH = 3900;
 
 struct Settings {
-  char host[MAX_HOST_LENGTH + 1];
+  char connect_host[MAX_HOST_LENGTH + 1];
+  char tls_hostname[MAX_HOST_LENGTH + 1];
   uint16_t port;
   char username[MAX_USERNAME_LENGTH + 1];
   char password[MAX_PASSWORD_LENGTH + 1];

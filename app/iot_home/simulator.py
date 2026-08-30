@@ -72,6 +72,7 @@ def telemetry_payload(device: dict, seq: int, tick: int) -> bytes:
             "rssi": random.randint(-68, -42),
             "uptimeSeconds": tick * 5,
             "numReadErrors": 0,
+            "numFilteredReadings": 0,
             "restartReason": "PowerOn",
             "status": "OK",
         },

@@ -34,7 +34,8 @@ class FakeChannel:
 def test_profile_json_is_typed_bounded_and_secret_is_not_in_repr() -> None:
     profile = provision_mqtt.build_profile(
         device_id=DEVICE_ID,
-        host="broker.test",
+        connect_host="203.0.113.10",
+        tls_hostname="broker.test",
         port=8883,
         password=TEST_PASSWORD,
         ca_cert=CA_CERT,
@@ -42,8 +43,9 @@ def test_profile_json_is_typed_bounded_and_secret_is_not_in_repr() -> None:
     payload = json.loads(profile.as_json())
     assert TEST_PASSWORD not in repr(profile)
     assert payload == {
-        "schemaVersion": 1,
-        "mqttHost": "broker.test",
+        "schemaVersion": 2,
+        "mqttConnectHost": "203.0.113.10",
+        "mqttTlsHostname": "broker.test",
         "mqttPort": 8883,
         "mqttUsername": DEVICE_ID,
         "mqttPassword": TEST_PASSWORD,
@@ -56,8 +58,8 @@ def test_profile_json_is_typed_bounded_and_secret_is_not_in_repr() -> None:
     ("field", "value", "message"),
     [
         ("device_id", "esp32-wrong", "device ID"),
-        ("host", "https://broker.test", "MQTT host"),
-        ("host", "192.0.2.1", "DNS hostname"),
+        ("connect_host", "https://broker.test", "connect host"),
+        ("tls_hostname", "192.0.2.1", "TLS hostname"),
         ("port", 0, "MQTT port"),
         ("password", "short", "MQTT password"),
         ("ca_cert", "not a certificate", "CA certificate"),
@@ -66,7 +68,8 @@ def test_profile_json_is_typed_bounded_and_secret_is_not_in_repr() -> None:
 def test_profile_validation_rejects_unsafe_values(field: str, value, message: str) -> None:
     values = {
         "device_id": DEVICE_ID,
-        "host": "broker.test",
+        "connect_host": "203.0.113.10",
+        "tls_hostname": "broker.test",
         "port": 8883,
         "password": TEST_PASSWORD,
         "ca_cert": CA_CERT,
@@ -121,7 +124,8 @@ def test_ca_certificate_rejects_invalid_base64_inside_valid_framing() -> None:
 def test_provision_waits_for_ready_and_sends_one_secret_bearing_command() -> None:
     profile = provision_mqtt.build_profile(
         device_id=DEVICE_ID,
-        host="broker.test",
+        connect_host="203.0.113.10",
+        tls_hostname="broker.test",
         port=8883,
         password=TEST_PASSWORD,
         ca_cert=CA_CERT,
@@ -138,7 +142,8 @@ def test_provision_waits_for_ready_and_sends_one_secret_bearing_command() -> Non
 def test_rejection_and_clear_failure_are_reported_without_response_body() -> None:
     profile = provision_mqtt.build_profile(
         device_id=DEVICE_ID,
-        host="broker.test",
+        connect_host="203.0.113.10",
+        tls_hostname="broker.test",
         port=8883,
         password=TEST_PASSWORD,
         ca_cert=CA_CERT,

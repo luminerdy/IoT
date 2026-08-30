@@ -139,13 +139,23 @@ Serves the dashboard HTML shell (static asset).
 **API-021 — `GET /api/latest`** `MUST`
 Array of per-device objects: `deviceId, location, firmwareVersion,
 buildNumber, lastSeen, online, stale, ageSeconds, rssi, status, temperature,
-humidity, sensorType, seq, observedAt`. Staleness computed per FR-031.
+humidity, sensorType, seq, observedAt, telemetryObservedAt,
+telemetryAgeSeconds, deviceObservedAt, deviceAgeSeconds, stability,
+recentSeqResets, sensorHealth, numReadErrors, numFilteredReadings,
+readErrorDelta, filteredReadingDelta`. When a telemetry row exists, `observedAt` and `ageSeconds`
+refer to that telemetry row; `deviceObservedAt` and `deviceAgeSeconds` expose
+the latest status/device-row freshness separately. Staleness computed per
+FR-031. Timestamp fields MUST be explicit UTC ISO-8601 strings with a `Z`
+suffix so browser relative-time rendering does not interpret hub UTC values as
+local wall time. Device IDs listed in the local retired-device config are
+excluded from this current-state response.
 
 **API-022 — `GET /api/history?hours=&limit=`** `MUST`
 Array of readings within the window, newest first. `hours` clamped 1–168
 (default 24), `limit` clamped 1–50000 (default 500) (SEC-012). Fields:
 `deviceId, location, temperature, humidity, rssi, status, seq, datetime,
-createdAt`.
+createdAt`. Device IDs listed in the local retired-device config are excluded
+from this response even though their historical database rows remain preserved.
 
 **API-023 — `GET /api/floorplan`** `MAY` (R5)
 Validated floorplan document `{backgroundImage, zones[]}`; 500 with a clear
@@ -154,11 +164,31 @@ message on invalid config; empty document when absent.
 **API-024 — `GET /api/locations` and `POST /api/locations`** `MAY` (R5)
 `GET` returns `{locations, devices}` where `locations` is the current
 `deviceId → displayLocation` mapping and `devices` contains the latest
-dashboard rows plus `reportedLocation` and `configuredLocation`.
+dashboard rows plus `reportedLocation` and `configuredLocation`. Retired
+device IDs are omitted from both `locations` and `devices`.
 `POST` accepts `{deviceId, location}`; a non-empty location saves the
 mapping, and an empty location clears it. Invalid JSON, invalid device IDs,
 and overlong locations are rejected with 400. Writes from non-local clients
 are rejected with 403 unless authenticated by a stronger deployment policy.
+
+**API-024A — `GET /api/system`** `SHOULD` (R5)
+Returns hub and monitoring status for the dashboard:
+`temperatureF, sampledAt, ageSeconds, monitoring`. `monitoring` contains
+`latestEvents[]`, `latestPostReboot`, and `latestWatchdogRelay`; monitoring
+events include `source, eventType, severity, status, message, details,
+createdAt`. Secrets and raw OTA URLs MUST NOT be included in monitoring event
+messages or details.
+
+**API-024B — `GET /api/weather` and `GET /api/weather/history?hours=&limit=`** `MAY` (R5)
+`GET /api/weather` returns the latest stored internet local outside
+temperature sample for the dashboard:
+`temperatureF, sampledAt, ageSeconds, location, source, status, detail`. When
+no weather sample has been recorded, the response remains HTTP 200 with
+`temperatureF: null` and `status: unavailable` so core local dashboard reads
+continue to work. `GET /api/weather/history` returns newest-first stored
+weather samples with `temperatureF, sampledAt, source`, with `hours` and
+`limit` bounded like `GET /api/history`. Weather coordinates or ZIP
+configuration are local deployment settings and MUST NOT include credentials.
 
 **API-025 — `GET /firmware/<version>/firmware.bin?key=…`** `SHOULD` (R4)
 Serves staged firmware with correct `Content-Length`. Requires the SEC-016
@@ -202,9 +232,15 @@ USB serial port:
   state, stored-profile and parsed/active CA byte counts, and non-secret FNV-1a
   CA diagnostic fingerprints; it returns no endpoint, username, password, or
   certificate content.
-- `IOT_MQTT_PROVISION <json>` accepts exactly seven top-level fields:
-  `schemaVersion=1`, `mqttHost`, `mqttPort`, `mqttUsername`, `mqttPassword`,
-  `mqttUseTls=true`, and one PEM `mqttCaCert`. The username MUST equal the
+- `IOT_MQTT_PROVISION <json>` accepts bounded schema-versioned profiles. Schema
+  version 2 accepts exactly eight top-level fields: `schemaVersion=2`,
+  `mqttConnectHost`, `mqttTlsHostname`, `mqttPort`, `mqttUsername`,
+  `mqttPassword`, `mqttUseTls=true`, and one PEM `mqttCaCert`.
+  `mqttConnectHost` is the TCP endpoint and may be a resolvable hostname or IP
+  address; `mqttTlsHostname` MUST be a DNS hostname present in the broker
+  certificate SAN and is used for SNI/certificate verification. Firmware also
+  reads legacy schema version 1 with exactly seven fields, where `mqttHost` is
+  used for both TCP connection and TLS hostname. The username MUST equal the
   hardware-derived device ID. String, port, password, certificate, and total
   NVS-profile lengths are bounded. Unknown, nested, missing, incorrectly typed,
   plaintext, or oversized profiles are rejected without changing NVS.

@@ -38,7 +38,8 @@ CLEAR_FAILED_MARKER = b"MQTT provisioning clear failed"
 @dataclass(frozen=True)
 class MqttProfile:
     device_id: str
-    host: str
+    connect_host: str
+    tls_hostname: str
     port: int
     password: str = field(repr=False)
     ca_cert: str = field(repr=False)
@@ -46,8 +47,9 @@ class MqttProfile:
     def as_json(self) -> str:
         payload = json.dumps(
             {
-                "schemaVersion": 1,
-                "mqttHost": self.host,
+                "schemaVersion": 2,
+                "mqttConnectHost": self.connect_host,
+                "mqttTlsHostname": self.tls_hostname,
                 "mqttPort": self.port,
                 "mqttUsername": self.device_id,
                 "mqttPassword": self.password,
@@ -159,24 +161,43 @@ def validate_password(password: str) -> str:
     return password
 
 
-def build_profile(
-    *, device_id: str, host: str, port: int, password: str, ca_cert: str
-) -> MqttProfile:
-    if not DEVICE_ID_RE.fullmatch(device_id):
-        raise ValueError("device ID must match esp32- followed by 12 lowercase hex characters")
+def validate_connect_host(host: str) -> str:
     if not HOST_RE.fullmatch(host):
-        raise ValueError("MQTT host must be a DNS hostname without a scheme")
+        raise ValueError("MQTT connect host must be a hostname or IP address without a scheme")
+    return host
+
+
+def validate_tls_hostname(hostname: str) -> str:
+    if not HOST_RE.fullmatch(hostname):
+        raise ValueError("MQTT TLS hostname must be a DNS hostname without a scheme")
     try:
-        ipaddress.ip_address(host)
+        ipaddress.ip_address(hostname)
     except ValueError:
         pass
     else:
-        raise ValueError("MQTT host must be a DNS hostname for TLS validation")
+        raise ValueError("MQTT TLS hostname must be a DNS hostname for certificate validation")
+    if "." not in hostname or not any(character.isalpha() for character in hostname):
+        raise ValueError("MQTT TLS hostname must be a DNS hostname for certificate validation")
+    return hostname
+
+
+def build_profile(
+    *,
+    device_id: str,
+    connect_host: str,
+    tls_hostname: str,
+    port: int,
+    password: str,
+    ca_cert: str,
+) -> MqttProfile:
+    if not DEVICE_ID_RE.fullmatch(device_id):
+        raise ValueError("device ID must match esp32- followed by 12 lowercase hex characters")
     if not 1 <= port <= 65535:
         raise ValueError("MQTT port must be between 1 and 65535")
     return MqttProfile(
         device_id=device_id,
-        host=host,
+        connect_host=validate_connect_host(connect_host),
+        tls_hostname=validate_tls_hostname(tls_hostname),
         port=port,
         password=validate_password(password),
         ca_cert=normalize_ca_certificate(ca_cert),
@@ -221,7 +242,15 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--clear", action="store_true")
     parser.add_argument("--status", action="store_true")
     parser.add_argument("--device-id")
-    parser.add_argument("--host")
+    parser.add_argument(
+        "--connect-host",
+        help="Resolvable TCP endpoint for the MQTT broker; may be an IP address.",
+    )
+    parser.add_argument(
+        "--tls-hostname",
+        help="DNS name verified against the broker certificate SAN and used for TLS SNI.",
+    )
+    parser.add_argument("--host", help=argparse.SUPPRESS)
     parser.add_argument("--mqtt-port", type=int, default=8883)
     parser.add_argument("--ca-cert", type=Path)
     parser.add_argument(
@@ -249,8 +278,12 @@ def main(argv: list[str] | None = None) -> int:
             print("MQTT provisioning profile cleared; device is restarting")
             return 0
 
-        if not args.device_id or not args.host or not args.ca_cert:
-            raise SystemExit("provisioning requires --device-id, --host, and --ca-cert")
+        connect_host = args.connect_host or args.host
+        tls_hostname = args.tls_hostname or args.host
+        if not args.device_id or not connect_host or not tls_hostname or not args.ca_cert:
+            raise SystemExit(
+                "provisioning requires --device-id, --connect-host, --tls-hostname, and --ca-cert"
+            )
         password = (
             read_password_file(args.password_file)
             if args.password_file
@@ -258,7 +291,8 @@ def main(argv: list[str] | None = None) -> int:
         )
         profile = build_profile(
             device_id=args.device_id,
-            host=args.host,
+            connect_host=connect_host,
+            tls_hostname=tls_hostname,
             port=args.mqtt_port,
             password=password,
             ca_cert=args.ca_cert.read_text(encoding="utf-8"),

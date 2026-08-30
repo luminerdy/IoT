@@ -23,6 +23,8 @@ from iot_home.db import (
 )
 from iot_home.locations import DEFAULT_LOCATIONS_PATH, load_locations, mapped_location
 from iot_home.mqtt_schema import STATUS_SUBSCRIPTION, TELEMETRY_SUBSCRIPTION
+from iot_home.retired_devices import DEFAULT_RETIRED_DEVICES_PATH, load_retired_devices
+from iot_home.weather import WEATHER_METRIC, fetch_weather_temperature_f, resolve_weather_location
 
 LOG = logging.getLogger("iot_home.collector")
 
@@ -44,6 +46,12 @@ def parse_args() -> argparse.Namespace:
         help="JSON file mapping device IDs to display locations.",
     )
     parser.add_argument(
+        "--retired-devices",
+        type=Path,
+        default=DEFAULT_RETIRED_DEVICES_PATH,
+        help="JSON file listing device IDs excluded from collection.",
+    )
+    parser.add_argument(
         "--desired-firmware-version",
         help="Desired firmware version. Mismatched device reports create deployment attempt records.",
     )
@@ -59,6 +67,29 @@ def parse_args() -> argparse.Namespace:
         default=600,
         help="Seconds between Raspberry Pi CPU temperature samples (default: 600).",
     )
+    parser.add_argument(
+        "--weather-interval-seconds",
+        type=int,
+        default=900,
+        help="Seconds between internet outside temperature samples (default: 900).",
+    )
+    parser.add_argument(
+        "--weather-zip",
+        default=os.getenv("WEATHER_ZIP"),
+        help="ZIP/postal code used for internet outside temperature samples.",
+    )
+    parser.add_argument(
+        "--weather-latitude",
+        type=float,
+        default=float(os.environ["WEATHER_LATITUDE"]) if os.getenv("WEATHER_LATITUDE") else None,
+        help="Latitude used for internet outside temperature samples.",
+    )
+    parser.add_argument(
+        "--weather-longitude",
+        type=float,
+        default=float(os.environ["WEATHER_LONGITUDE"]) if os.getenv("WEATHER_LONGITUDE") else None,
+        help="Longitude used for internet outside temperature samples.",
+    )
     return parser.parse_args()
 
 
@@ -68,6 +99,12 @@ PI_TEMPERATURE_PATH = Path("/sys/class/thermal/thermal_zone0/temp")
 def read_pi_temperature_f(path: Path = PI_TEMPERATURE_PATH) -> float:
     celsius = float(path.read_text(encoding="utf-8").strip()) / 1000.0
     return round((celsius * 9 / 5) + 32, 1)
+
+
+def weather_configured(args: argparse.Namespace) -> bool:
+    return bool(args.weather_zip) or (
+        args.weather_latitude is not None and args.weather_longitude is not None
+    )
 
 
 def validate_telemetry(payload: dict) -> None:
@@ -137,6 +174,9 @@ def main() -> None:
     locations = load_locations(args.locations)
     if locations:
         LOG.info("Loaded %d location mapping(s) from %s", len(locations), args.locations)
+    retired_devices = load_retired_devices(args.retired_devices)
+    if retired_devices:
+        LOG.info("Loaded %d retired device(s) from %s", len(retired_devices), args.retired_devices)
 
     def on_connect(client: mqtt.Client, userdata, flags, reason_code, properties=None) -> None:
         if reason_code != 0:
@@ -152,6 +192,10 @@ def main() -> None:
                 LOG.info("Ignoring empty MQTT message on %s", message.topic)
                 return
             payload = json.loads(message.payload.decode("utf-8"))
+            device_id = str(payload.get("deviceId", ""))
+            if device_id in retired_devices:
+                LOG.info("Ignoring retired device %s on %s", device_id, message.topic)
+                return
             if message.topic.endswith("/telemetry"):
                 validate_telemetry(payload)
                 payload["location"] = mapped_location(
@@ -188,7 +232,10 @@ def main() -> None:
     client.on_message = on_message
     client.connect(args.broker, args.port, keepalive=60)
     temperature_interval = max(10, args.pi_temperature_interval_seconds)
+    weather_interval = max(60, args.weather_interval_seconds)
     next_temperature_sample = 0.0
+    next_weather_sample = 0.0
+    weather_location = None
     try:
         while True:
             result = client.loop(timeout=1.0)
@@ -209,6 +256,28 @@ def main() -> None:
                     LOG.info("Pi CPU temperature %.1f F", temperature_f)
                 except (OSError, ValueError):
                     LOG.exception("Failed to sample Pi CPU temperature")
+            if weather_configured(args) and now >= next_weather_sample:
+                next_weather_sample = now + weather_interval
+                try:
+                    if weather_location is None:
+                        weather_location = resolve_weather_location(
+                            args.weather_zip,
+                            args.weather_latitude,
+                            args.weather_longitude,
+                        )
+                    if weather_location is None:
+                        LOG.warning("Internet outside temperature location is not configured")
+                    else:
+                        latitude, longitude, location = weather_location
+                        temperature_f, _ = fetch_weather_temperature_f(latitude, longitude)
+                        record_system_metric(conn, WEATHER_METRIC, temperature_f)
+                        LOG.info(
+                            "Internet outside temperature %.1f F%s",
+                            temperature_f,
+                            f" location={location}" if location else "",
+                        )
+                except Exception:
+                    LOG.exception("Failed to sample internet outside temperature")
     except KeyboardInterrupt:
         LOG.info("Collector stopped")
     finally:

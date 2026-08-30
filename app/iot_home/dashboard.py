@@ -20,9 +20,11 @@ from iot_home.db import (
     DEFAULT_DB_PATH,
     connect,
     init_db,
+    latest_monitoring_events,
     latest_readings,
     latest_system_metric,
     reading_history,
+    system_metric_history,
 )
 from iot_home.floorplan import DEFAULT_FLOORPLAN_PATH, load_floorplan
 from iot_home.locations import (
@@ -31,6 +33,8 @@ from iot_home.locations import (
     mapped_location,
     save_locations,
 )
+from iot_home.retired_devices import DEFAULT_RETIRED_DEVICES_PATH, load_retired_devices
+from iot_home.weather import WEATHER_METRIC, format_utc, parse_utc
 
 
 def parse_args() -> argparse.Namespace:
@@ -43,6 +47,12 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=DEFAULT_LOCATIONS_PATH,
         help="JSON file mapping device IDs to display locations.",
+    )
+    parser.add_argument(
+        "--retired-devices",
+        type=Path,
+        default=DEFAULT_RETIRED_DEVICES_PATH,
+        help="JSON file listing device IDs hidden from read APIs.",
     )
     parser.add_argument(
         "--stale-seconds",
@@ -91,36 +101,77 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def parse_utc(value: str | None) -> datetime | None:
-    if not value:
-        return None
-    if value.endswith("Z"):
-        value = value[:-1] + "+00:00"
-    try:
-        parsed = datetime.fromisoformat(value)
-    except ValueError:
-        return None
-    if parsed.tzinfo is None:
-        return parsed.replace(tzinfo=UTC)
-    return parsed.astimezone(UTC)
+def weather_unavailable(reason: str) -> dict:
+    return {
+        "temperatureF": None,
+        "sampledAt": None,
+        "ageSeconds": None,
+        "location": None,
+        "source": "Open-Meteo",
+        "status": "unavailable",
+        "detail": reason,
+    }
+
+
+def weather_row_to_dict(row) -> dict:
+    sampled_at = parse_utc(row["created_at"])
+    age_seconds = int((datetime.now(UTC) - sampled_at).total_seconds()) if sampled_at else None
+    return {
+        "temperatureF": row["value"],
+        "sampledAt": format_utc(sampled_at),
+        "ageSeconds": age_seconds,
+        "location": "Local Weather",
+        "source": "Open-Meteo",
+        "status": "ok",
+        "detail": "Weather data by Open-Meteo.com",
+    }
+
+
+def weather_history_row_to_dict(row) -> dict:
+    sampled_at = parse_utc(row["created_at"])
+    return {
+        "temperatureF": row["value"],
+        "sampledAt": format_utc(sampled_at),
+        "source": "Open-Meteo",
+    }
 
 
 def row_to_dict(row, stale_seconds: int, locations: dict[str, str]) -> dict:
     last_seen = parse_utc(row["last_seen"])
     updated_at = parse_utc(row["updated_at"])
-    observed_at = updated_at or last_seen
+    telemetry_observed_at = parse_utc(row["created_at"])
+    observed_at = telemetry_observed_at or updated_at or last_seen
+    device_observed_at = updated_at or last_seen
     age_seconds = None
     if observed_at:
         age_seconds = int((datetime.now(UTC) - observed_at).total_seconds())
+    device_age_seconds = None
+    if device_observed_at:
+        device_age_seconds = int((datetime.now(UTC) - device_observed_at).total_seconds())
     is_stale = bool(row["online"]) and age_seconds is not None and age_seconds > stale_seconds
 
     device_id = row["device_id"]
+    recent_seq_resets = row["recent_seq_resets"] or 0
+    stability = device_stability(
+        online=bool(row["online"]),
+        stale=is_stale,
+        seq=row["seq"],
+        recent_seq_resets=recent_seq_resets,
+    )
+    sensor_health = sensor_health_status(
+        online=bool(row["online"]),
+        stale=is_stale,
+        read_errors=row["num_read_errors"],
+        filtered_readings=row["num_filtered_readings"],
+        read_error_delta=row["read_error_delta"],
+        filtered_reading_delta=row["filtered_reading_delta"],
+    )
 
     return {
         "deviceId": device_id,
         "location": mapped_location(device_id, row["location"], locations),
         "firmwareVersion": row["firmware_version"],
-        "lastSeen": row["last_seen"],
+        "lastSeen": format_utc(last_seen),
         "online": bool(row["online"]),
         "stale": is_stale,
         "ageSeconds": age_seconds,
@@ -130,9 +181,75 @@ def row_to_dict(row, stale_seconds: int, locations: dict[str, str]) -> dict:
         "humidity": row["humidity"],
         "sensorType": row["sensor_type"],
         "seq": row["seq"],
-        "updatedAt": row["updated_at"],
-        "observedAt": row["updated_at"] or row["last_seen"],
+        "stability": stability,
+        "recentSeqResets": recent_seq_resets,
+        "sensorHealth": sensor_health,
+        "numReadErrors": row["num_read_errors"],
+        "numFilteredReadings": row["num_filtered_readings"],
+        "readErrorDelta": row["read_error_delta"],
+        "filteredReadingDelta": row["filtered_reading_delta"],
+        "updatedAt": format_utc(updated_at),
+        "observedAt": format_utc(observed_at),
+        "telemetryObservedAt": format_utc(telemetry_observed_at),
+        "telemetryAgeSeconds": age_seconds if row["created_at"] else None,
+        "deviceObservedAt": format_utc(device_observed_at),
+        "deviceAgeSeconds": device_age_seconds,
     }
+
+
+def device_stability(
+    *, online: bool, stale: bool, seq: int | None, recent_seq_resets: int
+) -> dict[str, str]:
+    if not online:
+        return {"state": "offline", "label": "Offline", "detail": "Not reporting"}
+    if stale:
+        return {"state": "stale", "label": "Stale", "detail": "Last reading is old"}
+    if seq is None:
+        return {"state": "unknown", "label": "Unknown", "detail": "No sequence data"}
+    if recent_seq_resets >= 2:
+        return {
+            "state": "unstable",
+            "label": "Unstable",
+            "detail": f"{recent_seq_resets} restarts/24h",
+        }
+    if seq <= 1:
+        return {"state": "watch", "label": "Restarted", "detail": "Latest seq is 1"}
+    if recent_seq_resets == 1:
+        return {"state": "watch", "label": "Watch", "detail": "1 restart/24h"}
+    return {"state": "stable", "label": "Stable", "detail": "No resets/24h"}
+
+
+def sensor_health_status(
+    *,
+    online: bool,
+    stale: bool,
+    read_errors: int | None,
+    filtered_readings: int | None,
+    read_error_delta: int | None,
+    filtered_reading_delta: int | None,
+) -> dict[str, str]:
+    if not online:
+        return {"state": "offline", "label": "Offline", "detail": "Not reporting"}
+    if stale:
+        return {"state": "stale", "label": "Stale", "detail": "Last reading is old"}
+    if read_errors is None and filtered_readings is None:
+        return {"state": "unknown", "label": "Unknown", "detail": "No DHT counters"}
+
+    new_read_errors = read_error_delta or 0
+    new_filtered = filtered_reading_delta or 0
+    if new_read_errors >= 10 or new_filtered >= 3:
+        return {
+            "state": "fault",
+            "label": "Fault",
+            "detail": f"+{new_read_errors} read, +{new_filtered} filtered",
+        }
+    if new_read_errors > 0 or new_filtered > 0:
+        return {
+            "state": "watch",
+            "label": "Watch",
+            "detail": f"+{new_read_errors} read, +{new_filtered} filtered",
+        }
+    return {"state": "ok", "label": "OK", "detail": "No new DHT errors"}
 
 
 def history_row_to_dict(row, locations: dict[str, str]) -> dict:
@@ -146,7 +263,7 @@ def history_row_to_dict(row, locations: dict[str, str]) -> dict:
         "status": row["status"],
         "seq": row["seq"],
         "datetime": row["datetime"],
-        "createdAt": row["created_at"],
+        "createdAt": format_utc(parse_utc(row["created_at"])),
     }
 
 
@@ -160,7 +277,23 @@ def location_admin_row(row, stale_seconds: int, locations: dict[str, str]) -> di
     }
 
 
-def location_payload(rows: list, stale_seconds: int, locations: dict[str, str]) -> dict:
+def visible_rows(rows: list, retired_devices: set[str]) -> list:
+    return [row for row in rows if row["device_id"] not in retired_devices]
+
+
+def location_payload(
+    rows: list,
+    stale_seconds: int,
+    locations: dict[str, str],
+    retired_devices: set[str] | None = None,
+) -> dict:
+    retired_devices = retired_devices or set()
+    rows = visible_rows(rows, retired_devices)
+    locations = {
+        device_id: location
+        for device_id, location in locations.items()
+        if device_id not in retired_devices
+    }
     mapped_devices = {
         row["deviceId"]
         for row in (location_admin_row(raw_row, stale_seconds, locations) for raw_row in rows)
@@ -185,11 +318,50 @@ def location_payload(rows: list, stale_seconds: int, locations: dict[str, str]) 
                     "humidity": None,
                     "sensorType": None,
                     "seq": None,
+                    "stability": device_stability(
+                        online=False, stale=False, seq=None, recent_seq_resets=0
+                    ),
+                    "recentSeqResets": 0,
+                    "sensorHealth": sensor_health_status(
+                        online=False,
+                        stale=False,
+                        read_errors=None,
+                        filtered_readings=None,
+                        read_error_delta=None,
+                        filtered_reading_delta=None,
+                    ),
+                    "numReadErrors": None,
+                    "numFilteredReadings": None,
+                    "readErrorDelta": None,
+                    "filteredReadingDelta": None,
                     "updatedAt": None,
                     "observedAt": None,
+                    "telemetryObservedAt": None,
+                    "telemetryAgeSeconds": None,
+                    "deviceObservedAt": None,
+                    "deviceAgeSeconds": None,
                 }
             )
     return {"locations": locations, "devices": devices}
+
+
+def monitoring_event_to_dict(row) -> dict:
+    details = None
+    if row["details_json"]:
+        try:
+            details = json.loads(row["details_json"])
+        except json.JSONDecodeError:
+            details = None
+    return {
+        "id": row["id"],
+        "source": row["source"],
+        "eventType": row["event_type"],
+        "severity": row["severity"],
+        "status": row["status"],
+        "message": row["message"],
+        "details": details,
+        "createdAt": format_utc(parse_utc(row["created_at"])),
+    }
 
 
 def valid_client_address(value: str) -> bool:
@@ -395,7 +567,7 @@ def page() -> bytes:
     }
     .metrics {
       display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
+      grid-template-columns: repeat(4, minmax(0, 1fr));
       gap: 6px;
     }
     .metric {
@@ -410,6 +582,10 @@ def page() -> bytes:
       margin-top: 3px;
       font-size: 16px;
       line-height: 1.1;
+      overflow-wrap: anywhere;
+    }
+    .metric.firmware-metric strong {
+      font-size: 13px;
     }
     .metric-note {
       display: block;
@@ -422,6 +598,35 @@ def page() -> bytes:
     .panel {
       overflow: hidden;
       margin-top: 18px;
+    }
+    .system-health {
+      margin-bottom: 18px;
+    }
+    .health-list {
+      display: grid;
+      gap: 0;
+    }
+    .health-row {
+      display: grid;
+      grid-template-columns: 170px minmax(0, 1fr) 160px;
+      gap: 12px;
+      align-items: center;
+      padding: 10px 14px;
+      border-top: 1px solid #e7ebf0;
+      font-size: 13px;
+    }
+    .health-row:first-child {
+      border-top: 0;
+    }
+    .health-message {
+      min-width: 0;
+      color: #24313d;
+      overflow-wrap: anywhere;
+    }
+    .health-time {
+      color: var(--ink-soft);
+      text-align: right;
+      white-space: nowrap;
     }
     .dashboard-view {
       display: none;
@@ -697,6 +902,9 @@ def page() -> bytes:
       stroke-linecap: round;
       stroke-linejoin: round;
     }
+    .weather-line {
+      stroke-dasharray: 8 5;
+    }
     .legend {
       display: flex;
       align-items: center;
@@ -738,8 +946,8 @@ def page() -> bytes:
       text-transform: uppercase;
       color: #4b5b6b;
     }
-    th:nth-child(8),
-    td:nth-child(8) {
+    th:nth-child(11),
+    td:nth-child(11) {
       display: none;
     }
     tr:last-child td {
@@ -761,6 +969,51 @@ def page() -> bytes:
     .online .dot { background: var(--green); }
     .offline .dot { background: var(--red); }
     .stale .dot { background: var(--amber); }
+    .health-badge {
+      display: inline-flex;
+      flex-direction: column;
+      gap: 2px;
+      min-width: 82px;
+    }
+    .health-label {
+      display: inline-flex;
+      align-items: center;
+      width: fit-content;
+      min-height: 20px;
+      padding: 2px 7px;
+      border-radius: 999px;
+      border: 1px solid #ccd6e0;
+      background: #f8fafc;
+      color: var(--ink);
+      font-size: 11px;
+      font-weight: 780;
+      line-height: 1;
+    }
+    .health-detail {
+      color: var(--ink-soft);
+      font-size: 10px;
+      line-height: 1;
+    }
+    .health-badge.stable .health-label,
+    .health-badge.ok .health-label {
+      border-color: rgb(39 174 96 / 0.35);
+      background: #ecfdf3;
+      color: #1f7a45;
+    }
+    .health-badge.watch .health-label,
+    .health-badge.stale .health-label,
+    .health-badge.unknown .health-label {
+      border-color: rgb(183 121 31 / 0.38);
+      background: #fff7ed;
+      color: var(--amber);
+    }
+    .health-badge.unstable .health-label,
+    .health-badge.fault .health-label,
+    .health-badge.offline .health-label {
+      border-color: rgb(192 57 43 / 0.32);
+      background: #fef2f2;
+      color: var(--red);
+    }
     .humidity-value {
       display: inline-flex;
       align-items: center;
@@ -792,13 +1045,15 @@ def page() -> bytes:
     .table-wrap table {
       table-layout: fixed;
     }
-    .table-wrap th:nth-child(1) { width: 18%; }
-    .table-wrap th:nth-child(2) { width: 11%; }
-    .table-wrap th:nth-child(3) { width: 13%; }
-    .table-wrap th:nth-child(4) { width: 13%; }
-    .table-wrap th:nth-child(5) { width: 11%; }
-    .table-wrap th:nth-child(6) { width: 15%; }
-    .table-wrap th:nth-child(7) { width: 19%; }
+    .table-wrap th:nth-child(1) { width: 14%; }
+    .table-wrap th:nth-child(2) { width: 9%; }
+    .table-wrap th:nth-child(3) { width: 11%; }
+    .table-wrap th:nth-child(4) { width: 11%; }
+    .table-wrap th:nth-child(5) { width: 9%; }
+    .table-wrap th:nth-child(6) { width: 7%; }
+    .table-wrap th:nth-child(7) { width: 13%; }
+    .table-wrap th:nth-child(8) { width: 12%; }
+    .table-wrap th:nth-child(9) { width: 14%; }
     .admin-view {
       display: none;
       margin-top: 18px;
@@ -909,6 +1164,13 @@ def page() -> bytes:
       .summary, .metrics {
         grid-template-columns: 1fr;
       }
+      .health-row {
+        grid-template-columns: 1fr;
+        gap: 5px;
+      }
+      .health-time {
+        text-align: left;
+      }
       .house-wrap {
         padding: 10px;
       }
@@ -966,6 +1228,25 @@ def page() -> bytes:
       </div>
     </section>
 
+    <section class="panel system-health" aria-label="System health">
+      <div class="panel-head">
+        <h2>System Health</h2>
+        <span class="muted" id="monitoring-count">No monitoring events</span>
+      </div>
+      <div class="health-list">
+        <div class="health-row">
+          <span class="status" id="post-reboot-status"><span class="dot"></span> Post Reboot</span>
+          <span class="health-message" id="post-reboot-message">No check recorded</span>
+          <span class="health-time" id="post-reboot-time">--</span>
+        </div>
+        <div class="health-row">
+          <span class="status" id="watchdog-status"><span class="dot"></span> Watchdog</span>
+          <span class="health-message" id="watchdog-message">No relay event recorded</span>
+          <span class="health-time" id="watchdog-time">--</span>
+        </div>
+      </div>
+    </section>
+
     <section class="panel dashboard-view active" data-dashboard-view="house" aria-label="House diagram">
       <div class="panel-head">
         <h2>House Diagram</h2>
@@ -1019,13 +1300,16 @@ def page() -> bytes:
               <th>Temperature</th>
               <th>Humidity</th>
               <th>RSSI</th>
+              <th>Seq</th>
+              <th>Stability</th>
+              <th>Sensor</th>
               <th>Last Seen</th>
               <th>Firmware</th>
               <th>Device</th>
             </tr>
           </thead>
           <tbody id="readings">
-            <tr><td colspan="8" class="empty">No readings yet.</td></tr>
+            <tr><td colspan="11" class="empty">No readings yet.</td></tr>
           </tbody>
         </table>
       </div>
@@ -1075,6 +1359,8 @@ def page() -> bytes:
       adminOpen: false,
       mappings: [],
       system: null,
+      weather: null,
+      weatherHistory: [],
     };
     const dashboardViews = [
       {key: "house", label: "House Diagram"},
@@ -1090,26 +1376,27 @@ def page() -> bytes:
     const separateGraphLocations = new Set(["UtilityA", "UtilityB", "UtilityC", "UtilityD", "UtilityE"]);
     const insideGraphLocations = new Set(["Laundryroom"]);
     const outdoorHumidityLocations = new Set(["OutdoorA", "OutdoorB", "OutdoorC"]);
+    const weatherTemperatureDeviceId = "__internet_local_weather_temperature";
     const graphGroups = [
       {
         key: "inside",
         label: "Inside",
-        match: (location) => !isOutsideGraphLocation(location) && !isAtticGraphLocation(location) && !isSeparateGraphLocation(location),
+        match: (device) => device.deviceId !== weatherTemperatureDeviceId && !isOutsideGraphLocation(device.location) && !isAtticGraphLocation(device.location) && !isSeparateGraphLocation(device.location),
       },
       {
         key: "outside",
         label: "Outside",
-        match: isOutsideGraphLocation,
+        match: (device) => device.deviceId === weatherTemperatureDeviceId || isOutsideGraphLocation(device.location),
       },
       {
         key: "attic",
         label: "Attic",
-        match: isAtticGraphLocation,
+        match: (device) => isAtticGraphLocation(device.location),
       },
       {
         key: "separate",
         label: "Separate",
-        match: isSeparateGraphLocation,
+        match: (device) => isSeparateGraphLocation(device.location),
       },
     ];
     const defaultFloorplanZones = [
@@ -1234,6 +1521,28 @@ def page() -> bytes:
       return value.replace("-filtered-telemetry", " filtered").replace("-signed-ota", " signed");
     }
 
+    function currentFirmwareVersion(rows) {
+      const counts = new Map();
+      for (const row of rows) {
+        if (!row.firmwareVersion) continue;
+        counts.set(row.firmwareVersion, (counts.get(row.firmwareVersion) || 0) + 1);
+      }
+      let current = null;
+      let currentCount = 0;
+      for (const [version, count] of counts.entries()) {
+        if (count > currentCount || (count === currentCount && version > current)) {
+          current = version;
+          currentCount = count;
+        }
+      }
+      return current;
+    }
+
+    function deviceFirmwareLabel(value, current) {
+      if (!value) return "--";
+      return value === current ? "Latest" : firmwareLabel(value);
+    }
+
     function deviceState(row) {
       if (row.stale) return ["stale", "Stale"];
       if (row.online) return ["online", "Online"];
@@ -1256,10 +1565,67 @@ def page() -> bytes:
       if (!metric || typeof metric.temperatureF !== "number") {
         element.textContent = "Pi --";
         element.title = "No Raspberry Pi temperature sample available";
+        renderSystemHealth(metric);
         return;
       }
       element.textContent = `Pi ${metric.temperatureF.toFixed(1)} F`;
       element.title = `CPU temperature sampled ${metric.ageSeconds ?? "?"} seconds ago`;
+      renderSystemHealth(metric);
+    }
+
+    function weatherTemperatureRow(weather) {
+      if (!weather || typeof weather.temperatureF !== "number" || !weather.sampledAt) return null;
+      return {
+        deviceId: weatherTemperatureDeviceId,
+        location: "Local Weather",
+        temperature: weather.temperatureF,
+        humidity: null,
+        rssi: null,
+        status: "weather",
+        seq: null,
+        datetime: weather.sampledAt,
+        createdAt: weather.sampledAt,
+      };
+    }
+
+    function trendRows(rows) {
+      const weatherRows = Array.isArray(state.weatherHistory)
+        ? state.weatherHistory.map(weatherTemperatureRow).filter(Boolean)
+        : [];
+      if (!weatherRows.length && state.weather?.status === "ok") {
+        const currentWeather = weatherTemperatureRow(state.weather);
+        if (currentWeather) weatherRows.push(currentWeather);
+      }
+      return [...rows, ...weatherRows];
+    }
+
+    function eventStateClass(event) {
+      if (!event) return "stale";
+      if (event.status === "ok") return "online";
+      if (event.severity === "critical" || event.status === "recovery") return "offline";
+      return "stale";
+    }
+
+    function setHealthRow(prefix, event, emptyMessage) {
+      const status = document.getElementById(`${prefix}-status`);
+      const message = document.getElementById(`${prefix}-message`);
+      const time = document.getElementById(`${prefix}-time`);
+      status.className = `status ${eventStateClass(event)}`;
+      if (event) {
+        message.textContent = event.message || event.eventType || emptyMessage;
+        time.textContent = relativeTime(event.createdAt);
+      } else {
+        message.textContent = emptyMessage;
+        time.textContent = "--";
+      }
+    }
+
+    function renderSystemHealth(system) {
+      const monitoring = system?.monitoring || {};
+      const events = Array.isArray(monitoring.latestEvents) ? monitoring.latestEvents : [];
+      setText("monitoring-count", `${events.length} recent monitoring event${events.length === 1 ? "" : "s"}`);
+      setHealthRow("post-reboot", monitoring.latestPostReboot, "No check recorded");
+      setHealthRow("watchdog", monitoring.latestWatchdogRelay, "No relay event recorded");
     }
 
     function renderDevices(rows) {
@@ -1276,6 +1642,7 @@ def page() -> bytes:
       const sortedRows = [...rows].sort((a, b) =>
         deviceLabel(a).localeCompare(deviceLabel(b), undefined, {sensitivity: "base"})
       );
+      const currentFirmware = currentFirmwareVersion(sortedRows);
       for (const row of sortedRows) {
         const card = document.createElement("article");
         card.className = "device";
@@ -1293,10 +1660,11 @@ def page() -> bytes:
         for (const [label, value, note] of [
           ["Temp", fmt(row.temperature, " F"), ""],
           ["Humid", humidityText(row), isHumiditySuspect(row) ? "suspect" : ""],
-          ["Seen", relativeTime(row.lastSeen), ""],
+          ["Seen", relativeTime(row.observedAt || row.lastSeen), ""],
+          ["Firmware", deviceFirmwareLabel(row.firmwareVersion, currentFirmware), ""],
         ]) {
           const metric = document.createElement("div");
-          metric.className = "metric";
+          metric.className = label === "Firmware" ? "metric firmware-metric" : "metric";
           const metricLabel = document.createElement("div");
           metricLabel.className = "label";
           metricLabel.textContent = label;
@@ -1353,7 +1721,7 @@ def page() -> bytes:
         const meta = document.createElement("div");
         meta.className = "room-meta";
         meta.textContent = row
-          ? `${humidityText(row)} humidity${isHumiditySuspect(row) ? " suspect" : ""} - ${relativeTime(row.lastSeen)}`
+          ? `${humidityText(row)} humidity${isHumiditySuspect(row) ? " suspect" : ""} - ${relativeTime(row.observedAt || row.lastSeen)}`
           : "Waiting for reading";
 
         room.append(top, meta);
@@ -1364,7 +1732,7 @@ def page() -> bytes:
     function render(rows) {
       const body = document.getElementById("readings");
       if (!rows.length) {
-        body.innerHTML = '<tr><td colspan="8" class="empty">No readings yet.</td></tr>';
+        body.innerHTML = '<tr><td colspan="11" class="empty">No readings yet.</td></tr>';
         return;
       }
       body.replaceChildren();
@@ -1382,7 +1750,10 @@ def page() -> bytes:
           fmt(row.temperature, " F"),
           humidityText(row),
           fmt(row.rssi, " dBm"),
-          relativeTime(row.lastSeen),
+          row.seq ?? "-",
+          row.stability || {state: "unknown", label: "Unknown", detail: "No sequence data"},
+          row.sensorHealth || {state: "unknown", label: "Unknown", detail: "No DHT counters"},
+          relativeTime(row.observedAt || row.lastSeen),
           firmwareLabel(row.firmwareVersion),
           row.deviceId,
         ];
@@ -1404,6 +1775,17 @@ def page() -> bytes:
             flag.textContent = "suspect";
             wrap.appendChild(flag);
             td.appendChild(wrap);
+          } else if (index === 6 || index === 7) {
+            const stability = document.createElement("span");
+            stability.className = `health-badge ${value.state || "unknown"}`;
+            const label = document.createElement("span");
+            label.className = "health-label";
+            label.textContent = value.label || "Unknown";
+            const detail = document.createElement("span");
+            detail.className = "health-detail";
+            detail.textContent = value.detail || "";
+            stability.append(label, detail);
+            td.appendChild(stability);
           } else {
             td.textContent = value;
           }
@@ -1589,7 +1971,7 @@ def page() -> bytes:
       toggles.replaceChildren();
       const devices = sortedDeviceInfo(rows);
       for (const group of graphGroups) {
-        const groupDevices = devices.filter((device) => group.match(device.location));
+        const groupDevices = devices.filter((device) => group.match(device));
         const section = document.createElement("section");
         section.className = "device-group";
 
@@ -1674,18 +2056,19 @@ def page() -> bytes:
     function renderTrend(rows) {
       const svg = document.getElementById("trend");
       svg.replaceChildren();
-      syncSelectedDevices([...state.latest, ...rows]);
-      renderDeviceToggles([...state.latest, ...rows]);
-      const selectedRows = rows.filter((row) => state.selectedDevices.has(row.deviceId));
-      if (selectedRows.length < 2) {
+      const graphRows = trendRows(rows);
+      syncSelectedDevices([...state.latest, ...graphRows]);
+      renderDeviceToggles([...state.latest, ...graphRows]);
+      const selectedRows = graphRows.filter((row) => state.selectedDevices.has(row.deviceId));
+      if (!selectedRows.length) {
         const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
         text.setAttribute("x", "450");
         text.setAttribute("y", "108");
         text.setAttribute("text-anchor", "middle");
         text.setAttribute("fill", "#53616f");
-        text.textContent = rows.length ? "Select a device with more readings" : "Graph appears after readings arrive";
+        text.textContent = graphRows.length ? "Select at least one device" : "Graph appears after readings arrive";
         svg.appendChild(text);
-        setText("history-count", `${rows.length} reading${rows.length === 1 ? "" : "s"} in ${durationLabel()}`);
+        setText("history-count", `${graphRows.length} reading${graphRows.length === 1 ? "" : "s"} in ${durationLabel()}`);
         return;
       }
       const temps = selectedRows.map((row) => row.temperature).filter((value) => typeof value === "number");
@@ -1715,12 +2098,34 @@ def page() -> bytes:
       }
       for (const [deviceId] of sortedDevices(selectedRows)) {
         const deviceRows = selectedRows.filter((row) => row.deviceId === deviceId);
-        if (deviceRows.length < 2) continue;
-        const line = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
-        line.setAttribute("class", "temp-line");
-        line.setAttribute("stroke", colorForDevice(deviceId));
-        line.setAttribute("points", points(deviceRows, min, max, start, end));
-        svg.appendChild(line);
+        const color = colorForDevice(deviceId);
+        if (deviceId === weatherTemperatureDeviceId) {
+          if (deviceRows.length >= 2) {
+            const line = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
+            line.setAttribute("class", "temp-line weather-line");
+            line.setAttribute("stroke", color);
+            line.setAttribute("points", points(deviceRows, min, max, start, end));
+            svg.appendChild(line);
+          } else {
+            const weatherRow = deviceRows.find((row) => typeof row.temperature === "number");
+            if (!weatherRow) continue;
+            const y = 176 - ((weatherRow.temperature - min) / (max - min)) * 140;
+            const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+            line.setAttribute("class", "temp-line weather-line");
+            line.setAttribute("stroke", color);
+            line.setAttribute("x1", "36");
+            line.setAttribute("x2", "864");
+            line.setAttribute("y1", `${y}`);
+            line.setAttribute("y2", `${y}`);
+            svg.appendChild(line);
+          }
+        } else if (deviceRows.length >= 2) {
+          const line = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
+          line.setAttribute("class", "temp-line");
+          line.setAttribute("stroke", color);
+          line.setAttribute("points", points(deviceRows, min, max, start, end));
+          svg.appendChild(line);
+        }
       }
       setText("history-count", `${selectedRows.length} selected readings in ${durationLabel()}`);
     }
@@ -1741,19 +2146,37 @@ def page() -> bytes:
 
     async function refresh() {
       try {
-        const [latestResponse, historyResponse, floorplanResponse, systemResponse] = await Promise.all([
+        const [
+          latestResponse,
+          historyResponse,
+          floorplanResponse,
+          systemResponse,
+          weatherResponse,
+          weatherHistoryResponse,
+        ] = await Promise.all([
           fetch("/api/latest", {cache: "no-store"}),
           fetch(`/api/history?hours=${state.hours}&limit=50000`, {cache: "no-store"}),
           fetch("/api/floorplan", {cache: "no-store"}),
           fetch("/api/system", {cache: "no-store"}),
+          fetch("/api/weather", {cache: "no-store"}),
+          fetch(`/api/weather/history?hours=${state.hours}&limit=50000`, {cache: "no-store"}),
         ]);
-        if (!latestResponse.ok || !historyResponse.ok || !floorplanResponse.ok || !systemResponse.ok) {
+        if (
+          !latestResponse.ok
+          || !historyResponse.ok
+          || !floorplanResponse.ok
+          || !systemResponse.ok
+          || !weatherResponse.ok
+          || !weatherHistoryResponse.ok
+        ) {
           throw new Error("Dashboard API request failed");
         }
         state.latest = await latestResponse.json();
         state.history = await historyResponse.json();
         const floorplan = await floorplanResponse.json();
         state.system = await systemResponse.json();
+        state.weather = await weatherResponse.json();
+        state.weatherHistory = await weatherHistoryResponse.json();
         state.floorplanBackgroundImage = floorplan.backgroundImage || null;
         state.floorplanZones = Array.isArray(floorplan.zones) ? floorplan.zones : [];
         renderSummary(state.latest);
@@ -1800,6 +2223,8 @@ class Handler(BaseHTTPRequestHandler):
     stale_seconds: int = 120
     locations_path: Path = DEFAULT_LOCATIONS_PATH
     locations: dict[str, str] = {}
+    retired_devices_path: Path = DEFAULT_RETIRED_DEVICES_PATH
+    retired_devices: set[str] = set()
     firmware_download_key: str | None = None
     dashboard_username: str | None = None
     dashboard_password: str | None = None
@@ -1846,10 +2271,11 @@ class Handler(BaseHTTPRequestHandler):
 
         if parsed_path == "/api/latest":
             self.locations = load_locations(self.locations_path)
+            self.retired_devices = load_retired_devices(self.retired_devices_path)
             with closing(connect(self.db_path)) as conn:
                 rows = [
                     row_to_dict(row, self.stale_seconds, self.locations)
-                    for row in latest_readings(conn)
+                    for row in visible_rows(latest_readings(conn), self.retired_devices)
                 ]
             payload = json.dumps(rows).encode("utf-8")
             self.send_response(200)
@@ -1864,10 +2290,13 @@ class Handler(BaseHTTPRequestHandler):
             hours = query_int(query, "hours", 24)
             limit = query_int(query, "limit", 500)
             self.locations = load_locations(self.locations_path)
+            self.retired_devices = load_retired_devices(self.retired_devices_path)
             with closing(connect(self.db_path)) as conn:
                 rows = [
                     history_row_to_dict(row, self.locations)
-                    for row in reading_history(conn, hours, limit)
+                    for row in visible_rows(
+                        reading_history(conn, hours, limit), self.retired_devices
+                    )
                 ]
             payload = json.dumps(rows).encode("utf-8")
             self.send_response(200)
@@ -1894,6 +2323,21 @@ class Handler(BaseHTTPRequestHandler):
         if parsed_path == "/api/system":
             with closing(connect(self.db_path)) as conn:
                 row = latest_system_metric(conn, "pi_cpu_temperature_f")
+                events = [
+                    monitoring_event_to_dict(event) for event in latest_monitoring_events(conn)
+                ]
+                post_reboot_events = [
+                    monitoring_event_to_dict(event)
+                    for event in latest_monitoring_events(
+                        conn, limit=1, event_type="post_reboot_check"
+                    )
+                ]
+                watchdog_events = [
+                    monitoring_event_to_dict(event)
+                    for event in latest_monitoring_events(
+                        conn, limit=1, event_type="watchdog_relay"
+                    )
+                ]
             if row is None:
                 result = {"temperatureF": None, "sampledAt": None, "ageSeconds": None}
             else:
@@ -1903,9 +2347,45 @@ class Handler(BaseHTTPRequestHandler):
                 )
                 result = {
                     "temperatureF": row["value"],
-                    "sampledAt": row["created_at"],
+                    "sampledAt": format_utc(sampled_at),
                     "ageSeconds": age_seconds,
                 }
+            result["monitoring"] = {
+                "latestEvents": events,
+                "latestPostReboot": post_reboot_events[0] if post_reboot_events else None,
+                "latestWatchdogRelay": watchdog_events[0] if watchdog_events else None,
+            }
+            payload = json.dumps(result).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+            return
+
+        if parsed_path == "/api/weather/history":
+            query = parse_qs(parsed.query)
+            hours = query_int(query, "hours", 24)
+            limit = query_int(query, "limit", 500)
+            with closing(connect(self.db_path)) as conn:
+                rows = [
+                    weather_history_row_to_dict(row)
+                    for row in system_metric_history(conn, WEATHER_METRIC, hours, limit)
+                ]
+            payload = json.dumps(rows).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+            return
+
+        if parsed_path == "/api/weather":
+            with closing(connect(self.db_path)) as conn:
+                row = latest_system_metric(conn, WEATHER_METRIC)
+            result = weather_unavailable("No stored weather sample available")
+            if row is not None:
+                result = weather_row_to_dict(row)
             payload = json.dumps(result).encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
@@ -1917,14 +2397,20 @@ class Handler(BaseHTTPRequestHandler):
         if parsed_path == "/api/locations":
             try:
                 self.locations = load_locations(self.locations_path)
+                self.retired_devices = load_retired_devices(self.retired_devices_path)
             except ValueError as exc:
                 self.send_error(500, str(exc))
                 return
             with closing(connect(self.db_path)) as conn:
                 rows = latest_readings(conn)
-            payload = json.dumps(location_payload(rows, self.stale_seconds, self.locations)).encode(
-                "utf-8"
-            )
+            payload = json.dumps(
+                location_payload(
+                    rows,
+                    self.stale_seconds,
+                    self.locations,
+                    self.retired_devices,
+                )
+            ).encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(payload)))
@@ -1985,8 +2471,9 @@ class Handler(BaseHTTPRequestHandler):
 
         with closing(connect(self.db_path)) as conn:
             rows = latest_readings(conn)
+        self.retired_devices = load_retired_devices(self.retired_devices_path)
         payload_bytes = json.dumps(
-            location_payload(rows, self.stale_seconds, self.locations)
+            location_payload(rows, self.stale_seconds, self.locations, self.retired_devices)
         ).encode("utf-8")
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
@@ -2051,8 +2538,10 @@ def main() -> None:
     Handler.asset_dir = args.asset_dir
     Handler.floorplan_path = args.floorplan
     Handler.locations_path = args.locations
+    Handler.retired_devices_path = args.retired_devices
     Handler.stale_seconds = args.stale_seconds
     Handler.locations = load_locations(args.locations)
+    Handler.retired_devices = load_retired_devices(args.retired_devices)
     Handler.firmware_download_key = args.firmware_download_key
     Handler.dashboard_username = args.username
     Handler.dashboard_password = args.password

@@ -15,6 +15,8 @@ Table `readings`: append-only telemetry.
 | rssi | INTEGER | dBm |
 | status | TEXT | device-reported status |
 | seq | INTEGER | device publish sequence |
+| num_read_errors | INTEGER | cumulative firmware DHT22 read failures at publish time |
+| num_filtered_readings | INTEGER | cumulative firmware-filtered readings at publish time |
 | legacy_dedupe_exempt | INTEGER NOT NULL | `1` only for extra pre-index duplicate rows preserved by migration; new rows default to `0` |
 | created_at | TEXT NOT NULL | hub receive time, UTC |
 
@@ -34,13 +36,17 @@ arriving.
 Table `devices`: one row per device — location, firmware_version,
 build_number `[CHANGE]`, last_seen, online flag, last_rssi, last_status,
 last_seq, last_ip *(added 2026-07-05; diagnostic only, DATA-009
-sensitivity applies)*, updated_at. Upserted from telemetry and status
-(FR-023).
+sensitivity applies)*, latest DHT counter values
+(`last_num_read_errors`, `last_num_filtered_readings`), updated_at. Upserted
+from telemetry and status (FR-023).
 
 **DATA-003 — Operator config files** `MUST`
 - `locations.json` — `{device_id: display_location}`, strings only.
 - `floorplan.json` — optional `backgroundImage` + `zones[]` with
   `location, x, y, w, h` numeric and optional `type`. Validation per FR-035.
+- `retired_devices.json` — either `["device_id", ...]` or
+  `{"devices": ["device_id", ...]}`. Listed IDs are excluded from current
+  collection/dashboard views while historical rows remain preserved.
 Both are git-ignored with committed `.sample.json` templates; invalid files
 produce clear errors, never crashes.
 
@@ -108,4 +114,7 @@ and system metrics.
 **DATA-011 — Hub system metrics** `SHOULD` *(added 2026-08-04)*
 Table `system_metrics` stores append-only hub measurements with `metric`,
 numeric `value`, and authoritative UTC `created_at`. The initial metric is
-`pi_cpu_temperature_f`, sampled every 600 seconds by the collector.
+`pi_cpu_temperature_f`, sampled every 600 seconds by the collector. When
+internet weather is configured, the collector also samples
+`internet_outdoor_temperature_f` every 900 seconds for dashboard comparison
+against outdoor sensors.

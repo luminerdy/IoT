@@ -65,6 +65,29 @@ Do not manually toggle GPIO17 or initiate a PiServer shutdown merely to test the
 watchdog without explicit approval. Investigate repeated relay recoveries as a
 system, power, or network fault.
 
+Import recent watchdog relay events into the dashboard-visible monitoring table:
+
+```bash
+cd /home/scotty/IoT
+PYTHONPATH=app python3 -m iot_home.post_reboot_check \
+  --db data/iot.db \
+  --backup-dir data/backups \
+  --import-watchdog \
+  --watchdog-since '24 hours ago'
+```
+
+The command also records the current post-reboot health check. It is read-only
+except for inserting `monitoring_events` rows in SQLite.
+
+Install or refresh the boot-time recorder:
+
+```bash
+scripts/install_post_reboot_monitoring.sh
+```
+
+The unit is `iot-home-post-reboot-check.service`; it runs once after boot and
+imports the previous two hours of Pi3 watchdog journal entries.
+
 ## Backup Check
 
 Scheduled backups:
@@ -200,17 +223,20 @@ the live Mosquitto listener. First confirm the target on `/dev/ttyUSB0`, create
 its unique broker user without using batch-mode passwords, and keep its CA and
 password outside the repository:
 
-The `--host` value must be a DNS/mDNS hostname present in the broker
-certificate's DNS subject-alternative-name. The pinned-CA bench gate proved
-that path; this ESP32 Arduino/mbedTLS version did not accept an IP-literal host
-with an IP subject-alternative-name.
+Schema v2 separates the TCP endpoint from the TLS verification name. Use a
+reliable `--connect-host` endpoint, such as the Pi LAN IP, and a
+`--tls-hostname` value that appears in the broker certificate's DNS
+subject-alternative-name (`<hub-tls-hostname>` on this installation). This preserves
+certificate/SNI validation while avoiding ESP32 mDNS resolution failures. The
+legacy `--host` alias still sends one hostname for both roles.
 
 ```bash
 scripts/add_mqtt_device_user.sh esp32-device-id
 PYTHONPATH=app .venv/bin/python -m iot_home.provision_mqtt \
   --serial-port /dev/ttyUSB0 \
   --device-id esp32-device-id \
-  --host iot-pi.local \
+  --connect-host <hub-ip> \
+  --tls-hostname <hub-tls-hostname> \
   --mqtt-port 8883 \
   --ca-cert /etc/mosquitto/certs/iot-home/ca.crt
 ```
@@ -233,6 +259,12 @@ individually provisioned and observed.
 ## OTA Rollout
 
 Standing rule: no firmware build goes to fleet devices until the exact binary has passed validation on the USB-connected bench ESP32.
+
+Sunroom Test is the USB-connected bench/test device. Keep using it for firmware
+validation, serial recovery, MQTT/config/OTA assertions, and first-pass feature
+checks, but do not treat its sequence/reset stability as a production rollout
+gate while it is powered directly from PiServer USB. Its local USB power may be
+insufficient or otherwise unlike the deployed device power sources.
 
 The collector may record desired-version mismatches, but it never publishes
 OTA commands. Command publication is an explicit operator action using the
@@ -326,7 +358,11 @@ MQTT_USERNAME="$MQTT_ADMIN_USERNAME" MQTT_PASSWORD="$MQTT_ADMIN_PASSWORD" PYTHON
 
 8. Watch MQTT or the dashboard until the device reports valid telemetry on the expected location.
 9. Check `/api/latest` for 0 stale devices and 0 `UNMAPPED` rows.
-10. If replacing a device, remove stale retained MQTT state and old SQLite device rows only after confirming no historical readings need to be preserved under the retired ID.
+10. If replacing a device, add the retired ID to ignored local
+    `config/retired_devices.json`, remove its active mapping/floorplan entry,
+    and remove only its current `devices` row after a fresh backup. Preserve
+    historical readings unless a separate lossless archival is explicitly
+    approved and restore-tested.
 11. Update `docs/progress-log.md` with the device ID placeholder, location, firmware version, and verification result.
 
 ## Common Recovery
@@ -351,4 +387,5 @@ After any reboot or restart:
 systemctl is-active mosquitto.service iot-home-collector.service iot-home-dashboard.service
 systemctl is-enabled mosquitto.service iot-home-collector.service iot-home-dashboard.service
 curl -fsS http://127.0.0.1:8000/api/latest
+PYTHONPATH=app python3 -m iot_home.post_reboot_check --db data/iot.db --backup-dir data/backups
 ```

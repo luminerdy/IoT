@@ -20,8 +20,18 @@ from iot_home.dashboard import (
     query_int,
     valid_client_address,
 )
-from iot_home.db import connect, init_db, record_system_metric, record_telemetry
+from iot_home.db import (
+    connect,
+    init_db,
+    latest_readings,
+    record_monitoring_event,
+    record_status,
+    record_system_metric,
+    record_telemetry,
+)
 from iot_home.locations import load_locations
+from iot_home.retired_devices import load_retired_devices
+from iot_home.weather import WEATHER_METRIC
 
 
 def test_dashboard_page_keeps_attic_and_thermal_sorting_contract() -> None:
@@ -29,7 +39,11 @@ def test_dashboard_page_keeps_attic_and_thermal_sorting_contract() -> None:
 
     assert 'key: "attic"' in html
     assert 'label: "Attic"' in html
-    assert "!isAtticGraphLocation(location)" in html
+    assert "weatherTemperatureDeviceId" in html
+    assert "weatherTemperatureRow(state.weather)" in html
+    assert 'location: "Local Weather"' in html
+    assert 'class", "temp-line weather-line"' in html
+    assert "!isAtticGraphLocation(device.location)" in html
     assert 'zone?.type === "attic"' in html
     assert "deviceLabel(a).localeCompare(deviceLabel(b)" in html
     assert "return bTemp - aTemp || deviceLabel(a).localeCompare(deviceLabel(b));" in html
@@ -37,7 +51,14 @@ def test_dashboard_page_keeps_attic_and_thermal_sorting_contract() -> None:
     assert "Math.max(100," in html
     assert "[max, 100, 75, min]" in html
     assert 'id="pi-temperature"' in html
+    assert 'id="post-reboot-status"' in html
+    assert 'id="watchdog-status"' in html
     assert 'fetch("/api/system"' in html
+    assert 'fetch("/api/weather"' in html
+    assert "fetch(`/api/weather/history?hours=${state.hours}&limit=50000`" in html
+    assert '["Firmware", deviceFirmwareLabel(row.firmwareVersion, currentFirmware), ""]' in html
+    assert "function currentFirmwareVersion(rows)" in html
+    assert "metric firmware-metric" in html
 
 
 def test_firmware_capability_key_is_required() -> None:
@@ -86,6 +107,21 @@ def test_location_payload_includes_mapped_only_devices() -> None:
     assert payload["locations"] == {"esp32-mapped": "Mapped Room"}
     assert payload["devices"][0]["status"] == "mapped only"
     assert payload["devices"][0]["online"] is False
+    assert payload["devices"][0]["sensorHealth"] == {
+        "state": "offline",
+        "label": "Offline",
+        "detail": "Not reporting",
+    }
+
+
+def test_load_retired_devices_accepts_array_and_object(tmp_path) -> None:
+    array_path = tmp_path / "retired-array.json"
+    array_path.write_text('[" esp32-one ", ""]', encoding="utf-8")
+    object_path = tmp_path / "retired-object.json"
+    object_path.write_text('{"devices": ["esp32-two"]}', encoding="utf-8")
+
+    assert load_retired_devices(array_path) == {"esp32-one"}
+    assert load_retired_devices(object_path) == {"esp32-two"}
 
 
 def test_firmware_route_requires_correct_capability_key(tmp_path) -> None:
@@ -197,6 +233,7 @@ def _configure_handler(tmp_path, *, with_metric=True, allow_read=True):
     db_path = tmp_path / "iot.db"
     locations_path = tmp_path / "locations.json"
     floorplan_path = tmp_path / "floorplan.json"
+    retired_devices_path = tmp_path / "retired_devices.json"
     asset_dir = tmp_path / "assets"
     firmware_dir = tmp_path / "firmware"
     asset_dir.mkdir()
@@ -228,13 +265,33 @@ def _configure_handler(tmp_path, *, with_metric=True, allow_read=True):
                 "humidity": 41.0,
                 "rssi": -50,
                 "seq": 4,
+                "numReadErrors": 0,
+                "numFilteredReadings": 0,
             },
         )
         if with_metric:
             record_system_metric(conn, "pi_cpu_temperature_f", 120.5)
+        record_monitoring_event(
+            conn,
+            source="hub",
+            event_type="post_reboot_check",
+            status="ok",
+            message="post-reboot verification passed",
+            created_at="2026-08-09 12:00:00",
+        )
+        record_monitoring_event(
+            conn,
+            source="pi-watchdog",
+            event_type="watchdog_relay",
+            severity="critical",
+            status="recovery",
+            message="Target power restored after 15s",
+            created_at="2026-08-09 12:05:00",
+        )
 
     Handler.db_path = db_path
     Handler.locations_path = locations_path
+    Handler.retired_devices_path = retired_devices_path
     Handler.floorplan_path = floorplan_path
     Handler.asset_dir = asset_dir
     Handler.firmware_dir = firmware_dir
@@ -244,6 +301,7 @@ def _configure_handler(tmp_path, *, with_metric=True, allow_read=True):
     Handler.firmware_download_key = "firmware-key"
     Handler.allow_unauthenticated_read = allow_read
     Handler.locations = load_locations(locations_path)
+    Handler.retired_devices = load_retired_devices(retired_devices_path)
     return db_path, locations_path, floorplan_path
 
 
@@ -278,12 +336,36 @@ def test_dashboard_read_routes_and_static_assets(tmp_path) -> None:
         history = _read_json(f"{base}/api/history?hours=bad&limit=1")
         floorplan = _read_json(f"{base}/api/floorplan")
         system = _read_json(f"{base}/api/system")
+        weather = _read_json(f"{base}/api/weather")
         locations = _read_json(f"{base}/api/locations")
 
         assert latest[0]["location"] == "Test Room"
+        assert latest[0]["stability"] == {
+            "state": "stable",
+            "label": "Stable",
+            "detail": "No resets/24h",
+        }
+        assert latest[0]["recentSeqResets"] == 0
+        assert latest[0]["sensorHealth"] == {
+            "state": "ok",
+            "label": "OK",
+            "detail": "No new DHT errors",
+        }
+        assert latest[0]["numReadErrors"] == 0
+        assert latest[0]["numFilteredReadings"] == 0
+        assert latest[0]["readErrorDelta"] == 0
+        assert latest[0]["filteredReadingDelta"] == 0
         assert history[0]["deviceId"] == "esp32-test"
+        assert history[0]["createdAt"].endswith("Z")
         assert floorplan["zones"][0]["location"] == "Test Room"
         assert system["temperatureF"] == 120.5
+        assert system["sampledAt"].endswith("Z")
+        assert weather["temperatureF"] is None
+        assert weather["status"] == "unavailable"
+        assert system["monitoring"]["latestPostReboot"]["status"] == "ok"
+        assert system["monitoring"]["latestWatchdogRelay"]["message"] == (
+            "Target power restored after 15s"
+        )
         assert len(locations["devices"]) == 2
 
         for path in (
@@ -300,6 +382,165 @@ def test_dashboard_read_routes_and_static_assets(tmp_path) -> None:
         thread.join(timeout=5)
 
 
+def test_weather_routes_use_stored_metric_history(tmp_path) -> None:
+    db_path, _, _ = _configure_handler(tmp_path)
+    with closing(connect(db_path)) as conn:
+        record_system_metric(conn, WEATHER_METRIC, 91.4)
+        record_system_metric(conn, WEATHER_METRIC, 92.2)
+    server, thread = _start_server()
+    base = f"http://127.0.0.1:{server.server_port}"
+
+    try:
+        latest = _read_json(f"{base}/api/weather")
+        history = _read_json(f"{base}/api/weather/history")
+
+        assert latest["status"] == "ok"
+        assert latest["temperatureF"] == 92.2
+        assert latest["location"] == "Local Weather"
+        assert latest["source"] == "Open-Meteo"
+        assert latest["sampledAt"].endswith("Z")
+        assert [row["temperatureF"] for row in history[:2]] == [92.2, 91.4]
+        assert all(row["sampledAt"].endswith("Z") for row in history)
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+def test_dashboard_read_routes_hide_retired_devices(tmp_path) -> None:
+    db_path, _, _ = _configure_handler(tmp_path)
+    Handler.retired_devices_path.write_text('["esp32-test", "esp32-retired"]', encoding="utf-8")
+    with closing(connect(db_path)) as conn:
+        record_telemetry(
+            conn,
+            {
+                "deviceId": "esp32-retired",
+                "location": "UNMAPPED",
+                "firmwareVersion": "1.0.0",
+                "datetime": "2026-08-07T12:05:00Z",
+                "temperature": 80.0,
+                "humidity": 50.0,
+                "rssi": -60,
+                "seq": 1,
+            },
+        )
+    server, thread = _start_server()
+    base = f"http://127.0.0.1:{server.server_port}"
+
+    try:
+        latest = _read_json(f"{base}/api/latest")
+        history = _read_json(f"{base}/api/history")
+        locations = _read_json(f"{base}/api/locations")
+
+        assert latest == []
+        assert "esp32-test" not in {row["deviceId"] for row in history}
+        assert "esp32-retired" not in {row["deviceId"] for row in history}
+        assert "esp32-test" not in {row["deviceId"] for row in locations["devices"]}
+        assert "esp32-retired" not in {row["deviceId"] for row in locations["devices"]}
+        assert "esp32-test" not in locations["locations"]
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+def test_latest_staleness_uses_telemetry_age_not_status_age(tmp_path) -> None:
+    db_path = tmp_path / "iot.db"
+    with closing(connect(db_path)) as conn:
+        init_db(conn)
+        record_telemetry(
+            conn,
+            {
+                "deviceId": "esp32-test",
+                "location": "GarageDriveway",
+                "firmwareVersion": "1.0.0",
+                "datetime": "2026-08-11T22:38:25Z",
+                "temperature": 100.0,
+                "humidity": 28.5,
+                "rssi": -85,
+                "status": "OK",
+                "seq": 164,
+            },
+        )
+        conn.execute(
+            "UPDATE readings SET created_at = datetime('now', '-1 hour') WHERE device_id = ?",
+            ("esp32-test",),
+        )
+        record_status(
+            conn,
+            {
+                "deviceId": "esp32-test",
+                "firmwareVersion": "1.0.0",
+                "datetime": "2026-08-12T00:46:22Z",
+                "status": "online",
+                "ip": "203.0.113.20",
+            },
+        )
+
+        latest = latest_readings(conn)[0]
+        payload = dashboard.row_to_dict(latest, stale_seconds=120, locations={})
+
+    assert payload["online"] is True
+    assert payload["stale"] is True
+    assert payload["seq"] == 164
+    assert payload["status"] == "online"
+    assert payload["ageSeconds"] > 120
+    assert payload["deviceAgeSeconds"] < 120
+    assert payload["observedAt"] == payload["telemetryObservedAt"]
+    assert payload["observedAt"].endswith("Z")
+    assert payload["updatedAt"].endswith("Z")
+    assert payload["deviceObservedAt"].endswith("Z")
+
+
+def test_sensor_health_classification_uses_counter_deltas(tmp_path) -> None:
+    db_path = tmp_path / "iot.db"
+    with closing(connect(db_path)) as conn:
+        init_db(conn)
+        for index, counters in enumerate(((0, 0), (3, 0)), start=1):
+            record_telemetry(
+                conn,
+                {
+                    "deviceId": "esp32-watch",
+                    "datetime": f"2026-08-12T12:00:0{index}Z",
+                    "temperature": 72.4,
+                    "humidity": 45.2,
+                    "seq": index,
+                    "numReadErrors": counters[0],
+                    "numFilteredReadings": counters[1],
+                },
+            )
+        for index, counters in enumerate(((0, 0), (11, 0)), start=1):
+            record_telemetry(
+                conn,
+                {
+                    "deviceId": "esp32-fault",
+                    "datetime": f"2026-08-12T12:01:0{index}Z",
+                    "temperature": 72.4,
+                    "humidity": 45.2,
+                    "seq": index,
+                    "numReadErrors": counters[0],
+                    "numFilteredReadings": counters[1],
+                },
+            )
+
+        rows = {row["device_id"]: row for row in latest_readings(conn)}
+        watch = dashboard.row_to_dict(rows["esp32-watch"], stale_seconds=1200, locations={})
+        fault = dashboard.row_to_dict(rows["esp32-fault"], stale_seconds=1200, locations={})
+
+    assert watch["sensorHealth"] == {
+        "state": "watch",
+        "label": "Watch",
+        "detail": "+3 read, +0 filtered",
+    }
+    assert fault["sensorHealth"] == {
+        "state": "fault",
+        "label": "Fault",
+        "detail": "+11 read, +0 filtered",
+    }
+    assert watch["readErrorDelta"] == 3
+    assert fault["readErrorDelta"] == 11
+
+
 def test_dashboard_read_auth_floorplan_error_and_empty_system(tmp_path) -> None:
     _, _, floorplan_path = _configure_handler(tmp_path, with_metric=False, allow_read=False)
     server, thread = _start_server()
@@ -313,11 +554,11 @@ def test_dashboard_read_auth_floorplan_error_and_empty_system(tmp_path) -> None:
 
         request = Request(f"{base}/api/system", headers={"Authorization": f"Basic {auth}"})
         with closing(urlopen(request)) as response:
-            assert json.loads(response.read()) == {
-                "temperatureF": None,
-                "sampledAt": None,
-                "ageSeconds": None,
-            }
+            system = json.loads(response.read())
+        assert system["temperatureF"] is None
+        assert system["sampledAt"] is None
+        assert system["ageSeconds"] is None
+        assert system["monitoring"]["latestPostReboot"]["eventType"] == "post_reboot_check"
 
         floorplan_path.write_text("[]", encoding="utf-8")
         request = Request(f"{base}/api/floorplan", headers={"Authorization": f"Basic {auth}"})
@@ -396,6 +637,7 @@ def _dashboard_args(tmp_path, **overrides):
         "asset_dir": tmp_path / "assets",
         "floorplan": tmp_path / "floorplan.json",
         "locations": tmp_path / "locations.json",
+        "retired_devices": tmp_path / "retired_devices.json",
         "stale_seconds": 120,
         "firmware_download_key": "key",
         "username": "admin",

@@ -1,0 +1,15 @@
+[Unit]
+Description=Record IoT post-reboot health and watchdog monitoring events
+Documentation=file:/home/scotty/IoT/docs/operations-runbook.md
+After=network-online.target mosquitto.service iot-home-collector.service iot-home-dashboard.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=scotty
+WorkingDirectory=/home/scotty/IoT
+Environment=PYTHONPATH=app
+ExecStart=/home/scotty/IoT/.venv/bin/python -m iot_home.post_reboot_check --db data/iot.db --backup-dir data/backups --import-watchdog --watchdog-since "2 hours ago"
+
+[Install]
+WantedBy=multi-user.target

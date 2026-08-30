@@ -100,13 +100,16 @@ password through argv:
 PYTHONPATH=app .venv/bin/python -m iot_home.provision_mqtt \
   --serial-port /dev/ttyUSB0 \
   --device-id esp32-device-id \
-  --host iot-pi.local \
+  --connect-host <hub-ip> \
+  --tls-hostname <hub-tls-hostname> \
   --mqtt-port 8883 \
   --ca-cert /etc/mosquitto/certs/iot-home/ca.crt
 ```
 
 It prompts without echo. For automation, `--password-file` accepts only a
-mode-0600 file. A valid NVS profile overrides the compiled migration fallback;
+mode-0600 file. `--connect-host` may be the Pi LAN IP; `--tls-hostname` remains
+the DNS SAN used for SNI and certificate verification. A valid NVS profile
+overrides the compiled migration fallback;
 clear only during a controlled rollback:
 
 ```bash

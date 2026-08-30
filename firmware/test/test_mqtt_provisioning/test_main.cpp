@@ -16,8 +16,9 @@ constexpr const char *CA_CERT =
 std::string valid_profile()
 {
   return std::string("{") +
-    "\"schemaVersion\":1,"
-    "\"mqttHost\":\"broker.test\","
+    "\"schemaVersion\":2,"
+    "\"mqttConnectHost\":\"203.0.113.10\","
+    "\"mqttTlsHostname\":\"broker.test\","
     "\"mqttPort\":8883,"
     "\"mqttUsername\":\"" + DEVICE_ID + "\","
     "\"mqttPassword\":\"xxxxxxxxxxxxxxxx\","
@@ -39,7 +40,8 @@ void test_valid_tls_profile_parses()
   mqtt_provisioning::Settings settings{};
   char error[96];
   TEST_ASSERT_TRUE(parse(valid_profile(), &settings, error));
-  TEST_ASSERT_EQUAL_STRING("broker.test", settings.host);
+  TEST_ASSERT_EQUAL_STRING("203.0.113.10", settings.connect_host);
+  TEST_ASSERT_EQUAL_STRING("broker.test", settings.tls_hostname);
   TEST_ASSERT_EQUAL_UINT16(8883, settings.port);
   TEST_ASSERT_EQUAL_STRING(DEVICE_ID, settings.username);
   TEST_ASSERT_EQUAL_STRING("xxxxxxxxxxxxxxxx", settings.password);
@@ -63,7 +65,7 @@ void test_unknown_missing_and_nested_fields_are_rejected()
   mqtt_provisioning::Settings settings{};
   char error[96];
   std::string unknown = valid_profile();
-  unknown.replace(unknown.find("\"schemaVersion\""), 15, "\"unexpectedKey\"");
+  unknown.replace(unknown.find("\"mqttConnectHost\""), 17, "\"unexpectedKey\"");
   TEST_ASSERT_FALSE(parse(unknown, &settings, error));
   TEST_ASSERT_EQUAL_STRING("provisioning profile fields invalid", error);
 
@@ -75,9 +77,9 @@ void test_unknown_missing_and_nested_fields_are_rejected()
   TEST_ASSERT_EQUAL_STRING("provisioning profile fields invalid", error);
 
   std::string nested = valid_profile();
-  const std::string host_field = "\"mqttHost\":\"broker.test\"";
+  const std::string host_field = "\"mqttTlsHostname\":\"broker.test\"";
   nested.replace(
-    nested.find(host_field), host_field.size(), "\"mqttHost\":{\"value\":\"broker.test\"}"
+    nested.find(host_field), host_field.size(), "\"mqttTlsHostname\":{\"value\":\"broker.test\"}"
   );
   TEST_ASSERT_FALSE(parse(nested, &settings, error));
   TEST_ASSERT_EQUAL_STRING("provisioning field types invalid", error);
@@ -97,15 +99,39 @@ void test_host_and_port_bounds_are_enforced()
 {
   mqtt_provisioning::Settings settings{};
   char error[96];
-  std::string bad_host = valid_profile();
-  bad_host.replace(bad_host.find("broker.test"), 11, "https://bad/");
-  TEST_ASSERT_FALSE(parse(bad_host, &settings, error));
-  TEST_ASSERT_EQUAL_STRING("MQTT host invalid", error);
+  std::string bad_connect_host = valid_profile();
+  bad_connect_host.replace(bad_connect_host.find("203.0.113.10"), 12, "https://bad/");
+  TEST_ASSERT_FALSE(parse(bad_connect_host, &settings, error));
+  TEST_ASSERT_EQUAL_STRING("MQTT connect host invalid", error);
+
+  std::string bad_tls_hostname = valid_profile();
+  bad_tls_hostname.replace(bad_tls_hostname.find("broker.test"), 11, "203.0.113.10");
+  TEST_ASSERT_FALSE(parse(bad_tls_hostname, &settings, error));
+  TEST_ASSERT_EQUAL_STRING("MQTT TLS hostname invalid", error);
 
   std::string bad_port = valid_profile();
   bad_port.replace(bad_port.find("8883"), 4, "0");
   TEST_ASSERT_FALSE(parse(bad_port, &settings, error));
   TEST_ASSERT_EQUAL_STRING("MQTT port invalid", error);
+}
+
+void test_legacy_schema_v1_uses_host_for_connect_and_tls()
+{
+  mqtt_provisioning::Settings settings{};
+  char error[96];
+  std::string payload = std::string("{") +
+    "\"schemaVersion\":1,"
+    "\"mqttHost\":\"broker.test\","
+    "\"mqttPort\":8883,"
+    "\"mqttUsername\":\"" + DEVICE_ID + "\","
+    "\"mqttPassword\":\"xxxxxxxxxxxxxxxx\","
+    "\"mqttUseTls\":true,"
+    "\"mqttCaCert\":\"-----BEGIN CERTIFICATE-----\\n"
+    "dGVzdC1jZXJ0aWZpY2F0ZQ==\\n"
+    "-----END CERTIFICATE-----\\n\"}";
+  TEST_ASSERT_TRUE(parse(payload, &settings, error));
+  TEST_ASSERT_EQUAL_STRING("broker.test", settings.connect_host);
+  TEST_ASSERT_EQUAL_STRING("broker.test", settings.tls_hostname);
 }
 
 void test_username_must_equal_device_identity()
@@ -163,6 +189,7 @@ int main(int, char **)
   RUN_TEST(test_unknown_missing_and_nested_fields_are_rejected);
   RUN_TEST(test_wrong_field_types_are_rejected);
   RUN_TEST(test_host_and_port_bounds_are_enforced);
+  RUN_TEST(test_legacy_schema_v1_uses_host_for_connect_and_tls);
   RUN_TEST(test_username_must_equal_device_identity);
   RUN_TEST(test_password_length_is_bounded);
   RUN_TEST(test_tls_and_ca_are_required);
